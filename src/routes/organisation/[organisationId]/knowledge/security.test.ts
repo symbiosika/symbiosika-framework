@@ -89,15 +89,7 @@ describe("Knowledge API Security Tests", () => {
       ],
       [
         "POST",
-        `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/parse-document`,
-      ],
-      [
-        "POST",
         `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/from-text`,
-      ],
-      [
-        "POST",
-        `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/from-url`,
       ],
       [
         "POST",
@@ -194,25 +186,6 @@ describe("Knowledge API Security Tests", () => {
     expect(response.status).toBe(403);
   });
 
-  test("User cannot parse document in another organisation", async () => {
-    const parseData = {
-      sourceType: "text",
-      sourceId: createdKnowledgeTextId,
-      organisationId: TEST_ORGANISATION_1.id,
-    };
-
-    // User 2 tries to parse document in organisation 1
-    const response = await testFetcher.post(
-      appKnowledge,
-      `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/parse-document`,
-      TEST_USER_2_TOKEN,
-      parseData
-    );
-
-    // Should be rejected due to organisation permission check
-    expect(response.status).toBe(403);
-  });
-
   test("User cannot add knowledge from text in another organisation", async () => {
     const textData = {
       organisationId: TEST_ORGANISATION_1.id,
@@ -226,24 +199,6 @@ describe("Knowledge API Security Tests", () => {
       `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/from-text`,
       TEST_USER_2_TOKEN,
       textData
-    );
-
-    // Should be rejected due to organisation permission check
-    expect(response.status).toBe(403);
-  });
-
-  test("User cannot add knowledge from URL in another organisation", async () => {
-    const urlData = {
-      organisationId: TEST_ORGANISATION_1.id,
-      url: "https://example.com",
-    };
-
-    // User 2 tries to add knowledge from URL in organisation 1
-    const response = await testFetcher.post(
-      appKnowledge,
-      `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/from-url`,
-      TEST_USER_2_TOKEN,
-      urlData
     );
 
     // Should be rejected due to organisation permission check

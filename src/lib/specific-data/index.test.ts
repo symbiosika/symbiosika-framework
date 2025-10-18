@@ -1,7 +1,6 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { describe, test, expect, beforeAll, beforeEach } from "bun:test";
 import {
   initTests,
-  TEST_ADMIN_USER,
   TEST_ORGANISATION_1,
   TEST_ORG1_USER_1,
   dropAllUserAndOrganisationSpecificData,
@@ -37,6 +36,7 @@ beforeAll(async () => {
     [TEST_ORG1_USER_1.id]
   );
   TEST_TEAM_ID = teamId;
+  console.log("TEST_TEAM_ID", TEST_TEAM_ID);
 });
 
 describe("User Specific Data", () => {
@@ -53,7 +53,10 @@ describe("User Specific Data", () => {
     expect(created.key).toBe(testData.key);
     expect(created.data).toEqual(testData.data);
 
-    const retrieved = await getUserSpecificData(TEST_ORG1_USER_1.id, testData.key);
+    const retrieved = await getUserSpecificData(
+      TEST_ORG1_USER_1.id,
+      testData.key
+    );
     expect(retrieved).toEqual(created);
   });
 
@@ -185,13 +188,13 @@ describe("Organisation Specific Data", () => {
 });
 
 describe("Team Specific Data", () => {
-  const testData = {
-    teamId: TEST_TEAM_ID,
-    key: "test-key",
-    data: { value: "test-value" },
-  };
-
   test("should create and retrieve team specific data", async () => {
+    const testData = {
+      teamId: TEST_TEAM_ID,
+      key: "test-key",
+      data: { value: "test-value" },
+    };
+
     const created = await createTeamSpecificData(testData);
     expect(created).toBeDefined();
     expect(created.teamId).toBe(TEST_TEAM_ID);
@@ -204,8 +207,9 @@ describe("Team Specific Data", () => {
 
   test("should update team specific data", async () => {
     const created = await createTeamSpecificData({
-      ...testData,
+      teamId: TEST_TEAM_ID,
       key: "update-key",
+      data: { value: "test-value" },
     });
     const updated = await updateTeamSpecificData(TEST_TEAM_ID, "update-key", {
       data: { value: "updated-value" },
@@ -215,8 +219,9 @@ describe("Team Specific Data", () => {
 
   test("should delete team specific data", async () => {
     const created = await createTeamSpecificData({
-      ...testData,
+      teamId: TEST_TEAM_ID,
       key: "delete-key",
+      data: { value: "test-value" },
     });
     await deleteTeamSpecificData(TEST_TEAM_ID, "delete-key");
 

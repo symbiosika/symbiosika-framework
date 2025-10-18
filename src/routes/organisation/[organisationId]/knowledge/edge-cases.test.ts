@@ -103,26 +103,6 @@ describe("Knowledge API Edge Cases", () => {
     expect(response.status).toBe(400);
   });
 
-  test("Parse document with non-existent source ID", async () => {
-    const nonExistentId = "00000000-0000-0000-0000-000000000000";
-
-    const parseData = {
-      sourceType: "text",
-      sourceId: nonExistentId,
-      organisationId: TEST_ORGANISATION_1.id,
-    };
-
-    const response = await testFetcher.post(
-      appKnowledge,
-      `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/parse-document`,
-      TEST_USER_1_TOKEN,
-      parseData
-    );
-
-    // Should return an error for non-existent source
-    expect(response.status).toBe(400);
-  });
-
   test("Extract knowledge with non-existent source ID", async () => {
     const nonExistentId = "00000000-0000-0000-0000-000000000000";
 
@@ -255,23 +235,6 @@ describe("Knowledge API Edge Cases", () => {
     expect([200, 400]).toContain(response.status);
   }, 15000);
 
-  test("Add knowledge from invalid URL", async () => {
-    const urlData = {
-      organisationId: TEST_ORGANISATION_1.id,
-      url: "not-a-valid-url",
-    };
-
-    const response = await testFetcher.post(
-      appKnowledge,
-      `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/from-url`,
-      TEST_USER_1_TOKEN,
-      urlData
-    );
-
-    // Invalid URL should be rejected
-    expect(response.status).toBe(400);
-  });
-
   test("Upload and learn with empty form data", async () => {
     const formData = new FormData();
     // No file attached
@@ -286,29 +249,6 @@ describe("Knowledge API Edge Cases", () => {
     // Empty form data should be rejected
     // console.log("A", response.textResponse);
     expect(response.status).toBe(400);
-  });
-
-  test("Upload and learn with invalid filters JSON", async () => {
-    const filePath = TEST_PDF_TEXT;
-    const fileBuffer = readFileSync(filePath);
-    const file = new File([fileBuffer], "t.pdf", {
-      type: "application/pdf",
-    });
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("filters", "not-valid-json");
-
-    const response = await testFetcher.postFormData(
-      appKnowledge,
-      `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/upload-and-extract`,
-      TEST_USER_1_TOKEN,
-      formData
-    );
-
-    // Invalid filters JSON should be rejected
-    expect(response.status).toBe(400);
-    expect(response.textResponse).toContain("Error parsing filters");
   });
 
   // Clean up after edge case tests

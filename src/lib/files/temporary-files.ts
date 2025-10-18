@@ -24,6 +24,9 @@ export const saveFileToTemporaryStorage = async (file: File) => {
   // Convert File to ArrayBuffer
   const buffer = await file.arrayBuffer();
 
+  // ensure path exists
+  await fs.mkdir(temporaryStoragePath, { recursive: true });
+
   // Save file to path
   await fs.writeFile(path, Buffer.from(buffer));
 

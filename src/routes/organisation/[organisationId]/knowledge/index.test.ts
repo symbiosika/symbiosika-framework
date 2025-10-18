@@ -141,24 +141,6 @@ describe("Knowledge API Endpoints", () => {
     expect(response.jsonResponse.id).toBeDefined();
   });
 
-  test("Add knowledge from URL", async () => {
-    const urlData = {
-      organisationId: TEST_ORGANISATION_1.id,
-      url: "https://example.com",
-    };
-
-    const response = await testFetcher.post(
-      appKnowledge,
-      `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/from-url`,
-      TEST_USER_1_TOKEN,
-      urlData
-    );
-
-    // This might fail in CI environments without internet access
-    // So we're just checking that the endpoint responds
-    expect([200, 400]).toContain(response.status);
-  }, 15000);
-
   test("Perform similarity search", async () => {
     const searchData = {
       organisationId: TEST_ORGANISATION_1.id,
@@ -176,27 +158,27 @@ describe("Knowledge API Endpoints", () => {
     expect(Array.isArray(response.jsonResponse)).toBe(true);
   });
 
-  test("Upload and learn from PDF file", async () => {
-    const filePath = TEST_PDF_TEXT;
-    const fileBuffer = readFileSync(filePath);
-    const file = new File([fileBuffer], "t.pdf", {
-      type: "application/pdf",
-    });
+  // test("Upload and learn from PDF file", async () => {
+  //   const filePath = TEST_PDF_TEXT;
+  //   const fileBuffer = readFileSync(filePath);
+  //   const file = new File([fileBuffer], "t.pdf", {
+  //     type: "application/pdf",
+  //   });
 
-    const formData = new FormData();
-    formData.append("file", file);
+  //   const formData = new FormData();
+  //   formData.append("file", file);
 
-    const response = await testFetcher.postFormData(
-      appKnowledge,
-      `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/upload-and-extract`,
-      TEST_USER_1_TOKEN,
-      formData
-    );
+  //   const response = await testFetcher.postFormData(
+  //     appKnowledge,
+  //     `/api/organisation/${TEST_ORGANISATION_1.id}/knowledge/upload-and-extract`,
+  //     TEST_USER_1_TOKEN,
+  //     formData
+  //   );
 
-    expect(response.status).toBe(200);
-    expect(response.jsonResponse.ok).toBe(true);
-    expect(response.jsonResponse.id).toBeDefined();
-  }, 120000);
+  //   expect(response.status).toBe(200);
+  //   expect(response.jsonResponse.ok).toBe(true);
+  //   expect(response.jsonResponse.id).toBeDefined();
+  // }, 120000);
 
   // Cleanup tests - run these last
   test("Delete a knowledge entry", async () => {

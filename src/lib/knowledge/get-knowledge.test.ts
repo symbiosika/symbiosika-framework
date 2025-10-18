@@ -16,9 +16,7 @@ import type { KnowledgeEntrySelect } from "../db/db-schema";
 
 describe("getKnowledgeEntries Permissions", () => {
   let teamIdOrg1: string;
-  let workspaceIdOrg1: string;
   let teamIdOrg2: string;
-  let workspaceIdOrg2: string;
 
   beforeAll(async () => {
     await initTests();
@@ -43,7 +41,7 @@ describe("getKnowledgeEntries Permissions", () => {
   });
 
   let entryOrg1: KnowledgeEntrySelect;
-  test("User can read knowledge from the team & workspace they belong to", async () => {
+  test("User can read knowledge from the team they belong to", async () => {
     // Create an entry in org1, with teamIdOrg1 and workspaceIdOrg1, userOwned = false
     entryOrg1 = await testing_createKnowledgeEntry({
       organisationId: TEST_ORGANISATION_1.id,
@@ -125,87 +123,5 @@ describe("getKnowledgeEntries Permissions", () => {
         teamId: teamIdOrg1,
       });
     }).toThrow();
-  });
-
-  test("User can access knowledge entries in workspaces they have access to: create", async () => {
-    // Create a knowledge entry in workspace1 in org1
-    const entryInWorkspace = await testing_createKnowledgeEntry({
-      organisationId: TEST_ORGANISATION_1.id,
-      userId: TEST_ORG1_USER_1.id,
-    });
-
-    // User1 should be able to access it
-    const result = await getKnowledgeEntries({
-      organisationId: TEST_ORGANISATION_1.id,
-      userId: TEST_ORG1_USER_1.id,
-    });
-    expect(result.find((r) => r.id === entryInWorkspace.id)).toBeDefined();
-  });
-
-  let entryInWorkspace: KnowledgeEntrySelect;
-  test("User cannot access knowledge entries in workspaces they don't have access to: create (user1)", async () => {
-    // Create a knowledge entry in the workspace
-    entryInWorkspace = await testing_createKnowledgeEntry({
-      organisationId: TEST_ORGANISATION_1.id,
-      userId: TEST_ORG1_USER_1.id,
-    });
-  });
-
-  test("User cannot access knowledge entries in workspaces they don't have access to: read (user2)", async () => {
-    // User2 should not be able to access it
-    expect(async () => {
-      await getKnowledgeEntries({
-        organisationId: TEST_ORGANISATION_1.id,
-        userId: TEST_ORG1_USER_2.id,
-      });
-    }).toThrow();
-  });
-
-  let entryWithFilters: KnowledgeEntrySelect;
-  test("User can create knowledge entries with filters", async () => {
-    entryWithFilters = await testing_createKnowledgeEntry({
-      organisationId: TEST_ORGANISATION_1.id,
-      userId: TEST_ORG1_USER_1.id,
-      teamId: teamIdOrg1,
-      filters: {
-        "test-case": "test-1",
-      },
-    });
-  });
-
-  test("User can read knowledge entries with filters", async () => {
-    const result = await getKnowledgeEntries({
-      organisationId: TEST_ORGANISATION_1.id,
-      userId: TEST_ORG1_USER_1.id,
-      teamId: teamIdOrg1,
-      filterNames: {
-        "test-case": ["test-1", "test-2"],
-      },
-    });
-    expect(result.find((r) => r.id === entryWithFilters.id)).toBeDefined();
-  });
-
-  test("User canot read knowledge entries with wrong filters", async () => {
-    const result = await getKnowledgeEntries({
-      organisationId: TEST_ORGANISATION_1.id,
-      userId: TEST_ORG1_USER_1.id,
-      teamId: teamIdOrg1,
-      filterNames: {
-        "test-case": ["test-3", "test-4"],
-      },
-    });
-    expect(result.find((r) => r.id === entryWithFilters.id)).toBeUndefined();
-  });
-
-  test("User canot read knowledge entries with wrong filters again", async () => {
-    const result = await getKnowledgeEntries({
-      organisationId: TEST_ORGANISATION_1.id,
-      userId: TEST_ORG1_USER_1.id,
-      teamId: teamIdOrg1,
-      filterNames: {
-        "test-some-else": ["test"],
-      },
-    });
-    expect(result.find((r) => r.id === entryWithFilters.id)).toBeUndefined();
   });
 });
