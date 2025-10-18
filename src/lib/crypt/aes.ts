@@ -12,8 +12,11 @@ const checkSecrets = async () => {
     process.env.SECRETS_AES_IV = iv;
 
     // write them out
-    console.log(`Created new AES key and IV: ${key}, ${iv}`);
-    console.log("Please add them to your .env file");
+    console.log("Created new AES key and IV:");
+    console.log(`SECRETS_AES_KEY=${key}`);
+    console.log(`SECRETS_AES_IV=${iv}`);
+    console.log("Please that to your .env file");
+    console.log("Then run the application again");
     process.exit(0);
   }
 };
