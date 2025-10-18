@@ -41,9 +41,6 @@ export default function defineAdminRoutes(app: FastAppHono, basePath: string) {
       try {
         const id = c.req.param("id");
         const logFiles = await logger.getLogFilePaths();
-        if (logFiles.length === 0) {
-          return c.json({ error: "No log files found" }, 404);
-        }
 
         // Concatenate all log contents with file names as headers
         let allLogs = "";
