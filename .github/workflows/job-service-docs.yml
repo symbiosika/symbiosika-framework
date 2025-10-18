@@ -8,7 +8,7 @@ on:
       - 'src/lib/jobs/**'
       - 'src/lib/db/schema/jobs.ts'
       - '.github/workflows/job-service-docs.yml'
-      - 'scripts/generate-job-service-docs.js'
+      - '.scripts/generate-job-service-docs.js'
   workflow_dispatch:
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: '22'
       - name: Generate documentation
-        run: node scripts/generate-job-service-docs.js
+        run: node .scripts/generate-job-service-docs.js
       - name: Commit documentation
         run: |
           if [ -n "$(git status --porcelain docs/README_Jobs_API.md)" ]; then
