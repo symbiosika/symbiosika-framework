@@ -1,0 +1,115 @@
+name: Unit tests for fastapp-framework
+
+on:
+  push:
+    branches:
+      - develop
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Add the PostgreSQL service container
+    services:
+      postgres_db:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: symbiosika
+        ports:
+          - 5432:5432
+        # Add health checks to ensure the service is ready
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Create .env file
+        run: |
+          cat > .env << 'EOL'
+          # Webserver
+          BASE_URL=http://localhost:3000
+          WRITE_DEBUG_FILES=true
+
+          # Database
+          POSTGRES_HOST=localhost
+          POSTGRES_PORT=5432
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=postgres
+          POSTGRES_DB=symbiosika
+          POSTGRES_USE_SSL=false
+          POSTGRES_CA=''
+
+          # OpenAI for Chat,Embeddings and Text Features
+          OPENAI_API_KEY=${{ secrets.FASTAPP_UNITTEST_OPENAI_API_KEY }}
+
+          # Mistral for Chat and MultiModal
+          MISTRAL_API_KEY=${{ secrets.FASTAPP_UNITTEST_MISTRAL_API_KEY }}
+
+          # Anthropic for Chat
+          ANTHROPIC_API_KEY=${{ secrets.FASTAPP_UNITTEST_ANTHROPIC_API_KEY }}
+
+           # Perplexity
+          PERPLEXITY_API_KEY=${{ secrets.FASTAPP_UNITTEST_PERPLEXITY_API_KEY }}
+
+          # Black Forest Labs
+          BLACK_FOREST_LABS_API_KEY=${{ secrets.FASTAPP_UNITTEST_BLACK_FOREST_LABS_API_KEY }}
+
+          # Replicate
+          REPLICATE_API_KEY=${{ secrets.FASTAPP_UNITTEST_REPLICATE_API_KEY }}
+
+          # Webserver Settings
+          ALLOWED_ORIGINS="*"
+
+          # Parsing
+          PDF_PARSER_SERVICE="local"
+          LOCAL_PDF_PARSER_API_KEY="${{ secrets.FASTAPP_UNITTEST_PDF_PARSER_API_KEY }}"
+          LOCAL_PDF_PARSER_BASE_URL="${{ secrets.FASTAPP_UNITTEST_PDF_PARSER_BASE_URL }}"
+          LLAMA_CLOUD_API_KEY="${{ secrets.FASTAPP_UNITTEST_LLAMA_CLOUD_API_KEY }}"
+
+          # Encryption
+          SECRETS_AES_KEY=${{ secrets.FASTAPP_UNITTEST_SECRETS_AES_KEY }}
+          SECRETS_AES_IV=${{ secrets.FASTAPP_UNITTEST_SECRETS_AES_IV }}
+
+          # JWT
+          JWT_PUBLIC_KEY="${{ secrets.FASTAPP_UNITTEST_JWT_KEY }}"
+          JWT_PRIVATE_KEY="${{ secrets.FASTAPP_UNITTEST_JWT_KEY }}"
+
+          # Cron
+          CRON_LOG=false
+          ZYTE_API_KEY=not-needed
+          EOL
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Check version of Bun
+        run: bun --version
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: run migrations
+        run: npm run fastapp:migrate
+
+      - name: Check connection
+        run: bun test src/test/check-connection.test.ts
+
+      # - name: Single test
+      #   run: bun test src/routes/organisation/[organisationId]/invitations/security.test.ts
+
+      - name: Run tests
+        run: bun test --reporter=junit --reporter-outfile=./junit.xml

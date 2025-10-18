@@ -1,0 +1,35 @@
+name: Generate Job Service Docs
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/job-service.ts'
+      - 'src/lib/jobs/**'
+      - 'src/lib/db/schema/jobs.ts'
+      - '.github/workflows/job-service-docs.yml'
+      - 'scripts/generate-job-service-docs.js'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate documentation
+        run: node scripts/generate-job-service-docs.js
+      - name: Commit documentation
+        run: |
+          if [ -n "$(git status --porcelain docs/README_Jobs_API.md)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add docs/README_Jobs_API.md
+            git commit -m "chore: update job service docs"
+            git push
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.BE_GH_REPO_KEY }}

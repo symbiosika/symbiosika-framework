@@ -1,0 +1,82 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: 
+globs: *.test.ts
+alwaysApply: false
+---
+# Example Unit Test
+
+- Always run unit-test from root dir like this `bun test src/fastapp-framework/src/lib/ai/a.test.ts`
+- never use "cd" command
+
+- never MOCK functions!
+- Use initTests() to initialize a database connection
+- Use the testing data for tests. many test data is found in the init.test.ts file and /test/ folder
+
+Example:
+```typescript	
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import {
+  initTests,
+  TEST_ADMIN_USER,
+  TEST_ORGANISATION_1,
+  TEST_USER_1,
+  TEST_ORGANISATION_2,
+} from "../../../test/init.test";
+// the base path is: "src/fastapp-framework/src/test/init.test.ts"
+
+beforeAll(async () => {
+  await initTests();
+});
+
+describe("Some Test", () => { 
+  test("Test function", async () => {
+      const result = await someFunction();
+      expect(result).toBe(true);
+    });
+});
+```
+
+- Since there is a Bug in Bun all unit tests must be in a single block
+
+```typescript
+let someVarThatWasAddedBefore = { "a": 1 }
+test("", async () => {
+  expect(async () => {
+    await someTestThatFails();
+  }).toThrow();
+});
+```
+
+- You will always wrap internal API calls with testFetcher.
+
+Example:
+```ts
+import { testFetcher } from "../../test/fetcher.test";
+const response = await testFetcher.post(
+    app, // the hono app
+    "/api/admin/logs/download", // path
+    TEST_ADMIN_TOKEN, // token
+    body || undefined
+  );
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Content-Type")).toBe("application/gzip");
+  expect(response.jsonResponse).toBedefined(); // is null, wenn result is not json
+  expect(response.testResponse).toBedefined(); // is the body in plain text
+});
+```
+
+Because of a Bug in buns runtime you cannot use "async" in AfterAll.
+You will catch that like this.
+
+Example:
+```ts
+afterAll(() => {
+    // Clean up
+    deleteSomeTestData().then(() => {});
+  });
+```
