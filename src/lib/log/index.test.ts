@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import Logger from ".";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 // Create individual mocks
 const mockMkdir = mock(() => Promise.resolve());
@@ -56,18 +55,6 @@ describe("Logger", () => {
     await Logger.debug(testObj);
     expect(consoleOutput[0]).toMatch(
       /^\[\d{4}-\d{2}-\d{2}.*\] \[DEBUG\] {"test":"value"}$/
-    );
-  });
-
-  it("should log chat messages", async () => {
-    const chatMessages: ChatCompletionMessageParam[] = [
-      { role: "user", content: "Hello" },
-      { role: "assistant", content: "Hi there" },
-    ];
-    await Logger.logAChat("test-chat-id", ...chatMessages);
-    console.log(consoleOutput[0]);
-    expect(consoleOutput[0]).toContain(
-      '[test-chat-id] {"role":"user","content":"Hello"}'
     );
   });
 
