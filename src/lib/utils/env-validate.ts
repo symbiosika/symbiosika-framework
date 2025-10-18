@@ -1,10 +1,12 @@
+import { ensureJWTKeys } from "./jwt-keys";
+
 /**
  * Validate all environment variables
  * to ensure that all required variables are set
  */
-export const validateAllEnvVariables = (
+export const validateAllEnvVariables = async (
   customEnvVariablesToCheckOnStartup: string[] = []
-) => {
+): Promise<void> => {
   const requiredEnvVars = [
     "POSTGRES_HOST",
     "POSTGRES_PORT",
@@ -13,11 +15,13 @@ export const validateAllEnvVariables = (
     "POSTGRES_DB",
     "SECRETS_AES_KEY",
     "SECRETS_AES_IV",
-    "JWT_PUBLIC_KEY",
   ];
   const missingEnvVars = requiredEnvVars
     .concat(customEnvVariablesToCheckOnStartup)
     .filter((envVar) => !process.env[envVar]);
+
+  await ensureJWTKeys().catch(console.error);
+
   if (missingEnvVars.length > 0) {
     console.error("Missing environment variables:", missingEnvVars);
     process.exit(1);

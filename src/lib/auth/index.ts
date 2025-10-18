@@ -26,6 +26,7 @@ import {
   getPendingInvitationsForEmail,
 } from "../usermanagement/invitations";
 
+// JWT_PRIVATE_KEY will be set by the key generation utility in hono-middlewares.ts
 const JWT_PRIVATE_KEY = process.env.JWT_PRIVATE_KEY || "";
 
 /**
