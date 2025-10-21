@@ -70,76 +70,6 @@ Defined in `api-tokens.ts`.
 | updatedAt | updated_at | timestamp |
 | autoDelete | auto_delete | boolean |
 
-## avatars
-Defined in `avatars.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| organisationId | organisation_id | uuid |
-| userId | user_id | uuid |
-| organisationWide | organisation_wide | boolean |
-| name | name | varchar |
-| description | description | text |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
-
-## chat_sessions
-Defined in `chat.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | text |
-| name | name | varchar |
-| userId | user_id | uuid |
-| organisationId | organisation_id | uuid |
-| messages | messages | jsonb |
-| state | state | jsonb |
-| chatSessionGroupId | chat_session_group_id | uuid |
-| deleteAt | delete_at | timestamp |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
-| lastUsedAt | last_used_at | timestamp |
-
-## chat_session_groups
-Defined in `chat.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| name | name | varchar |
-| meta | meta | jsonb |
-| organisationId | organisation_id | uuid |
-| teamId | team_id | uuid |
-| workspaceId | workspace_id | uuid |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
-
-## chat_session_group_assignments
-Defined in `chat.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| chatSessionGroupId | chat_session_group_id | uuid |
-| userId | user_id | uuid |
-
-## embeddings
-Defined in `embeddings.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| organisationId | organisation_id | uuid |
-| sourceTable | source_table | varchar |
-| sourceId | source_id | uuid |
-| order | order_number | integer |
-| section | section | varchar |
-| text | text | text |
-| meta | meta | jsonb |
-| embeddingModel | embedding_model | varchar |
-| textEmbedding | text_embedding | vector |
-
 ## files
 Defined in `files.ts`.
 
@@ -155,8 +85,6 @@ Defined in `files.ts`.
 | extension | extension | varchar |
 | file | file | bytea |
 | expiresAt | expires_at | timestamp |
-| chatId | chat_id | text |
-| workspaceId | workspace_id | uuid |
 
 ## jobs
 Defined in `jobs.ts`.
@@ -184,12 +112,12 @@ Defined in `knowledge.ts`.
 | organisationWide | organisation_wide | boolean |
 | teamId | team_id | uuid |
 | userId | user_id | uuid |
-| workspaceId | workspace_id | uuid |
 | text | text | text |
 | title | title | varchar |
 | meta | meta | jsonb |
 | createdAt | created_at | timestamp |
 | updatedAt | updated_at | timestamp |
+| deletedAt | deleted_at | timestamp |
 
 ## knowledge_group
 Defined in `knowledge.ts`.
@@ -225,24 +153,18 @@ Defined in `knowledge.ts`.
 | organisationId | organisation_id | uuid |
 | teamId | team_id | uuid |
 | userId | user_id | uuid |
-| workspaceId | workspace_id | uuid |
 | userOwned | user_owned | boolean |
 | knowledgeGroupId | knowledge_group_id | uuid |
-| sourceType | source_type | fileSourceTypeEnum |
-| sourceId | source_id | uuid |
-| sourceExternalId | source_external_id | varchar |
-| sourceFileBucket | source_file_bucket | varchar |
-| sourceUrl | source_url | varchar |
 | parentId | parentId | uuid |
 | name | name | varchar |
 | description | description | text |
-| abstract | abstract | text |
 | meta | meta | jsonb |
 | version | version | integer |
 | versionText | version_text | text |
 | hidden | hidden | boolean |
 | createdAt | created_at | timestamp |
 | updatedAt | updated_at | timestamp |
+| deletedAt | deleted_at | timestamp |
 
 ## knowledge_chunks
 Defined in `knowledge.ts`.
@@ -259,22 +181,6 @@ Defined in `knowledge.ts`.
 | textEmbedding | text_embedding | vector |
 | meta | meta | jsonb |
 
-## knowledge_fine_tuning_data
-Defined in `knowledge.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| organisationId | organisation_id | uuid |
-| teamId | team_id | uuid |
-| userId | user_id | uuid |
-| workspaceId | workspace_id | uuid |
-| knowledgeEntryId | knowledge_entry_id | uuid |
-| name | name | varchar |
-| category | category | varchar |
-| question | question | text |
-| answer | answer | text |
-
 ## knowledge_filters
 Defined in `knowledge.ts`.
 
@@ -284,33 +190,6 @@ Defined in `knowledge.ts`.
 | organisationId | organisation_id | uuid |
 | category | category | varchar |
 | name | name | varchar |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
-
-## knowledge_entry_filters
-Defined in `knowledge.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| knowledgeEntryId | knowledge_entry_id | uuid |
-| knowledgeFilterId | knowledge_filter_id | uuid |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
-
-## knowledge_source
-Defined in `knowledge.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| pluginId | plugin_id | uuid |
-| externalId | external_id | varchar |
-| lastSynced | last_synced | timestamp |
-| lastHash | last_hash | varchar |
-| lastChange | last_change | timestamp |
-| knowledgeEntryId | knowledge_entry_id | uuid |
-| meta | meta | jsonb |
 | createdAt | created_at | timestamp |
 | updatedAt | updated_at | timestamp |
 
@@ -329,224 +208,6 @@ Defined in `logs.ts`.
 | metadata | metadata | jsonb |
 | version | version | integer |
 | createdAt | created_at | timestamp |
-
-## mcp_servers
-Defined in `mcp.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| userId | user_id | uuid |
-| organisationId | organisation_id | uuid |
-| name | name | text |
-| mcpServerUrl | mcp_server_url | text |
-| clientId | client_id | text |
-| clientSecret | client_secret | text |
-| createdAt | created_at | timestamp |
-
-## mcp_tokens
-Defined in `mcp.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| userId | user_id | uuid |
-| mcpServerId | mcp_server_id | uuid |
-| accessToken | access_token | text |
-| refreshToken | refresh_token | text |
-| expiresAt | expires_at | timestamp |
-| scope | scope | text |
-| tokenType | token_type | text |
-| createdAt | created_at | timestamp |
-
-## ai_provider_models
-Defined in `models.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| organisationId | organisation_id | uuid |
-| name | name | varchar |
-| provider | provider | varchar |
-| model | model | varchar |
-| inputType | input_type | aiProviderModelTypeEnum |
-| outputType | output_type | aiProviderModelTypeEnum |
-| label | label | varchar |
-| description | description | varchar |
-| maxTokens | max_tokens | integer |
-| maxOutputTokens | max_output_tokens | integer |
-| endpoint | endpoint | varchar |
-| endpointCompatibility | endpoint_compatibility | aiProviderModelEndpointCompatibilityEnum |
-| hostingOrigin | hosting_origin | varchar |
-| usesInternet | uses_internet | boolean |
-| active | active | boolean |
-| system | system | boolean |
-| showInfoBanner | show_info_banner | boolean |
-| infoBannerText | info_banner_text | varchar |
-| infoBannerColor | info_banner_color | varchar |
-| showForUser | show_for_user | boolean |
-| supportsToolCalling | supports_tool_calling | boolean |
-| supportsStreaming | supports_streaming | boolean |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
-
-## products
-Defined in `payment.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| group | group | text |
-| name | name | text |
-| description | description | text |
-| type | type | purchaseTypeEnum |
-| prodId | prod_id | text |
-| priceId | price_id | text |
-
-## active_subscriptions
-Defined in `payment.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| userId | user_id | uuid |
-| stripeSubscriptionId | stripe_subscription_id | text |
-| stripeCustomerId | stripe_customer_id | text |
-| status | status | text |
-| planName | plan_name | text |
-| currentPeriodStart | current_period_start | timestamp |
-| currentPeriodEnd | current_period_end | timestamp |
-| cancelAtPeriodEnd | cancel_at_period_end | boolean |
-| metadata | metadata | jsonb |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
-
-## purchases
-Defined in `payment.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| userId | user_id | uuid |
-| stripePaymentIntentId | stripe_payment_intent_id | text |
-| stripeCustomerId | stripe_customer_id | text |
-| type | type | purchaseTypeEnum |
-| status | status | purchaseStatusEnum |
-| used | used | boolean |
-| amount | amount | integer |
-| currency | currency | text |
-| productName | product_name | text |
-| metadata | metadata | jsonb |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
-
-## plugins
-Defined in `plugins.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| organisationId | organisation_id | uuid |
-| name | name | text |
-| description | description | text |
-| pluginType | plugin_type | text |
-| version | version | integer |
-| meta | meta | jsonb |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
-
-## prompt_templates
-Defined in `prompts.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| name | name | varchar |
-| label | label | varchar |
-| description | description | varchar |
-| category | category | varchar |
-| systemPrompt | system_prompt | text |
-| userPrompt | user_prompt | text |
-| langCode | lang_code | varchar |
-| userId | user_id | uuid |
-| organisationId | organisation_id | uuid |
-| hidden | hidden | boolean |
-| needsInitialCall | needs_initial_call | boolean |
-| llmOptions | llm_options | jsonb |
-| tools | tools | jsonb |
-| deployAsTool | deploy_as_tool | boolean |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
-
-## prompt_template_placeholders
-Defined in `prompts.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| promptTemplateId | prompt_template_id | uuid |
-| name | name | varchar |
-| label | label | varchar |
-| description | description | varchar |
-| type | type | promptTemplatePlaceholderTypeEnum |
-| requiredByUser | required_by_user | boolean |
-| defaultValue | default_value | text |
-| hidden | hidden | boolean |
-
-## prompt_template_placeholder_examples
-Defined in `prompts.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| placeholderId | placeholder_id | uuid |
-| value | value | text |
-
-## prompt_template_knowledge_entries
-Defined in `prompts.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| promptTemplateId | prompt_template_id | uuid |
-| knowledgeEntryId | knowledge_entry_id | uuid |
-| createdAt | created_at | timestamp |
-
-## prompt_template_knowledge_groups
-Defined in `prompts.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| promptTemplateId | prompt_template_id | uuid |
-| knowledgeGroupId | knowledge_group_id | uuid |
-| createdAt | created_at | timestamp |
-
-## prompt_template_knowledge_filters
-Defined in `prompts.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| promptTemplateId | prompt_template_id | uuid |
-| knowledgeFilterId | knowledge_filter_id | uuid |
-| createdAt | created_at | timestamp |
-
-## prompt_snippets
-Defined in `prompts.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| name | name | varchar |
-| content | content | text |
-| category | category | varchar |
-| userId | user_id | uuid |
-| organisationId | organisation_id | uuid |
-| organisationWide | organisation_wide | boolean |
-| teamId | team_id | uuid |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
 
 ## secrets
 Defined in `secrets.ts`.
@@ -758,74 +419,3 @@ Defined in `webhooks.ts`.
 | createdAt | created_at | timestamp |
 | updatedAt | updated_at | timestamp |
 | lastUsedAt | last_used_at | timestamp |
-
-## workspaces
-Defined in `workspaces.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| id | id | uuid |
-| parentId | parentId | uuid |
-| organisationId | organisation_id | uuid |
-| userId | user_id | uuid |
-| teamId | team_id | uuid |
-| name | name | text |
-| description | description | text |
-| result | result | jsonb |
-| finishedAt | finished_at | timestamp |
-| createdAt | created_at | timestamp |
-| updatedAt | updated_at | timestamp |
-
-## workspace_knowledge_texts
-Defined in `workspaces.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| workspaceId | workspace_id | uuid |
-| knowledgeTextId | knowledge_text_id | uuid |
-| createdAt | created_at | timestamp |
-
-## workspace_knowledge_entries
-Defined in `workspaces.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| workspaceId | workspace_id | uuid |
-| knowledgeEntryId | knowledge_entry_id | uuid |
-| createdAt | created_at | timestamp |
-
-## workspace_prompt_templates
-Defined in `workspaces.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| workspaceId | workspace_id | uuid |
-| promptTemplateId | prompt_template_id | uuid |
-| createdAt | created_at | timestamp |
-
-## workspace_chat_groups
-Defined in `workspaces.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| workspaceId | workspace_id | uuid |
-| chatGroupId | chat_group_id | uuid |
-| createdAt | created_at | timestamp |
-
-## workspace_chat_sessions
-Defined in `workspaces.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| workspaceId | workspace_id | uuid |
-| chatSessionId | chat_session_id | text |
-| createdAt | created_at | timestamp |
-
-## workspace_users
-Defined in `workspaces.ts`.
-
-| Property | Column | Type |
-| --- | --- | --- |
-| workspaceId | workspace_id | uuid |
-| userId | user_id | uuid |
-| createdAt | created_at | timestamp |
