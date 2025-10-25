@@ -182,31 +182,42 @@ export async function initializeConnection(
     // Exchange public keys with remote server
     const localServerUrl = _GLOBAL_SERVER_CONFIG.baseUrl;
 
-    const remotePublicKey = await exchangePublicKeys(
-      remoteUrl,
-      token,
-      remoteOrganisationId,
-      localPublicKey,
-      connectionId,
-      localServerUrl,
-      name
-    );
+    try {
+      const remotePublicKey = await exchangePublicKeys(
+        remoteUrl,
+        token,
+        remoteOrganisationId,
+        localPublicKey,
+        connectionId,
+        localServerUrl,
+        name
+      );
 
-    // Update connection with remote public key
-    await db
-      .update(connections)
-      .set({
+      // Update connection with remote public key
+      await db
+        .update(connections)
+        .set({
+          remotePublicKey,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(connections.id, connectionId));
+
+      return {
+        connectionId,
+        localPublicKey,
         remotePublicKey,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(connections.id, connectionId));
-
-    return {
-      connectionId,
-      localPublicKey,
-      remotePublicKey,
-      status: "active",
-    };
+        status: "active",
+      };
+    } catch (exchangeError) {
+      // If key exchange fails and we just created a new connection, delete it
+      if (existingConnection.length === 0) {
+        await db.delete(connections).where(eq(connections.id, connectionId));
+        log.info(
+          `Connection rolled back due to key exchange failure: ${connectionId}`
+        );
+      }
+      throw exchangeError;
+    }
   } catch (error) {
     log.error("Error initializing connection:", error as object);
     throw error;
@@ -216,6 +227,7 @@ export async function initializeConnection(
 /**
  * Accept connection request from remote server
  * Creates a new connection on the remote side and returns public key
+ * If a connection with the same organisation combination already exists, it will be replaced
  */
 export async function acceptConnection(
   localOrganisationId: string,
@@ -232,7 +244,28 @@ export async function acceptConnection(
     const { publicKey: localPublicKey, privateKey: localPrivateKey } =
       generateKeyPair();
 
-    // Create connection on this side (initiated by remote = "server")
+    // Check if connection already exists for this organisation combination
+    const existingConnection = await db
+      .select()
+      .from(connections)
+      .where(
+        and(
+          eq(connections.organisationId, localOrganisationId),
+          eq(connections.remoteOrganisationId, remoteOrganisationId)
+        )
+      );
+
+    // Delete existing connection if found
+    if (existingConnection.length > 0) {
+      await db
+        .delete(connections)
+        .where(eq(connections.id, existingConnection[0].id));
+      log.info(
+        `Existing connection deleted and replaced: ${existingConnection[0].id}`
+      );
+    }
+
+    // Create new connection on this side (initiated by remote = "server")
     const newConnection: ConnectionsInsert = {
       organisationId: localOrganisationId,
       remoteUrl,

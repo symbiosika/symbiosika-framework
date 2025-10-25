@@ -29,6 +29,13 @@
       "when": 1761384721624,
       "tag": "0003_overrated_khan",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1761398857377,
+      "tag": "0004_windy_firebird",
+      "breakpoints": true
     }
   ]
 }
