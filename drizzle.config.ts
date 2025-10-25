@@ -1,8 +1,11 @@
 import { defineConfig } from "drizzle-kit";
-import { resolve } from "path";
+import path, { resolve } from "path";
 
 // Get absolute path for current directory
 const BASE_PATH = resolve(__dirname);
+const CWD = process.cwd();
+const RELATIVE_PATH = path.relative(CWD, BASE_PATH);
+console.log("RELATIVE_PATH is", RELATIVE_PATH);
 
 // Get environment variables for database connection
 const POSTGRES_DB = process.env.POSTGRES_DB ?? "";
@@ -29,9 +32,8 @@ const PREFIX = "base_";
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: resolve(BASE_PATH, "./src/lib/db/db-schema.ts"),
-  out: resolve(BASE_PATH, "./drizzle-sql"),
-
+  schema: RELATIVE_PATH + "/src/lib/db/db-schema.ts",
+  out: RELATIVE_PATH + "/drizzle-sql",
   tablesFilter: PREFIX + "*",
   migrations: {
     table: `${PREFIX}migrations`,

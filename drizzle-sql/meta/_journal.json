@@ -8,6 +8,41 @@
       "when": 1760786406591,
       "tag": "0000_low_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1761334664952,
+      "tag": "0001_faulty_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1761384130842,
+      "tag": "0002_vengeful_solo",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1761384721624,
+      "tag": "0003_overrated_khan",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1761398857377,
+      "tag": "0004_windy_firebird",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1761399233543,
+      "tag": "0005_broad_maggott",
+      "breakpoints": true
     }
   ]
 }

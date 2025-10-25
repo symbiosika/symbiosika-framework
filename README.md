@@ -42,6 +42,7 @@ The framework provides several pre-built services:
 - **User Management Service**: User authentication and management
 - **WhatsApp Service**: WhatsApp integration
 - **Job Service**: Background job processing
+- **Connections Service**: Secure org-scoped WebSocket connections (client/server)
 
 ### API Endpoints
 
@@ -54,6 +55,7 @@ The framework automatically sets up various API endpoints:
 - Payment Processing (`/payment/*`)
 - Plugin Management (`/plugins/*`)
 - Webhook Management (`/webhooks/*`)
+- Connections (`/organisation/:organisationId/connections/*`)
 - And more...
 
 ### Database Integration

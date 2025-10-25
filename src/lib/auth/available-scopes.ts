@@ -45,6 +45,8 @@ export const availableScopes = {
     "workspaces:write",
     "webhooks:read",
     "webhooks:write",
+    "connections:read",
+    "connections:write",
   ],
 };
 
