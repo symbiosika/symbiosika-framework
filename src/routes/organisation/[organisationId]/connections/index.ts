@@ -144,40 +144,50 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     validator(
       "json",
       v.object({
-        publicKey: v.string("Public key is required"),
-        connectionId: v.string("Connection ID is required"),
+        remotePublicKey: v.string("Remote public key is required"),
+        remoteConnectionId: v.string("Remote connection ID is required"),
+        remoteOrganisationId: v.string("Remote organisation ID is required"),
+        remoteUrl: v.string("Remote URL is required"),
+        connectionName: v.string("Connection name is required"),
       })
     ),
     validator("param", v.object({ organisationId: v.string() })),
     validateScope("connections:write"),
+    describeRoute({
+      description: "Accept connection from remote server and exchange keys",
+      responses: {
+        200: {
+          description: "Connection accepted successfully",
+        },
+        400: {
+          description: "Invalid request or connection failed",
+        },
+      },
+    }),
     async (c) => {
       try {
         const { organisationId } = c.req.valid("param");
-        const { publicKey, connectionId } = c.req.valid("json");
+        const {
+          remotePublicKey,
+          remoteConnectionId,
+          remoteOrganisationId,
+          remoteUrl,
+          connectionName,
+        } = c.req.valid("json");
 
-        // Get or create connection from remote
-        let connection = await connectionsService.getConnection(connectionId);
-
-        if (!connection) {
-          // Create new connection for server-initiated connection
-          const allConnections =
-            await connectionsService.listConnections(organisationId);
-          connection =
-            allConnections.find(
-              (conn) => conn.remoteConnectionId === connectionId
-            ) || null;
-        }
-
-        if (!connection) {
-          throw new Error("Connection not found");
-        }
-
-        // Get our public key
-        const ourPublicKey = connection.localPublicKey;
+        // Accept the connection and get our public key
+        const result = await connectionsService.acceptConnection(
+          organisationId,
+          remoteUrl,
+          remoteOrganisationId,
+          remoteConnectionId,
+          remotePublicKey,
+          connectionName
+        );
 
         return c.json({
-          remotePublicKey: ourPublicKey,
-          remoteConnectionId: connection.id,
+          connectionId: result.connectionId,
+          localPublicKey: result.localPublicKey,
         });
       } catch (error) {
         log.error("Error exchanging keys:", error as object);

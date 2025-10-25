@@ -16,6 +16,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import log from "../log";
 import { generateKeyPairSync } from "node:crypto";
+import { _GLOBAL_SERVER_CONFIG } from "../../store";
 
 /**
  * Generate RSA key pair for connection
@@ -182,12 +183,16 @@ export async function initializeConnection(
     }
 
     // Exchange public keys with remote server
+    const localServerUrl = _GLOBAL_SERVER_CONFIG.baseUrl;
+
     const remotePublicKey = await exchangePublicKeys(
       remoteUrl,
       token,
       remoteOrganisationId,
       localPublicKey,
-      connectionId
+      connectionId,
+      localServerUrl,
+      name
     );
 
     // Update connection with remote public key
@@ -212,14 +217,68 @@ export async function initializeConnection(
 }
 
 /**
+ * Accept connection request from remote server
+ * Creates a new connection on the remote side and returns public key
+ */
+export async function acceptConnection(
+  localOrganisationId: string,
+  remoteUrl: string,
+  remoteOrganisationId: string,
+  remoteConnectionId: string,
+  remotePublicKey: string,
+  connectionName: string
+) {
+  try {
+    const db = getDb();
+
+    // Generate local key pair for this side
+    const { publicKey: localPublicKey, privateKey: localPrivateKey } =
+      generateKeyPair();
+
+    // Create connection on this side (initiated by remote = "server")
+    const newConnection: ConnectionsInsert = {
+      organisationId: localOrganisationId,
+      remoteUrl,
+      remoteOrganisationId: remoteOrganisationId,
+      remoteConnectionId: remoteConnectionId,
+      remotePublicKey: remotePublicKey,
+      name: connectionName,
+      initiatedBy: "server",
+      localPublicKey,
+      localPrivateKey,
+      localPrivateKeyType: "rsa-4096",
+    };
+
+    const result = await db
+      .insert(connections)
+      .values(newConnection)
+      .returning();
+
+    const connectionId = result[0].id;
+    log.info(`Connection accepted and created: ${connectionId}`);
+
+    return {
+      connectionId,
+      localPublicKey,
+    };
+  } catch (error) {
+    log.error("Error accepting connection:", error as object);
+    throw error;
+  }
+}
+
+/**
  * Exchange public keys with remote server
+ * Sends complete connection info and receives connection acceptance
  */
 async function exchangePublicKeys(
   remoteUrl: string,
   token: string,
   remoteOrganisationId: string,
   localPublicKey: string,
-  localConnectionId: string
+  localConnectionId: string,
+  localServerUrl: string,
+  connectionName: string
 ) {
   try {
     const response = await fetch(
@@ -231,8 +290,12 @@ async function exchangePublicKeys(
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          publicKey: localPublicKey,
-          connectionId: localConnectionId,
+          // Complete connection info for remote side to accept
+          remotePublicKey: localPublicKey,
+          remoteConnectionId: localConnectionId,
+          remoteOrganisationId: remoteOrganisationId,
+          remoteUrl: localServerUrl,
+          connectionName: connectionName,
         }),
       }
     );
@@ -242,9 +305,15 @@ async function exchangePublicKeys(
     }
 
     const data = (await response.json()) as {
-      remotePublicKey?: string;
+      connectionId?: string;
+      localPublicKey?: string;
     };
-    return data.remotePublicKey || "";
+
+    if (!data.localPublicKey) {
+      throw new Error("No public key received from remote");
+    }
+
+    return data.localPublicKey;
   } catch (error) {
     log.error("Error exchanging public keys:", error as object);
     throw error;
@@ -464,6 +533,7 @@ export const connectionsService = {
   generateKeyPair,
   validateRemoteCredentials,
   initializeConnection,
+  acceptConnection,
   createConnectionSession,
   getConnection,
   getConnectionByOrganisations,
