@@ -21,14 +21,14 @@ export class WebhookTriggerError extends Error {
  */
 export const triggerWebhook = async (
   webhookId: string,
-  organisationId: string,
+  tenantId: string,
   options: WebhookTriggerOptions = {}
 ) => {
   // Get webhook details
   const webhook = await getDb().query.webhooks.findFirst({
     where: and(
       eq(webhooks.id, webhookId),
-      eq(webhooks.organisationId, organisationId),
+      eq(webhooks.tenantId, tenantId),
       eq(webhooks.event, "chat-output")
     ),
   });

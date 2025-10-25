@@ -9,7 +9,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { organisations, teams, users } from "./users";
+import { tenants, teams, users } from "./users";
 import { pgBaseTable } from ".";
 import {
   createSelectSchema,
@@ -55,7 +55,7 @@ export const userSpecificDataInsertSchema =
 export const userSpecificDataUpdateSchema =
   createUpdateSchema(userSpecificData);
 
-// Table for application specific data. This is data that does not belong to a user or a group or an organisation.
+// Table for application specific data. This is data that does not belong to a user or a group or an tenant.
 export const appSpecificData = pgBaseTable(
   "app_specific_data",
   {
@@ -95,16 +95,16 @@ export const userSpecificDataRelations = relations(
   })
 );
 
-// Table for organisation specific data
-export const organisationSpecificData = pgBaseTable(
-  "organisation_specific_data",
+// Table for tenant specific data
+export const tenantSpecificData = pgBaseTable(
+  "tenant_specific_data",
   {
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
+      .references(() => tenants.id, { onDelete: "cascade" }),
     key: varchar("category", { length: 100 }).notNull(),
     version: integer("version").notNull().default(0),
     data: jsonb("data").notNull(),
@@ -116,26 +116,26 @@ export const organisationSpecificData = pgBaseTable(
       .defaultNow(),
   },
   (table) => [
-    unique().on(table.organisationId, table.key),
-    index("organisation_data_key_idx").on(table.key),
-    index("organisation_data_created_at_idx").on(table.createdAt),
-    index("organisation_data_version_idx").on(table.version),
+    unique().on(table.tenantId, table.key),
+    index("tenant_data_key_idx").on(table.key),
+    index("tenant_data_created_at_idx").on(table.createdAt),
+    index("tenant_data_version_idx").on(table.version),
   ]
 );
 
 export type OrganisationSpecificDataSelect =
-  typeof organisationSpecificData.$inferSelect;
+  typeof tenantSpecificData.$inferSelect;
 export type OrganisationSpecificDataInsert =
-  typeof organisationSpecificData.$inferInsert;
+  typeof tenantSpecificData.$inferInsert;
 
-export const organisationSpecificDataSelectSchema = createSelectSchema(
-  organisationSpecificData
+export const tenantSpecificDataSelectSchema = createSelectSchema(
+  tenantSpecificData
 );
-export const organisationSpecificDataInsertSchema = createInsertSchema(
-  organisationSpecificData
+export const tenantSpecificDataInsertSchema = createInsertSchema(
+  tenantSpecificData
 );
-export const organisationSpecificDataUpdateSchema = createUpdateSchema(
-  organisationSpecificData
+export const tenantSpecificDataUpdateSchema = createUpdateSchema(
+  tenantSpecificData
 );
 
 // Table for team specific data

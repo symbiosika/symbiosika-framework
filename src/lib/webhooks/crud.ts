@@ -46,23 +46,23 @@ export const getWebhookById = async (id: string, userId: string) => {
  */
 export const getAllUsersWebhooks = async (
   userId: string,
-  organisationId: string
+  tenantId: string
 ) => {
   return await getDb().query.webhooks.findMany({
     where: and(
       eq(webhooks.userId, userId),
-      eq(webhooks.organisationId, organisationId)
+      eq(webhooks.tenantId, tenantId)
     ),
     orderBy: (webhooks) => webhooks.name,
   });
 };
 
 /**
- * Get all webhooks for an organisation
+ * Get all webhooks for an tenant
  */
-export const getAllOrganisationWebhooks = async (organisationId: string) => {
+export const getAllOrganisationWebhooks = async (tenantId: string) => {
   return await getDb().query.webhooks.findMany({
-    where: eq(webhooks.organisationId, organisationId),
+    where: eq(webhooks.tenantId, tenantId),
     orderBy: (webhooks) => webhooks.name,
   });
 };

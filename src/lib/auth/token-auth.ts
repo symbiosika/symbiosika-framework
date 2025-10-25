@@ -23,20 +23,20 @@ export const hashToken = (token: string): string => {
 };
 
 /**
- * Creates a new API token for a user and an organisation
+ * Creates a new API token for a user and an tenant
  * expiresIn: optional: number of minutes after which the token expires
  */
 export const createApiToken = async ({
   name,
   userId,
-  organisationId,
+  tenantId,
   scopes,
   expiresIn,
   autoDelete,
 }: {
   name: string;
   userId: string;
-  organisationId: string;
+  tenantId: string;
   scopes: string[];
   expiresIn?: number;
   autoDelete?: boolean;
@@ -62,7 +62,7 @@ export const createApiToken = async ({
     name,
     token: hashedToken,
     userId,
-    organisationId,
+    tenantId,
     scopes: scopes,
     expiresAt,
     autoDelete,
@@ -149,7 +149,7 @@ export const verifyApiTokenAndGetJwt = async (
       // Add API token-specific information to the JWT
       apiToken: true,
       scopes: requestedScopes || (tokenRecord.scopes as string[]),
-      organisationId: tokenRecord.organisationId,
+      tenantId: tokenRecord.tenantId,
     }
   );
 
@@ -179,7 +179,7 @@ export const generateTemporaryJwtFromToken = async (token: string) => {
       // Add API token-specific information to the JWT
       apiToken: true,
       scopes: tokenRecord.scopes,
-      organisationId: tokenRecord.organisationId,
+      tenantId: tokenRecord.tenantId,
     }
   );
 
@@ -210,18 +210,18 @@ export const listApiTokensForUser = async (userId: string) => {
       lastUsed: apiTokens.lastUsed,
       expiresAt: apiTokens.expiresAt,
       createdAt: apiTokens.createdAt,
-      organisationId: apiTokens.organisationId,
+      tenantId: apiTokens.tenantId,
     })
     .from(apiTokens)
     .where(eq(apiTokens.userId, userId));
 };
 
 /**
- * Lists all API tokens of an organisation
+ * Lists all API tokens of an tenant
  */
-export const listApiTokensForOrganisation = async (organisationId: string) => {
+export const listApiTokensForOrganisation = async (tenantId: string) => {
   return await getDb()
     .select()
     .from(apiTokens)
-    .where(eq(apiTokens.organisationId, organisationId));
+    .where(eq(apiTokens.tenantId, tenantId));
 };

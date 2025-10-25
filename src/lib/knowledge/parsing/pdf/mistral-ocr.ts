@@ -125,7 +125,7 @@ export const parsePdfFileAsMarkdownMistral = async (
           const savedFile = await saveFile(
             file,
             "images",
-            context.organisationId,
+            context.tenantId,
             "db"
           );
           imageMap.set(image.id, savedFile.path);

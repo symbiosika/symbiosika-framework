@@ -11,8 +11,8 @@ import type {
 } from "../../types";
 import { HTTPException } from "hono/http-exception";
 import {
-  organisationInvitationsSelectSchema,
-  organisationsSelectSchema,
+  tenantInvitationsSelectSchema,
+  tenantsSelectSchema,
   usersRestrictedSelectSchema,
 } from "../../lib/db/db-schema";
 import {
@@ -269,8 +269,8 @@ export function defineSecuredUserRoutes(
   );
 
   /**
-   * A "setup" route that will give the use the possibility to setup the first organisation
-   * if the user has no organisation yet.
+   * A "setup" route that will give the use the possibility to setup the first tenant
+   * if the user has no tenant yet.
    */
   app.post(
     API_BASE_PATH + "/user/setup",
@@ -278,13 +278,13 @@ export function defineSecuredUserRoutes(
     describeRoute({
       tags: ["user"],
       summary:
-        "Setup the user's first organisation. Can throw an error if the user already has an organisation and this is not allowed",
+        "Setup the user's first tenant. Can throw an error if the user already has an tenant and this is not allowed",
       responses: {
         200: {
           description: "Successful response",
           content: {
             "application/json": {
-              schema: resolver(organisationsSelectSchema),
+              schema: resolver(tenantsSelectSchema),
             },
           },
         },
@@ -294,21 +294,21 @@ export function defineSecuredUserRoutes(
     validator(
       "json",
       v.object({
-        organisationName: v.string(),
+        tenantName: v.string(),
       })
     ),
     async (c) => {
       try {
         const userId = c.get("usersId");
-        // check if user has an organisation
-        // with the setup-endpoint a user can only register his first organisation if he has no organisation yet
+        // check if user has an tenant
+        // with the setup-endpoint a user can only register his first tenant if he has no tenant yet
         const orgs = await getUserOrganisations(userId);
         if (orgs.length > 0) {
           return c.json({ state: "already-setup" });
         }
         const parsed = c.req.valid("json");
         const org = await createOrganisation({
-          name: parsed.organisationName,
+          name: parsed.tenantName,
         });
         await addOrganisationMember(org.id, userId, "admin");
         await setLastOrganisation(userId, org.id);
@@ -316,7 +316,7 @@ export function defineSecuredUserRoutes(
         return c.json(org);
       } catch (err) {
         throw new HTTPException(500, {
-          message: "Error creating organisation: " + err,
+          message: "Error creating tenant: " + err,
         });
       }
     }
@@ -361,14 +361,14 @@ export function defineSecuredUserRoutes(
   );
 
   /**
-   * Get the user's organisations
+   * Get the user's tenants
    */
   app.get(
-    API_BASE_PATH + "/user/organisations",
+    API_BASE_PATH + "/user/tenants",
     authAndSetUsersInfo,
     describeRoute({
-      tags: ["user", "organisations"],
-      summary: "Get the user's organisations",
+      tags: ["user", "tenants"],
+      summary: "Get the user's tenants",
       responses: {
         200: {
           description: "Successful response",
@@ -377,7 +377,7 @@ export function defineSecuredUserRoutes(
               schema: resolver(
                 v.array(
                   v.object({
-                    organisationId: v.string(),
+                    tenantId: v.string(),
                     name: v.string(),
                     role: v.string(),
                   })
@@ -396,7 +396,7 @@ export function defineSecuredUserRoutes(
         return c.json(orgs);
       } catch (err) {
         throw new HTTPException(500, {
-          message: "Error getting user organisations: " + err,
+          message: "Error getting user tenants: " + err,
         });
       }
     }
@@ -406,7 +406,7 @@ export function defineSecuredUserRoutes(
    * Get all pending invitations for my user
    */
   app.get(
-    API_BASE_PATH + "/user/organisations/invitations",
+    API_BASE_PATH + "/user/tenants/invitations",
     authAndSetUsersInfo,
     describeRoute({
       tags: ["invitations"],
@@ -416,7 +416,7 @@ export function defineSecuredUserRoutes(
           description: "Successful response",
           content: {
             "application/json": {
-              schema: resolver(v.array(organisationInvitationsSelectSchema)),
+              schema: resolver(v.array(tenantInvitationsSelectSchema)),
             },
           },
         },
@@ -437,14 +437,14 @@ export function defineSecuredUserRoutes(
   );
 
   /**
-   * Drop the membership of a user itself from an organisation
+   * Drop the membership of a user itself from an tenant
    */
   app.delete(
-    API_BASE_PATH + "/user/organisation/:organisationId/membership",
+    API_BASE_PATH + "/user/tenant/:tenantId/membership",
     authAndSetUsersInfo,
     describeRoute({
-      tags: ["user", "organisations"],
-      summary: "Drop the membership of the user itself from an organisation",
+      tags: ["user", "tenants"],
+      summary: "Drop the membership of the user itself from an tenant",
       responses: {
         200: { description: "Successful response" },
       },
@@ -453,18 +453,18 @@ export function defineSecuredUserRoutes(
     validator(
       "param",
       v.object({
-        organisationId: v.string(),
+        tenantId: v.string(),
       })
     ),
     async (c) => {
       const userId = c.get("usersId");
-      const { organisationId } = c.req.valid("param");
+      const { tenantId } = c.req.valid("param");
       try {
-        await dropUserFromOrganisation(userId, organisationId);
+        await dropUserFromOrganisation(userId, tenantId);
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
         throw new HTTPException(500, {
-          message: "Error dropping user from organisation: " + err,
+          message: "Error dropping user from tenant: " + err,
         });
       }
     }
@@ -474,7 +474,7 @@ export function defineSecuredUserRoutes(
    * Get the user's teams
    */
   app.get(
-    API_BASE_PATH + "/user/organisation/:organisationId/teams",
+    API_BASE_PATH + "/user/tenant/:tenantId/teams",
     authAndSetUsersInfo,
     describeRoute({
       tags: ["user", "teams"],
@@ -502,14 +502,14 @@ export function defineSecuredUserRoutes(
     validator(
       "param",
       v.object({
-        organisationId: v.string(),
+        tenantId: v.string(),
       })
     ),
     async (c) => {
       try {
         const userId = c.get("usersId");
-        const { organisationId } = c.req.valid("param");
-        const teams = await getTeamsByUser(userId, organisationId);
+        const { tenantId } = c.req.valid("param");
+        const teams = await getTeamsByUser(userId, tenantId);
         return c.json(teams);
       } catch (err) {
         throw new HTTPException(500, {
@@ -524,7 +524,7 @@ export function defineSecuredUserRoutes(
    */
   app.delete(
     API_BASE_PATH +
-      "/user/organisation/:organisationId/teams/:teamId/membership",
+      "/user/tenant/:tenantId/teams/:teamId/membership",
     authAndSetUsersInfo,
     describeRoute({
       tags: ["user", "teams"],
@@ -557,14 +557,14 @@ export function defineSecuredUserRoutes(
   );
 
   /**
-   * Get the user's last organisation
+   * Get the user's last tenant
    */
   app.get(
-    API_BASE_PATH + "/user/last-organisation",
+    API_BASE_PATH + "/user/last-tenant",
     authAndSetUsersInfo,
     describeRoute({
       tags: ["user"],
-      summary: "Get the user's last organisation",
+      summary: "Get the user's last tenant",
       responses: {
         200: {
           description: "Successful response",
@@ -574,7 +574,7 @@ export function defineSecuredUserRoutes(
                 v.object({
                   userId: v.string(),
                   lastOrganisationId: v.string(),
-                  organisationName: v.string(),
+                  tenantName: v.string(),
                 })
               ),
             },
@@ -590,21 +590,21 @@ export function defineSecuredUserRoutes(
         return c.json(org);
       } catch (err) {
         throw new HTTPException(500, {
-          message: "Error getting last organisation: " + err,
+          message: "Error getting last tenant: " + err,
         });
       }
     }
   );
 
   /**
-   * Set the user's last organisation
+   * Set the user's last tenant
    */
   app.put(
-    API_BASE_PATH + "/user/last-organisation",
+    API_BASE_PATH + "/user/last-tenant",
     authAndSetUsersInfo,
     describeRoute({
       tags: ["user"],
-      summary: "Set the user's last organisation",
+      summary: "Set the user's last tenant",
       responses: {
         200: {
           description: "Successful response",
@@ -625,18 +625,18 @@ export function defineSecuredUserRoutes(
     validator(
       "json",
       v.object({
-        organisationId: v.string(),
+        tenantId: v.string(),
       })
     ),
     async (c) => {
       try {
         const userId = c.get("usersId");
-        const orgId = c.req.valid("json").organisationId;
+        const orgId = c.req.valid("json").tenantId;
         const result = await setLastOrganisation(userId, orgId);
         return c.json(result);
       } catch (err) {
         throw new HTTPException(500, {
-          message: "Error setting last organisation: " + err,
+          message: "Error setting last tenant: " + err,
         });
       }
     }
@@ -796,21 +796,21 @@ export function defineSecuredUserRoutes(
         name: v.string(),
         scopes: v.array(v.string()),
         expiresIn: v.optional(v.number()),
-        organisationId: v.string(),
+        tenantId: v.string(),
       })
     ),
     async (c) => {
       try {
         const userId = c.get("usersId");
-        const { name, scopes, expiresIn, organisationId } = c.req.valid("json");
+        const { name, scopes, expiresIn, tenantId } = c.req.valid("json");
 
-        // check if user is part of that organisation. would throw an error if not
-        await getOrganisationMemberRole(organisationId, userId);
+        // check if user is part of that tenant. would throw an error if not
+        await getOrganisationMemberRole(tenantId, userId);
 
         const result = await createApiToken({
           name,
           userId,
-          organisationId,
+          tenantId,
           scopes,
           expiresIn,
         });
@@ -847,7 +847,7 @@ export function defineSecuredUserRoutes(
                     lastUsed: v.optional(v.string()),
                     expiresAt: v.optional(v.string()),
                     createdAt: v.string(),
-                    organisationId: v.string(),
+                    tenantId: v.string(),
                   })
                 )
               ),

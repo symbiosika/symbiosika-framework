@@ -10,11 +10,11 @@ import { validateKnowledgeAccess } from "./permissions";
  */
 export const deleteKnowledgeEntry = async (
   id: string,
-  organisationId: string,
+  tenantId: string,
   userId: string
 ) => {
   // check the user permissions
-  const canDelete = await validateKnowledgeAccess(id, userId, organisationId);
+  const canDelete = await validateKnowledgeAccess(id, userId, tenantId);
   if (!canDelete) {
     throw new Error(
       "User does not have permission to delete this knowledge entry"
@@ -30,7 +30,7 @@ export const deleteKnowledgeEntry = async (
  */
 export const updateKnowledgeEntry = async (
   id: string,
-  organisationId: string,
+  tenantId: string,
   userId: string,
   data: {
     name?: string | undefined;
@@ -40,7 +40,7 @@ export const updateKnowledgeEntry = async (
     description?: string | null;
   }
 ) => {
-  const canUpdate = await validateKnowledgeAccess(id, userId, organisationId);
+  const canUpdate = await validateKnowledgeAccess(id, userId, tenantId);
   if (!canUpdate) {
     throw new Error(
       "User does not have permission to update this knowledge entry"

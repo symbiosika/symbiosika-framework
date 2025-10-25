@@ -48,7 +48,7 @@ export const extendKnowledgeEntriesWithTextChunks = async (
  */
 export const getKnowledgeEntries = async (query: {
   // Context
-  organisationId: string;
+  tenantId: string;
   userId: string;
   // Pagination
   limit?: number; // default: 100
@@ -69,11 +69,11 @@ export const getKnowledgeEntries = async (query: {
   })[]
 > => {
   // 2.) Get all access conditions
-  const userTeams = await getUserTeamIds(query.userId, query.organisationId);
+  const userTeams = await getUserTeamIds(query.userId, query.tenantId);
 
   const userKnowledgeGroupIds = await getUserKnowledgeGroupIds(
     query.userId,
-    query.organisationId,
+    query.tenantId,
     userTeams
   );
 
@@ -93,9 +93,9 @@ export const getKnowledgeEntries = async (query: {
   }
 
   // 4.) Add optional filters if provided
-  // always add the organisationId filter
+  // always add the tenantId filter
   const filterConditions: (SQL<unknown> | undefined)[] = [
-    eq(knowledgeEntry.organisationId, query.organisationId),
+    eq(knowledgeEntry.tenantId, query.tenantId),
   ];
   // check for team
   if (query.teamId) {
@@ -166,11 +166,11 @@ export const getKnowledgeEntries = async (query: {
  */
 export const getFullSourceDocumentsForKnowledgeEntry = async (
   id: string,
-  organisationId: string,
+  tenantId: string,
   userId: string
 ) => {
   // Check user permissions first
-  const hasAccess = await validateKnowledgeAccess(id, userId, organisationId);
+  const hasAccess = await validateKnowledgeAccess(id, userId, tenantId);
   if (!hasAccess) {
     throw new Error(
       "User does not have permission to access this knowledge entry"
@@ -180,7 +180,7 @@ export const getFullSourceDocumentsForKnowledgeEntry = async (
   const entry = await getDb().query.knowledgeEntry.findFirst({
     where: and(
       eq(knowledgeEntry.id, id),
-      eq(knowledgeEntry.organisationId, organisationId)
+      eq(knowledgeEntry.tenantId, tenantId)
     ),
     with: {
       knowledgeGroup: true,

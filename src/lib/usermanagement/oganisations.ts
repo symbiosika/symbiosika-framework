@@ -1,11 +1,11 @@
 /**
- * CRUD operations for organisations and teams
+ * CRUD operations for tenants and teams
  */
 
 import { getDb } from "../db/db-connection";
 import { eq, and, sql, ne, or, inArray } from "drizzle-orm";
 import {
-  organisations,
+  tenants,
   teams,
   teamMembers,
   userPermissionGroups,
@@ -14,101 +14,101 @@ import {
   type OrganisationsSelect,
   type OrganisationsInsert,
   users,
-  organisationMembers,
+  tenantMembers,
 } from "../db/schema/users";
 import { setAnotherOrganisationAsLast } from "./user";
 
 /**
- * Create an organisation
+ * Create an tenant
  */
 export const createOrganisation = async (data: OrganisationsInsert) => {
-  const result = await getDb().insert(organisations).values(data).returning();
+  const result = await getDb().insert(tenants).values(data).returning();
   return result[0];
 };
 
 /**
- * Get an organisation by its ID
+ * Get an tenant by its ID
  */
 export const getOrganisation = async (orgId: string) => {
   const org = await getDb()
     .select()
-    .from(organisations)
-    .where(eq(organisations.id, orgId));
+    .from(tenants)
+    .where(eq(tenants.id, orgId));
   return org[0];
 };
 
 /**
- * Update an organisation
+ * Update an tenant
  */
 export const updateOrganisation = async (
   orgId: string,
   data: Partial<OrganisationsSelect>
 ) => {
   const result = await getDb()
-    .update(organisations)
+    .update(tenants)
     .set({ ...data, updatedAt: new Date().toISOString() })
-    .where(eq(organisations.id, orgId))
+    .where(eq(tenants.id, orgId))
     .returning();
   return result[0];
 };
 
 /**
- * Delete an organisation
+ * Delete an tenant
  */
 export const deleteOrganisation = async (orgId: string) => {
-  await getDb().delete(organisations).where(eq(organisations.id, orgId));
+  await getDb().delete(tenants).where(eq(tenants.id, orgId));
 };
 
 /**
- * Get all organisations of a user
+ * Get all tenants of a user
  */
 export const getUserOrganisations = async (userId: string) => {
   return await getDb()
     .select({
-      organisationId: organisations.id,
-      name: organisations.name,
-      role: organisationMembers.role,
+      tenantId: tenants.id,
+      name: tenants.name,
+      role: tenantMembers.role,
     })
-    .from(organisationMembers)
+    .from(tenantMembers)
     .innerJoin(
-      organisations,
-      eq(organisations.id, organisationMembers.organisationId)
+      tenants,
+      eq(tenants.id, tenantMembers.tenantId)
     )
-    .where(eq(organisationMembers.userId, userId));
+    .where(eq(tenantMembers.userId, userId));
 };
 
 /**
- * Drop the membership of a user from an organisation
+ * Drop the membership of a user from an tenant
  */
 export const dropUserFromOrganisation = async (
   userId: string,
-  organisationId: string
+  tenantId: string
 ) => {
-  // check if the organisation has at least one owner that is NOT the user
+  // check if the tenant has at least one owner that is NOT the user
   const owners = await getDb()
     .select()
-    .from(organisationMembers)
+    .from(tenantMembers)
     .where(
       and(
-        eq(organisationMembers.organisationId, organisationId),
+        eq(tenantMembers.tenantId, tenantId),
         or(
-          eq(organisationMembers.role, "owner"),
-          eq(organisationMembers.role, "admin")
+          eq(tenantMembers.role, "owner"),
+          eq(tenantMembers.role, "admin")
         ),
-        ne(organisationMembers.userId, userId)
+        ne(tenantMembers.userId, userId)
       )
     );
   if (owners.length < 1) {
     throw new Error("Organisation must have at least one owner or admin");
   }
 
-  // drop the membership of the user from the organisation
+  // drop the membership of the user from the tenant
   await getDb()
-    .delete(organisationMembers)
+    .delete(tenantMembers)
     .where(
       and(
-        eq(organisationMembers.userId, userId),
-        eq(organisationMembers.organisationId, organisationId)
+        eq(tenantMembers.userId, userId),
+        eq(tenantMembers.tenantId, tenantId)
       )
     );
 
@@ -125,30 +125,30 @@ export const dropUserFromOrganisation = async (
               teamId: teams.id,
             })
             .from(teams)
-            .where(eq(teams.organisationId, organisationId))
+            .where(eq(teams.tenantId, tenantId))
         )
       )
     );
 
-  // set the last organisation of the user
-  await setAnotherOrganisationAsLast(userId, organisationId);
+  // set the last tenant of the user
+  await setAnotherOrganisationAsLast(userId, tenantId);
 };
 
 /**
- * Get the last organisation of a user
+ * Get the last tenant of a user
  */
 export const getLastOrganisation = async (
   userId: string
 ): Promise<{
   userId: string;
   lastOrganisationId: undefined | string;
-  organisationName: undefined | string;
+  tenantName: undefined | string;
 }> => {
   const user = await getDb()
     .select({
       userId: users.id,
       lastOrganisationId: users.lastOrganisationId,
-      organisationName: organisations.name,
+      tenantName: tenants.name,
     })
     .from(users)
     .where(eq(users.id, userId));
@@ -157,51 +157,51 @@ export const getLastOrganisation = async (
     return {
       userId,
       lastOrganisationId: undefined,
-      organisationName: undefined,
+      tenantName: undefined,
     };
 
   const org = await getDb()
     .select({
-      lastOrganisationId: organisations.id,
-      organisationName: organisations.name,
+      lastOrganisationId: tenants.id,
+      tenantName: tenants.name,
     })
-    .from(organisations)
-    .where(eq(organisations.id, user[0].lastOrganisationId));
+    .from(tenants)
+    .where(eq(tenants.id, user[0].lastOrganisationId));
   if (!org[0])
     return {
       userId,
       lastOrganisationId: undefined,
-      organisationName: undefined,
+      tenantName: undefined,
     };
 
   return { ...org[0], userId };
 };
 
 /**
- * Set the last organisation of a user
+ * Set the last tenant of a user
  */
 export const setLastOrganisation = async (
   userId: string,
-  organisationId: string
+  tenantId: string
 ) => {
-  // Check if user is a member of the organisation
+  // Check if user is a member of the tenant
   const membership = await getDb()
     .select()
-    .from(organisationMembers)
+    .from(tenantMembers)
     .where(
       and(
-        eq(organisationMembers.userId, userId),
-        eq(organisationMembers.organisationId, organisationId)
+        eq(tenantMembers.userId, userId),
+        eq(tenantMembers.tenantId, tenantId)
       )
     );
 
   if (!membership.length) {
-    throw new Error("User is not a member of this organisation");
+    throw new Error("User is not a member of this tenant");
   }
 
   const [result] = await getDb()
     .update(users)
-    .set({ lastOrganisationId: organisationId })
+    .set({ lastOrganisationId: tenantId })
     .where(eq(users.id, userId))
     .returning({
       userId: users.id,
@@ -211,7 +211,7 @@ export const setLastOrganisation = async (
 };
 
 export const getTeamsAndMembersByOrganisation = async (
-  organisationId: string
+  tenantId: string
 ) => {
   return await getDb()
     .select({
@@ -226,11 +226,11 @@ export const getTeamsAndMembersByOrganisation = async (
     })
     .from(teams)
     .leftJoin(teamMembers, eq(teams.id, teamMembers.teamId))
-    .where(eq(teams.organisationId, organisationId))
+    .where(eq(teams.tenantId, tenantId))
     .groupBy(teams.id);
 };
 
-export const getPermissionsByOrganisation = async (organisationId: string) => {
+export const getPermissionsByOrganisation = async (tenantId: string) => {
   return await getDb()
     .select({
       group: userPermissionGroups,
@@ -251,28 +251,28 @@ export const getPermissionsByOrganisation = async (organisationId: string) => {
       pathPermissions,
       eq(groupPermissions.permissionId, pathPermissions.id)
     )
-    .where(eq(userPermissionGroups.organisationId, organisationId))
+    .where(eq(userPermissionGroups.tenantId, tenantId))
     .groupBy(userPermissionGroups.id);
 };
 
 /**
- * Add a user to an organisation
+ * Add a user to an tenant
  */
 export const addOrganisationMember = async (
-  organisationId: string,
+  tenantId: string,
   userId: string,
   role?: "owner" | "admin" | "member"
 ) => {
   const result = await getDb()
-    .insert(organisationMembers)
+    .insert(tenantMembers)
     .values({
-      organisationId,
+      tenantId,
       userId,
       role,
     })
     .returning()
     .onConflictDoUpdate({
-      target: [organisationMembers.organisationId, organisationMembers.userId],
+      target: [tenantMembers.tenantId, tenantMembers.userId],
       set: {
         role,
       },
@@ -281,20 +281,20 @@ export const addOrganisationMember = async (
 };
 
 /**
- * Change the role of a user in an organisation
+ * Change the role of a user in an tenant
  */
 export const updateOrganisationMemberRole = async (
-  organisationId: string,
+  tenantId: string,
   userId: string,
   role: "owner" | "admin" | "member"
 ) => {
   const result = await getDb()
-    .update(organisationMembers)
+    .update(tenantMembers)
     .set({ role })
     .where(
       and(
-        eq(organisationMembers.organisationId, organisationId),
-        eq(organisationMembers.userId, userId)
+        eq(tenantMembers.tenantId, tenantId),
+        eq(tenantMembers.userId, userId)
       )
     )
     .returning();
@@ -302,87 +302,87 @@ export const updateOrganisationMemberRole = async (
 };
 
 /**
- * Remove a user from an organisation
+ * Remove a user from an tenant
  */
 export const removeOrganisationMember = async (
-  organisationId: string,
+  tenantId: string,
   userId: string
 ) => {
   await getDb()
-    .delete(organisationMembers)
+    .delete(tenantMembers)
     .where(
       and(
-        eq(organisationMembers.organisationId, organisationId),
-        eq(organisationMembers.userId, userId)
+        eq(tenantMembers.tenantId, tenantId),
+        eq(tenantMembers.userId, userId)
       )
     );
 };
 
 /**
- * Get all members of an organisation
+ * Get all members of an tenant
  */
 export const getOrganisationMembers = async (
   userId: string,
-  organisationId: string
+  tenantId: string
 ) => {
   return await getDb()
     .select({
-      id: organisationMembers.userId,
+      id: tenantMembers.userId,
       userEmail: users.email,
-      role: organisationMembers.role,
-      joinedAt: organisationMembers.joinedAt,
+      role: tenantMembers.role,
+      joinedAt: tenantMembers.joinedAt,
     })
-    .from(organisationMembers)
-    .leftJoin(users, eq(organisationMembers.userId, users.id))
-    .where(eq(organisationMembers.organisationId, organisationId));
+    .from(tenantMembers)
+    .leftJoin(users, eq(tenantMembers.userId, users.id))
+    .where(eq(tenantMembers.tenantId, tenantId));
 };
 
 /**
- * Get the role of a userId in an organisation
+ * Get the role of a userId in an tenant
  */
 export const getOrganisationMemberRole = async (
-  organisationId: string,
+  tenantId: string,
   userId: string
 ): Promise<"owner" | "admin" | "member"> => {
   const result = await getDb()
     .select({
-      role: organisationMembers.role,
+      role: tenantMembers.role,
     })
-    .from(organisationMembers)
+    .from(tenantMembers)
     .where(
       and(
-        eq(organisationMembers.organisationId, organisationId),
-        eq(organisationMembers.userId, userId)
+        eq(tenantMembers.tenantId, tenantId),
+        eq(tenantMembers.userId, userId)
       )
     );
   if (result.length < 1) {
-    throw new Error("User is not a member of this organisation");
+    throw new Error("User is not a member of this tenant");
   }
   return result[0].role;
 };
 
 /**
- * Check a role of a user in an organisation
+ * Check a role of a user in an tenant
  * Throw an error if the user does not have the role
  */
 export const checkOrganisationMemberRole = async (
-  organisationId: string,
+  tenantId: string,
   userId: string,
   role: ("owner" | "admin" | "member")[]
 ) => {
   const result = await getDb()
     .select({
-      role: organisationMembers.role,
+      role: tenantMembers.role,
     })
-    .from(organisationMembers)
+    .from(tenantMembers)
     .where(
       and(
-        eq(organisationMembers.organisationId, organisationId),
-        eq(organisationMembers.userId, userId)
+        eq(tenantMembers.tenantId, tenantId),
+        eq(tenantMembers.userId, userId)
       )
     );
   if (result.length < 1) {
-    throw new Error("User is not a member of this organisation");
+    throw new Error("User is not a member of this tenant");
   }
   if (!role.includes(result[0].role)) {
     throw new Error("User has not the required role");

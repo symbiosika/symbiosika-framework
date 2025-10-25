@@ -3,13 +3,13 @@ import { createDatabaseClient, getDb } from "../lib/db/db-connection";
 import { waitForDbConnection } from "../lib/db/db-connection";
 import {
   users,
-  organisations,
+  tenants,
   type UsersSelect,
   teamMembers,
-  organisationMembers,
+  tenantMembers,
   invitationCodes,
   teams,
-  organisationSpecificData,
+  tenantSpecificData,
   userSpecificData,
   appSpecificData,
 } from "../lib/db/db-schema";
@@ -105,26 +105,26 @@ export const TEST_USERS = [
 // export const TEST_TEAM_1 = {
 //   id: "00000000-3333-3333-3333-000000000001",
 //   name: "Test Team 1",
-//   organisationId: TEST_ORGANISATION_1.id,
+//   tenantId: TEST_ORGANISATION_1.id,
 // };
 
 // export const TEST_TEAM_2 = {
 //   id: "00000000-3333-3333-3333-000000000002",
 //   name: "Test Team 2",
-//   organisationId: TEST_ORGANISATION_1.id,
+//   tenantId: TEST_ORGANISATION_1.id,
 // };
 
 // export const TEST_TEAM_3 = {
 //   id: "00000000-3333-3333-3333-000000000003",
 //   name: "Test Team 3",
-//   organisationId: TEST_ORGANISATION_1.id,
+//   tenantId: TEST_ORGANISATION_1.id,
 // };
 
 export const deleteTestOrganisations = async () => {
   await getDb()
-    .delete(organisations)
+    .delete(tenants)
     .where(
-      inArray(organisations.id, [
+      inArray(tenants.id, [
         TEST_ORGANISATION_1.id,
         TEST_ORGANISATION_2.id,
         TEST_ORGANISATION_3.id,
@@ -135,11 +135,11 @@ export const deleteTestOrganisations = async () => {
  * Init all Test Organisations
  */
 export const initTestOrganisations = async () => {
-  // delete all old organisations and ALL their data
+  // delete all old tenants and ALL their data
   await deleteTestOrganisations();
 
   for (const org of TEST_ORGANISATIONS) {
-    await getDb().insert(organisations).values({
+    await getDb().insert(tenants).values({
       id: org.id,
       name: org.name,
     });
@@ -174,9 +174,9 @@ export const initTestUsers = async () => {
  */
 export const dropAllTestOrganisationMembers = async () => {
   await getDb()
-    .delete(organisationMembers)
+    .delete(tenantMembers)
     .where(
-      inArray(organisationMembers.userId, [
+      inArray(tenantMembers.userId, [
         TEST_ORG1_USER_1.id,
         TEST_ORG1_USER_2.id,
         TEST_ORG1_USER_3.id,
@@ -204,7 +204,7 @@ export const dropAllTestTeamMembers = async () => {
 };
 
 /**
- * Drop user-, organisation-, and app-specific data
+ * Drop user-, tenant-, and app-specific data
  */
 export const dropAllUserAndOrganisationSpecificData = async () => {
   await getDb()
@@ -217,9 +217,9 @@ export const dropAllUserAndOrganisationSpecificData = async () => {
       ])
     );
   await getDb()
-    .delete(organisationSpecificData)
+    .delete(tenantSpecificData)
     .where(
-      inArray(organisationSpecificData.organisationId, [
+      inArray(tenantSpecificData.tenantId, [
         TEST_ORGANISATION_1.id,
         TEST_ORGANISATION_2.id,
         TEST_ORGANISATION_3.id,
@@ -237,9 +237,9 @@ export const initTestOrganisationMembers = async () => {
 
   // delte all old memberships
   await getDb()
-    .delete(organisationMembers)
+    .delete(tenantMembers)
     .where(
-      inArray(organisationMembers.userId, [
+      inArray(tenantMembers.userId, [
         TEST_ORG1_USER_1.id,
         TEST_ORG1_USER_2.id,
         TEST_ORG1_USER_3.id,
@@ -248,7 +248,7 @@ export const initTestOrganisationMembers = async () => {
       ])
     );
 
-  // all the users to their own organisations
+  // all the users to their own tenants
   await addOrganisationMember(
     TEST_ORGANISATION_1.id,
     TEST_ORG1_USER_1.id,
@@ -276,7 +276,7 @@ export const initTestOrganisationMembers = async () => {
     "owner"
   );
 
-  // add admin to all organisations
+  // add admin to all tenants
   await addOrganisationMember(
     TEST_ORGANISATION_1.id,
     TEST_ADMIN_USER.id,
@@ -328,13 +328,13 @@ export const initTests = async () => {
   await waitForDbConnection();
 
   await initTestOrganisations().catch((err) => {
-    console.info("Error initialising test organisations", err);
+    console.info("Error initialising test tenants", err);
   });
   await initTestUsers().catch((err) => {
     console.info("Error initialising test users", err);
   });
   await initTestOrganisationMembers().catch((err) => {
-    console.info("Error initialising test organisation members", err);
+    console.info("Error initialising test tenant members", err);
   });
   await dropAllInvitationsCodes().catch((err) => {
     console.info("Error dropping invitation codes", err);

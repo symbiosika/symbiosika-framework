@@ -10,7 +10,7 @@ import {
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { pgBaseTable } from ".";
-import { organisations, users } from "./users";
+import { tenants, users } from "./users";
 import { relations } from "drizzle-orm";
 import {
   createInsertSchema,
@@ -33,9 +33,9 @@ export const connections = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
+      .references(() => tenants.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 255 }),
     remoteUrl: text("remote_url"),
     initiatedBy: initiatedByEnum("initiated_by").notNull().default("client"),
@@ -45,7 +45,7 @@ export const connections = pgBaseTable(
       .notNull()
       .default("aes-256-cbc"),
     remotePublicKey: text("remote_public_key"),
-    remoteOrganisationId: uuid("remote_organisation_id"),
+    remoteOrganisationId: uuid("remote_tenant_id"),
     remoteConnectionId: uuid("remote_connection_id"),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
@@ -57,20 +57,20 @@ export const connections = pgBaseTable(
     meta: jsonb("meta").default({}).notNull(),
   },
   (t) => [
-    index("connections_org_idx").on(t.organisationId),
+    index("connections_org_idx").on(t.tenantId),
     index("connections_remote_url_idx").on(t.remoteUrl),
-    // only one connection per organisation and remote organisation
+    // only one connection per tenant and remote tenant
     uniqueIndex("connections_org_remote_org_idx").on(
-      t.organisationId,
+      t.tenantId,
       t.remoteOrganisationId
     ),
   ]
 );
 
 export const connectionsRelations = relations(connections, ({ one }) => ({
-  organisation: one(organisations, {
-    fields: [connections.organisationId],
-    references: [organisations.id],
+  tenant: one(tenants, {
+    fields: [connections.tenantId],
+    references: [tenants.id],
   }),
 }));
 

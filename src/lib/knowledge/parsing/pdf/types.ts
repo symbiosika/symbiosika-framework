@@ -1,5 +1,5 @@
 export type PdfParserContext = {
-  organisationId: string;
+  tenantId: string;
   userId?: string;
   teamId?: string;
   workspaceId?: string;

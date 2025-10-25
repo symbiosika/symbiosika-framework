@@ -21,14 +21,14 @@ import type {
 export const saveFile: GeneralSaveFileFunction = async (
   file,
   bucket,
-  organisationId,
+  tenantId,
   storageType
 ) => {
   if (storageType === "local") {
-    const result = await saveFileToLocalDisc(file, bucket, organisationId);
+    const result = await saveFileToLocalDisc(file, bucket, tenantId);
     return { ...result, name: file.name };
   } else if (storageType === "db") {
-    const result = await saveFileToDb(file, bucket, organisationId);
+    const result = await saveFileToDb(file, bucket, tenantId);
     return { ...result, name: file.name };
   } else {
     throw new Error("Invalid storage type");
@@ -38,13 +38,13 @@ export const saveFile: GeneralSaveFileFunction = async (
 export const getFile: GeneralGetFileFunction = async (
   name,
   bucket,
-  organisationId,
+  tenantId,
   storageType
 ) => {
   if (storageType === "local") {
-    return await getFileFromLocalDisc(name, bucket, organisationId);
+    return await getFileFromLocalDisc(name, bucket, tenantId);
   } else if (storageType === "db") {
-    return await getFileFromDb(name, bucket, organisationId);
+    return await getFileFromDb(name, bucket, tenantId);
   } else {
     throw new Error("Invalid storage type");
   }
@@ -53,13 +53,13 @@ export const getFile: GeneralGetFileFunction = async (
 export const deleteFile: GeneralDeleteFileFunction = async (
   name,
   bucket,
-  organisationId,
+  tenantId,
   storageType
 ) => {
   if (storageType === "local") {
-    await deleteFileFromLocalDisc(name, bucket, organisationId);
+    await deleteFileFromLocalDisc(name, bucket, tenantId);
   } else if (storageType === "db") {
-    await deleteFileFromDB(name, bucket, organisationId);
+    await deleteFileFromDB(name, bucket, tenantId);
   } else {
     throw new Error("Invalid storage type");
   }

@@ -17,7 +17,7 @@
 //     });
 
 //     const result = await parsePdfFileAsMardownLocal(file, {
-//       organisationId: TEST_ORGANISATION_1.id,
+//       tenantId: TEST_ORGANISATION_1.id,
 //     });
 
 //     // Basic validation of the result

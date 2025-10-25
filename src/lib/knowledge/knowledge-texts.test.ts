@@ -16,7 +16,7 @@ describe("Knowledge Texts Test", () => {
     const newText = {
       text: "Test knowledge text",
       title: "Test Title",
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
     };
 
     const createdText = await createKnowledgeText(newText);
@@ -29,13 +29,13 @@ describe("Knowledge Texts Test", () => {
     const newText = {
       text: "Another test knowledge text",
       title: "Another Test Title",
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
     };
 
     const createdText = await createKnowledgeText(newText);
     const readText = await getKnowledgeText({
       id: createdText.id,
-      organisationId: createdText.organisationId,
+      tenantId: createdText.tenantId,
     });
 
     expect(readText.length).toBe(1);
@@ -47,7 +47,7 @@ describe("Knowledge Texts Test", () => {
     const newText = {
       text: "Text to be updated",
       title: "Title to be updated",
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
     };
 
     const createdText = await createKnowledgeText(newText);
@@ -56,10 +56,10 @@ describe("Knowledge Texts Test", () => {
       {
         text: "Updated text",
         title: "Updated title",
-        organisationId: createdText.organisationId,
+        tenantId: createdText.tenantId,
       },
       {
-        organisationId: createdText.organisationId,
+        tenantId: createdText.tenantId,
       }
     );
 
@@ -71,19 +71,19 @@ describe("Knowledge Texts Test", () => {
     const newText = {
       text: "Text to be deleted",
       title: "Title to be deleted",
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
     };
 
     const createdText = await createKnowledgeText(newText);
     const deletedText = await deleteKnowledgeText(createdText.id, {
-      organisationId: createdText.organisationId,
+      tenantId: createdText.tenantId,
     });
 
     expect(deletedText.success).toBe(true);
 
     const readText = await getKnowledgeText({
       id: createdText.id,
-      organisationId: createdText.organisationId,
+      tenantId: createdText.tenantId,
     });
     expect(readText.length).toBe(0);
   });

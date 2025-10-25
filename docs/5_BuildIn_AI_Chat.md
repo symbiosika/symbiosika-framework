@@ -8,7 +8,7 @@ The Fastapp Framework provides a powerful, extensible AI chat endpoint for organ
 
 ## API Route Prefix
 
-All chat API routes are prefixed with `/api/v1/` by default. For example, chatting is available at `/api/v1/organisation/:organisationId/ai/chat`.
+All chat API routes are prefixed with `/api/v1/` by default. For example, chatting is available at `/api/v1/tenant/:tenantId/ai/chat`.
 
 ---
 
@@ -16,12 +16,12 @@ All chat API routes are prefixed with `/api/v1/` by default. For example, chatti
 
 The following endpoints are available for interacting with the AI chat system:
 
-### 1. **POST `/api/v1/organisation/:organisationId/ai/chat`**
+### 1. **POST `/api/v1/tenant/:tenantId/ai/chat`**
 
 Start or continue a chat session with the AI. This endpoint supports plain chat, model selection, templates, tools, and artifacts.
 
 **Params:**
-- `organisationId` (string, URL param)
+- `tenantId` (string, URL param)
 
 **Body:**
 ```json
@@ -76,25 +76,25 @@ Start or continue a chat session with the AI. This endpoint supports plain chat,
 
 ---
 
-### 3. **GET `/api/v1/organisation/:organisationId/ai/chat/history`**
+### 3. **GET `/api/v1/tenant/:tenantId/ai/chat/history`**
 
 Get the chat history for the current user.
 
 ---
 
-### 4. **GET `/api/v1/organisation/:organisationId/ai/chat/history/:id`**
+### 4. **GET `/api/v1/tenant/:tenantId/ai/chat/history/:id`**
 
 Get the full message history for a specific chat session.
 
 ---
 
-### 5. **POST `/api/v1/organisation/:organisationId/ai/chat/ensure-session`**
+### 5. **POST `/api/v1/tenant/:tenantId/ai/chat/ensure-session`**
 
 Create an empty chat session (returns a `chatId`).
 
 ---
 
-### 6. **GET `/api/v1/organisation/:organisationId/ai/chat/live/:chatId`**
+### 6. **GET `/api/v1/tenant/:tenantId/ai/chat/live/:chatId`**
 
 Get the live status of an ongoing chat generation (for streaming/UX).
 
@@ -133,7 +133,7 @@ Get the live status of an ongoing chat generation (for streaming/UX).
 ### Plain Chat
 
 ```http
-POST /api/v1/organisation/0000-000-0000/ai/chat
+POST /api/v1/tenant/0000-000-0000/ai/chat
 
 {
   "input": "What is the capital of France?",
@@ -146,7 +146,7 @@ POST /api/v1/organisation/0000-000-0000/ai/chat
 ### Chat with Template
 
 ```http
-POST /api/v1/organisation/0000-000-0000/ai/chat
+POST /api/v1/tenant/0000-000-0000/ai/chat
 
 {
   "useTemplate": "system:task_redefine",
@@ -160,7 +160,7 @@ POST /api/v1/organisation/0000-000-0000/ai/chat
 ### Chat with Artifacts
 
 ```http
-POST /api/v1/organisation/0000-000-0000/ai/chat
+POST /api/v1/tenant/0000-000-0000/ai/chat
 
 {
   "input": "Analyze this document.",
@@ -176,7 +176,7 @@ POST /api/v1/organisation/0000-000-0000/ai/chat
 ### Chat with Tools
 
 ```http
-POST /api/v1/organisation/0000-000-0000/ai/chat
+POST /api/v1/tenant/0000-000-0000/ai/chat
 
 {
   "input": "Find the latest news about AI.",
@@ -270,7 +270,7 @@ addBaseTool(
 );
 ```
 
-- The tool factory receives a context object (`{ chatId, userId, organisationId }`).
+- The tool factory receives a context object (`{ chatId, userId, tenantId }`).
 - The returned object must have a `name` and a `tool` with an `execute` method.
 - You can define a `parameters` schema (JSON Schema) to describe expected input fields for the tool.
 

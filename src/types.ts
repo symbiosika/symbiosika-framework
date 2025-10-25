@@ -33,7 +33,7 @@ export type EmailTemplateFunction = (data: {
   logoUrl?: string;
   link?: string;
   user?: UserInfo;
-  organisation?: {
+  tenant?: {
     id: string;
     name: string;
   };

@@ -2,7 +2,7 @@ export interface SaveFileFunction {
   (
     file: File,
     bucket: string,
-    organisationId: string,
+    tenantId: string,
     options?: {
       chatId?: string;
       workspaceId?: string;
@@ -11,7 +11,7 @@ export interface SaveFileFunction {
     path: string;
     id: string;
     name: string;
-    organisationId: string;
+    tenantId: string;
   }>;
 }
 
@@ -19,38 +19,38 @@ export interface GeneralSaveFileFunction {
   (
     file: File,
     bucket: string,
-    organisationId: string,
+    tenantId: string,
     storageType: "local" | "db"
   ): Promise<{
     path: string;
     id: string;
     name: string;
-    organisationId: string;
+    tenantId: string;
   }>;
 }
 
 export interface GetFileFunction {
-  (id: string, bucket: string, organisationId: string): Promise<File>;
+  (id: string, bucket: string, tenantId: string): Promise<File>;
 }
 
 export interface GeneralGetFileFunction {
   (
     id: string,
     bucket: string,
-    organisationId: string,
+    tenantId: string,
     storageType: "local" | "db"
   ): Promise<File>;
 }
 
 export interface DeleteFileFunction {
-  (id: string, bucket: string, organisationId: string): Promise<void>;
+  (id: string, bucket: string, tenantId: string): Promise<void>;
 }
 
 export interface GeneralDeleteFileFunction {
   (
     id: string,
     bucket: string,
-    organisationId: string,
+    tenantId: string,
     storageType: "local" | "db"
   ): Promise<void>;
 }

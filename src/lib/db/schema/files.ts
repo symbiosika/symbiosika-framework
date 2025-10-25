@@ -7,7 +7,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { pgBaseTable } from ".";
-import { organisations } from "./users";
+import { tenants } from "./users";
 import {
   createSelectSchema,
   createInsertSchema,
@@ -36,8 +36,8 @@ export const files = pgBaseTable(
     updatedAt: timestamp("updated_at", { mode: "string" })
       .notNull()
       .defaultNow(),
-    organisationId: uuid("organisation_id")
-      .references(() => organisations.id, {
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, {
         onDelete: "cascade",
       })
       .notNull(),

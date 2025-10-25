@@ -139,37 +139,37 @@ These endpoints allow authenticated users to manage their own account and member
   **Body:**
   ```json
   {
-    "organisationName": "My First Org"
+    "tenantName": "My First Org"
   }
   ```
 
-- **GET `/api/v1/user/organisations`**  
+- **GET `/api/v1/user/tenants`**  
   List all organizations the user is a member of.
 
-- **GET `/api/v1/user/organisations/invitations`**  
+- **GET `/api/v1/user/tenants/invitations`**  
   List all pending invitations for the user.
 
-- **DELETE `/api/v1/user/organisation/:organisationId/membership`**  
+- **DELETE `/api/v1/user/tenant/:tenantId/membership`**  
   Leave an organization.
-  **Param:** `organisationId` in URL
+  **Param:** `tenantId` in URL
 
-- **GET `/api/v1/user/organisation/:organisationId/teams`**  
+- **GET `/api/v1/user/tenant/:tenantId/teams`**  
   List all teams the user is a member of in a given organization.
-  **Param:** `organisationId` in URL
+  **Param:** `tenantId` in URL
 
-- **DELETE `/api/v1/user/organisation/:organisationId/teams/:teamId/membership`**  
+- **DELETE `/api/v1/user/tenant/:tenantId/teams/:teamId/membership`**  
   Leave a team.
-  **Param:** `organisationId`, `teamId` in URL
+  **Param:** `tenantId`, `teamId` in URL
 
-- **GET `/api/v1/user/last-organisation`**  
+- **GET `/api/v1/user/last-tenant`**  
   Get the user's last active organization.
 
-- **PUT `/api/v1/user/last-organisation`**  
+- **PUT `/api/v1/user/last-tenant`**  
   Set the user's last active organization.
   **Body:**
   ```json
   {
-    "organisationId": "orgId"
+    "tenantId": "orgId"
   }
   ```
 
@@ -191,7 +191,7 @@ These endpoints allow authenticated users to manage their own account and member
     "name": "My Token",
     "scopes": ["user:read", "user:write"],
     "expiresIn": 1440,
-    "organisationId": "orgId"
+    "tenantId": "orgId"
   }
   ```
 
@@ -217,7 +217,7 @@ These endpoints allow authenticated users to manage their own account and member
 
 For endpoints that require a body, here are some examples:
 
-- **POST `/api/v1/organisation`**  
+- **POST `/api/v1/tenant`**  
   Create a new organization.
   **Body:**
   ```json
@@ -226,7 +226,7 @@ For endpoints that require a body, here are some examples:
   }
   ```
 
-- **PUT `/api/v1/organisation/:organisationId`**  
+- **PUT `/api/v1/tenant/:tenantId`**  
   Update organization details.
   **Body:**
   ```json
@@ -235,7 +235,7 @@ For endpoints that require a body, here are some examples:
   }
   ```
 
-- **POST `/api/v1/organisation/:organisationId/invite`**  
+- **POST `/api/v1/tenant/:tenantId/invite`**  
   Invite a user by email.
   **Body:**
   ```json
@@ -246,7 +246,7 @@ For endpoints that require a body, here are some examples:
   }
   ```
 
-- **POST `/api/v1/organisation/:organisationId/members`**  
+- **POST `/api/v1/tenant/:tenantId/members`**  
   Add an existing user as a member.
   **Body:**
   ```json
@@ -256,7 +256,7 @@ For endpoints that require a body, here are some examples:
   }
   ```
 
-- **PUT `/api/v1/organisation/:organisationId/members/:memberId`**  
+- **PUT `/api/v1/tenant/:tenantId/members/:memberId`**  
   Change a member's role.
   **Body:**
   ```json
@@ -265,7 +265,7 @@ For endpoints that require a body, here are some examples:
   }
   ```
 
-- **POST `/api/v1/organisation/:organisationId/teams`**  
+- **POST `/api/v1/tenant/:tenantId/teams`**  
   Create a new team.
   **Body:**
   ```json
@@ -275,7 +275,7 @@ For endpoints that require a body, here are some examples:
   }
   ```
 
-- **PUT `/api/v1/organisation/:organisationId/teams/:teamId`**  
+- **PUT `/api/v1/tenant/:tenantId/teams/:teamId`**  
   Update a team.
   **Body:**
   ```json
@@ -285,7 +285,7 @@ For endpoints that require a body, here are some examples:
   }
   ```
 
-- **POST `/api/v1/organisation/:organisationId/teams/:teamId/members`**  
+- **POST `/api/v1/tenant/:tenantId/teams/:teamId/members`**  
   Add a member to a team.
   **Body:**
   ```json
@@ -295,7 +295,7 @@ For endpoints that require a body, here are some examples:
   }
   ```
 
-- **PUT `/api/v1/organisation/:organisationId/teams/:teamId/members/:destinationUserId`**  
+- **PUT `/api/v1/tenant/:tenantId/teams/:teamId/members/:destinationUserId`**  
   Change a team member's role.
   **Body:**
   ```json
@@ -304,20 +304,20 @@ For endpoints that require a body, here are some examples:
   }
   ```
 
-- **POST `/api/v1/organisation/:organisationId/invitations`**  
+- **POST `/api/v1/tenant/:tenantId/invitations`**  
   Create an invitation.
   **Body:**
   ```json
   {
-    "organisationId": "orgId",
+    "tenantId": "orgId",
     "email": "invitee@example.com",
     "role": "member"
   }
   ```
 
-- **GET `/api/v1/organisation/:organisationId/search/user?email=...`**  
+- **GET `/api/v1/tenant/:tenantId/search/user?email=...`**  
   Suche nach einem Benutzer anhand der E-Mail-Adresse innerhalb einer Organisation.  
-  **Param:** `organisationId` in der URL  
+  **Param:** `tenantId` in der URL  
   **Query:** `?email=user@example.com`  
   **Response:**  
   ```json
@@ -339,7 +339,7 @@ For endpoints that require a body, here are some examples:
 The user management works out of the box. You may want to configure the following:
 
 - **Scopes and Permissions:**  
-  API routes are protected by scopes (e.g., `organisations:read`, `teams:write`). Permissions are managed via user roles (owner, admin, member).
+  API routes are protected by scopes (e.g., `tenants:read`, `teams:write`). Permissions are managed via user roles (owner, admin, member).
 
 - **Email Sending:**  
   For invitation emails, an email service must be configured if you use the `sendMail` option.

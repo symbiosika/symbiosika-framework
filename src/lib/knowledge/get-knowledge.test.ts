@@ -44,13 +44,13 @@ describe("getKnowledgeEntries Permissions", () => {
   test("User can read knowledge from the team they belong to", async () => {
     // Create an entry in org1, with teamIdOrg1 and workspaceIdOrg1, userOwned = false
     entryOrg1 = await testing_createKnowledgeEntry({
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
       userId: TEST_ORG1_USER_1.id,
     });
 
     // Should succeed for user1 from org1
     const result1 = await getKnowledgeEntries({
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
       userId: TEST_ORG1_USER_1.id,
     });
     expect(result1.length).toBeGreaterThanOrEqual(1);
@@ -61,7 +61,7 @@ describe("getKnowledgeEntries Permissions", () => {
     // Attempt to query org1 knowledge with user2 (belongs to org2)
     expect(async () => {
       const result = await getKnowledgeEntries({
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG2_USER_1.id,
         teamId: teamIdOrg1,
       });
@@ -71,14 +71,14 @@ describe("getKnowledgeEntries Permissions", () => {
   test("User-owned knowledge is only visible to that specific user", async () => {
     // Create an entry with userOwned = true for TEST_ORG1_USER_1
     const entryOwned = await testing_createKnowledgeEntry({
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
       userId: TEST_ORG1_USER_1.id,
       userOwned: true,
     });
 
     // Visible to the same user
     const result1 = await getKnowledgeEntries({
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
       userId: TEST_ORG1_USER_1.id,
       userOwned: true,
     });
@@ -86,7 +86,7 @@ describe("getKnowledgeEntries Permissions", () => {
 
     // Should NOT be visible to another user
     const result2 = await getKnowledgeEntries({
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
       userId: TEST_ORG1_USER_2.id,
       userOwned: true,
     });
@@ -98,7 +98,7 @@ describe("getKnowledgeEntries Permissions", () => {
   test("Users cannot read knowledge from teams they do not belong to: create", async () => {
     // Create an entry in org2, with teamIdOrg2, workspaceIdOrg2
     entryInTeam1InOrg1 = await testing_createKnowledgeEntry({
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
       userId: TEST_ORG2_USER_1.id,
       teamId: teamIdOrg1,
     });
@@ -107,7 +107,7 @@ describe("getKnowledgeEntries Permissions", () => {
   test("Users cannot read knowledge from teams they do not belong to: read (user1)", async () => {
     // user1 should see it
     const result1 = await getKnowledgeEntries({
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
       userId: TEST_ORG1_USER_1.id,
       teamId: teamIdOrg1,
     });
@@ -118,7 +118,7 @@ describe("getKnowledgeEntries Permissions", () => {
     // user2 should not see it
     expect(async () => {
       await getKnowledgeEntries({
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_2.id,
         teamId: teamIdOrg1,
       });

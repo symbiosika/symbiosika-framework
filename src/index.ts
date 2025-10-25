@@ -29,27 +29,27 @@ import {
 // Routes
 import { definePublicUserRoutes } from "./routes/user/public";
 import { defineSecuredUserRoutes } from "./routes/user/protected";
-import { defineFilesRoutes } from "./routes/organisation/[organisationId]/files";
+import { defineFilesRoutes } from "./routes/tenant/[tenantId]/files";
 
-// import aiKnowledgeRoutes from "./routes/organisation/[organisationId]/knowledge";
-// import aiKnowledgeFiltersRoutes from "./routes/organisation/[organisationId]/knowledge/knowledge-filters";
-// import aiKnowledgeGroupRoutes from "./routes/organisation/[organisationId]/knowledge/knowledge-groups";
-// import aiKnowledgeTextsRoutes from "./routes/organisation/[organisationId]/knowledge/knowledge-texts";
-// import aiKnowledgeChunksRoutes from "./routes/organisation/[organisationId]/knowledge/knowledge-chunks";
+// import aiKnowledgeRoutes from "./routes/tenant/[tenantId]/knowledge";
+// import aiKnowledgeFiltersRoutes from "./routes/tenant/[tenantId]/knowledge/knowledge-filters";
+// import aiKnowledgeGroupRoutes from "./routes/tenant/[tenantId]/knowledge/knowledge-groups";
+// import aiKnowledgeTextsRoutes from "./routes/tenant/[tenantId]/knowledge/knowledge-texts";
+// import aiKnowledgeChunksRoutes from "./routes/tenant/[tenantId]/knowledge/knowledge-chunks";
 
-import defineOrganisationRoutes from "./routes/organisation";
-import defineTeamRoutes from "./routes/organisation/[organisationId]/teams";
-import defineConnectionsRoutes from "./routes/organisation/[organisationId]/connections";
-import definePermissionGroupRoutes from "./routes/organisation/[organisationId]/permission-groups";
-import defineInvitationRoutes from "./routes/organisation/[organisationId]/invitations";
+import defineOrganisationRoutes from "./routes/tenant";
+import defineTeamRoutes from "./routes/tenant/[tenantId]/teams";
+import defineConnectionsRoutes from "./routes/tenant/[tenantId]/connections";
+import definePermissionGroupRoutes from "./routes/tenant/[tenantId]/permission-groups";
+import defineInvitationRoutes from "./routes/tenant/[tenantId]/invitations";
 // import { defineCollectionRoutes } from "./routes/collections";
-import defineManageSecretsRoutes from "./routes/organisation/[organisationId]/secrets";
+import defineManageSecretsRoutes from "./routes/tenant/[tenantId]/secrets";
 
 import definePingRoute from "./routes/ping";
-import defineWebhookRoutes from "./routes/organisation/[organisationId]/webhooks";
+import defineWebhookRoutes from "./routes/tenant/[tenantId]/webhooks";
 import defineAdminRoutes from "./routes/admin";
-import defineSearchInOrganisationRoutes from "./routes/organisation/[organisationId]/search";
-import defineJobRoutes from "./routes/organisation/[organisationId]/jobs";
+import defineSearchInOrganisationRoutes from "./routes/tenant/[tenantId]/search";
+import defineJobRoutes from "./routes/tenant/[tenantId]/jobs";
 import defineDocsRoutes from "./routes/docs";
 import defineWhatsAppRoutes from "./routes/communiation/wa";
 // Jobs
@@ -179,7 +179,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
       defineSecuredUserRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
-       * Adds organisation routes
+       * Adds tenant routes
        */
       defineOrganisationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineTeamRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);

@@ -64,7 +64,7 @@ Billy Talbot, Bassist bei der Rockband The Rockets, aus denen Crazy Horse hervor
 
 /*
  await extractKnowledgeFromText({
-    organisationId: TEST_ORGANISATION_1.id,
+    tenantId: TEST_ORGANISATION_1.id,
     title: "Orphismus",
     text: TEST_KNOWLEDGE_TEXT_1,
   });

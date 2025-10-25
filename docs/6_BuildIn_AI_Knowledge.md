@@ -20,28 +20,28 @@ The Fastapp Framework provides a built-in, organization-wide knowledge base that
 ### Manage Knowledge Groups
 
 - **Create a group:**  
-  `POST /api/v1/organisation/:organisationId/knowledge/groups`
+  `POST /api/v1/tenant/:tenantId/knowledge/groups`
   ```json
   {
-    "organisationId": "string",
+    "tenantId": "string",
     "name": "string",
     "description": "string (optional)",
-    "organisationWideAccess": true
+    "tenantWideAccess": true
   }
   ```
 - **List all groups:**  
-  `GET /api/v1/organisation/:organisationId/knowledge/groups`
+  `GET /api/v1/tenant/:tenantId/knowledge/groups`
 
 - **Update/Delete a group:**  
-  `PUT`/`DELETE /api/v1/organisation/:organisationId/knowledge/groups/:id`
+  `PUT`/`DELETE /api/v1/tenant/:tenantId/knowledge/groups/:id`
 
 ### Add Knowledge
 
 - **Add knowledge from text:**  
-  `POST /api/v1/organisation/:organisationId/knowledge/from-text`
+  `POST /api/v1/tenant/:tenantId/knowledge/from-text`
   ```json
   {
-    "organisationId": "string",
+    "tenantId": "string",
     "title": "string",
     "text": "string",
     "filters": { "category": "Handbook" },
@@ -49,14 +49,14 @@ The Fastapp Framework provides a built-in, organization-wide knowledge base that
   }
   ```
 - **Add knowledge from a file/document:**  
-  `POST /api/v1/organisation/:organisationId/knowledge/upload-and-extract`  
+  `POST /api/v1/tenant/:tenantId/knowledge/upload-and-extract`  
   (multipart/form-data, file upload + optional metadata like group, filters, etc.)
 
 - **Add knowledge from a URL:**  
-  `POST /api/v1/organisation/:organisationId/knowledge/from-url`
+  `POST /api/v1/tenant/:tenantId/knowledge/from-url`
   ```json
   {
-    "organisationId": "string",
+    "tenantId": "string",
     "url": "https://example.com/handbook.pdf",
     "filters": { "category": "Handbook" },
     "knowledgeGroupId": "string (optional)"
@@ -73,11 +73,11 @@ Knowledge stored in the system can be leveraged in the AI chat endpoint in two m
 
 ### 1. Directly Selecting Knowledge
 
-When calling the chat endpoint (`/api/v1/organisation/:organisationId/ai/chat`), you can specify which knowledge to use by passing group IDs, entry IDs, or filters.
+When calling the chat endpoint (`/api/v1/tenant/:tenantId/ai/chat`), you can specify which knowledge to use by passing group IDs, entry IDs, or filters.
 
 **Example:**
 ```http
-POST /api/v1/organisation/0000-000-0000/ai/chat
+POST /api/v1/tenant/0000-000-0000/ai/chat
 Content-Type: application/json
 
 {
@@ -149,10 +149,10 @@ The system will automatically include the relevant knowledge for the assistant.
 
 1. **Create a knowledge group:**
    ```http
-   POST /api/v1/organisation/0000-000-0000/knowledge/groups
+   POST /api/v1/tenant/0000-000-0000/knowledge/groups
    Content-Type: application/json
    {
-     "organisationId": "0000-000-0000",
+     "tenantId": "0000-000-0000",
      "name": "Onboarding",
      "description": "All onboarding related documents"
    }
@@ -160,10 +160,10 @@ The system will automatically include the relevant knowledge for the assistant.
 
 2. **Add a knowledge entry to the group:**
    ```http
-   POST /api/v1/organisation/0000-000-0000/knowledge/from-text
+   POST /api/v1/tenant/0000-000-0000/knowledge/from-text
    Content-Type: application/json
    {
-     "organisationId": "0000-000-0000",
+     "tenantId": "0000-000-0000",
      "title": "Onboarding Steps",
      "text": "Step 1: ... Step 2: ...",
      "filters": { "category": "Onboarding" },
@@ -173,7 +173,7 @@ The system will automatically include the relevant knowledge for the assistant.
 
 3. **Use the knowledge in chat:**
    ```http
-   POST /api/v1/organisation/0000-000-0000/ai/chat
+   POST /api/v1/tenant/0000-000-0000/ai/chat
    Content-Type: application/json
    {
      "input": "What are the onboarding steps?",

@@ -30,7 +30,7 @@ beforeAll(async () => {
   // delete all old connections
   await getDb()
     .delete(connections)
-    .where(eq(connections.organisationId, TEST_ORG_ID));
+    .where(eq(connections.tenantId, TEST_ORG_ID));
   await getDb()
     .delete(connections)
     .where(eq(connections.remoteOrganisationId, TEST_ORG_ID));
@@ -61,9 +61,9 @@ describe("Connections Service", () => {
   /**
    * Test: validateRemoteCredentials
    */
-  test("validateRemoteCredentials should fetch and return organisations", async () => {
+  test("validateRemoteCredentials should fetch and return tenants", async () => {
     const mockOrgData = [
-      { organisationId: TEST_REMOTE_ORG_ID, name: "Remote Organisation" },
+      { tenantId: TEST_REMOTE_ORG_ID, name: "Remote Organisation" },
     ];
 
     // Mock fetch for login endpoint
@@ -74,7 +74,7 @@ describe("Connections Service", () => {
           ok: true,
           json: async () => ({ token: "test-token" }),
         } as Response;
-      } else if (url.includes("/user/organisations")) {
+      } else if (url.includes("/user/tenants")) {
         return {
           ok: true,
           json: async () => mockOrgData,
@@ -91,8 +91,8 @@ describe("Connections Service", () => {
       );
 
       expect(result.token).toBe("test-token");
-      expect(result.organisations).toHaveLength(1);
-      expect((result.organisations[0] as any)?.organisationId).toBe(
+      expect(result.tenants).toHaveLength(1);
+      expect((result.tenants[0] as any)?.tenantId).toBe(
         TEST_REMOTE_ORG_ID
       );
     } finally {
@@ -157,11 +157,11 @@ describe("Connections Service", () => {
           ok: true,
           json: async () => ({ token: "test-token" }),
         } as Response;
-      } else if (url.includes("/user/organisations")) {
+      } else if (url.includes("/user/tenants")) {
         return {
           ok: true,
           json: async () => [
-            { organisationId: TEST_REMOTE_ORG_ID, name: "Remote Org" },
+            { tenantId: TEST_REMOTE_ORG_ID, name: "Remote Org" },
           ],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
@@ -196,7 +196,7 @@ describe("Connections Service", () => {
       const conn = await getConnection(result.connectionId);
       expect(conn).toBeDefined();
       expect(conn?.name).toBe(TEST_CONNECTION_NAME);
-      expect(conn?.organisationId).toBe(TEST_ORG_ID as any);
+      expect(conn?.tenantId).toBe(TEST_ORG_ID as any);
       expect(conn?.remoteOrganisationId).toBe(TEST_REMOTE_ORG_ID as any);
     } finally {
       (global as any).fetch = originalFetch;
@@ -211,11 +211,11 @@ describe("Connections Service", () => {
           ok: true,
           json: async () => ({ token: "test-token" }),
         } as Response;
-      } else if (url.includes("/user/organisations")) {
+      } else if (url.includes("/user/tenants")) {
         return {
           ok: true,
           json: async () => [
-            { organisationId: TEST_REMOTE_ORG_ID, name: "Remote Org" },
+            { tenantId: TEST_REMOTE_ORG_ID, name: "Remote Org" },
           ],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
@@ -264,7 +264,7 @@ describe("Connections Service", () => {
     }
   });
 
-  test("initializeConnection should throw on invalid remote organisation", async () => {
+  test("initializeConnection should throw on invalid remote tenant", async () => {
     const originalFetch = global.fetch;
     (global as any).fetch = async (url: string) => {
       if (url.includes("/user/login")) {
@@ -272,10 +272,10 @@ describe("Connections Service", () => {
           ok: true,
           json: async () => ({ token: "test-token" }),
         } as Response;
-      } else if (url.includes("/user/organisations")) {
+      } else if (url.includes("/user/tenants")) {
         return {
           ok: true,
-          json: async () => ({ organisations: [] }),
+          json: async () => ({ tenants: [] }),
         } as Response;
       }
       return { ok: false } as Response;
@@ -328,7 +328,7 @@ describe("Connections Service", () => {
     const conn = await getConnection(result.connectionId);
     expect(conn).toBeDefined();
     expect(conn?.name).toBe("Accepted Connection");
-    expect(conn?.organisationId).toBe(TEST_ORG_ID as any);
+    expect(conn?.tenantId).toBe(TEST_ORG_ID as any);
     expect(conn?.remoteOrganisationId).toBe(uniqueRemoteOrgId as any);
     expect(conn?.remoteConnectionId).toBe(id);
     expect(conn?.remotePublicKey).toBe(remotePublicKey);
@@ -346,7 +346,7 @@ describe("Connections Service", () => {
     const connResult = await db
       .insert(connections)
       .values({
-        organisationId: TEST_ORG_ID as any,
+        tenantId: TEST_ORG_ID as any,
         name: "Get Test Connection",
         localPublicKey: keyPair.publicKey,
         localPrivateKey: keyPair.privateKey,
@@ -381,7 +381,7 @@ describe("Connections Service", () => {
     const connResult = await db
       .insert(connections)
       .values({
-        organisationId: TEST_ORG_ID,
+        tenantId: TEST_ORG_ID,
         remoteOrganisationId: TEST_ORG_ID,
         name: "Org Connection",
         localPublicKey: keyPair.publicKey,
@@ -389,7 +389,7 @@ describe("Connections Service", () => {
       })
       .returning();
 
-    // Retrieve by organisations
+    // Retrieve by tenants
     const conn = await getConnectionByOrganisations(TEST_ORG_ID, TEST_ORG_ID);
 
     expect(conn).toBeDefined();
@@ -408,7 +408,7 @@ describe("Connections Service", () => {
   /**
    * Test: getConnectionByLocalOrganisation
    */
-  test("getConnectionByLocalOrganisation should return all connections for organisation", async () => {
+  test("getConnectionByLocalOrganisation should return all connections for tenant", async () => {
     const db = getDb();
 
     // Create multiple connections
@@ -417,13 +417,13 @@ describe("Connections Service", () => {
 
     await db.insert(connections).values([
       {
-        organisationId: TEST_ORG_ID as any,
+        tenantId: TEST_ORG_ID as any,
         name: "Connection 1",
         localPublicKey: keyPair1.publicKey,
         localPrivateKey: keyPair1.privateKey,
       },
       {
-        organisationId: TEST_ORG_ID as any,
+        tenantId: TEST_ORG_ID as any,
         name: "Connection 2",
         localPublicKey: keyPair2.publicKey,
         localPrivateKey: keyPair2.privateKey,
@@ -438,7 +438,7 @@ describe("Connections Service", () => {
     expect(conns.some((c) => c.name === "Connection 2")).toBe(true);
   });
 
-  test("getConnectionByLocalOrganisation should return empty for organisation with no connections", async () => {
+  test("getConnectionByLocalOrganisation should return empty for tenant with no connections", async () => {
     const conns = await getConnectionByLocalOrganisation(
       "00000000-0000-0000-0000-000000000777"
     );
@@ -457,7 +457,7 @@ describe("Connections Service", () => {
     const connResult = await db
       .insert(connections)
       .values({
-        organisationId: TEST_ORG_ID as any,
+        tenantId: TEST_ORG_ID as any,
         name: "Drop Connection Test",
         localPublicKey: keyPair.publicKey,
         localPrivateKey: keyPair.privateKey,

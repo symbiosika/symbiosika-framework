@@ -59,7 +59,7 @@ const testTexts = [
 //         createKnowledgeText({
 //           text: text.text,
 //           title: text.title,
-//           organisationId: TEST_ORGANISATION_1.id,
+//           tenantId: TEST_ORGANISATION_1.id,
 //         })
 //       )
 //     );
@@ -68,7 +68,7 @@ const testTexts = [
 //     await Promise.all(
 //       addedTexts.map((text) =>
 //         extractKnowledgeFromExistingDbEntry({
-//           organisationId: TEST_ORGANISATION_1.id,
+//           tenantId: TEST_ORGANISATION_1.id,
 //           sourceType: "text",
 //           sourceId: text.id,
 //           filters: {
@@ -83,7 +83,7 @@ const testTexts = [
 //       "How do bees make honey and how many flowers do they need to visit?";
 
 //     const results = await getNearestEmbeddings({
-//       organisationId: TEST_ORGANISATION_1.id,
+//       tenantId: TEST_ORGANISATION_1.id,
 //       searchText: searchQuery,
 //       n: 1,
 //       filter: {

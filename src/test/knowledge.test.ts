@@ -19,23 +19,23 @@ const pathToEmbeddingFile = __dirname + "/files/test-knowledge-embedding.json";
 export const TEST_KNOWLEDGE_GROUP = {
   id: "11000000-1100-1100-1100-000000000000",
   name: "Test Knowledge Group",
-  organisationId: TEST_ORGANISATION_1.id,
+  tenantId: TEST_ORGANISATION_1.id,
   userId: TEST_ORG1_USER_1.id,
-  organisationWideAccess: true,
+  tenantWideAccess: true,
 };
 
 export const TEST_KNOWLEDGE_ENTRY = {
   id: "00000000-1100-1100-1100-000000000000",
   knowledgeGroupId: TEST_KNOWLEDGE_GROUP.id,
   name: "Test Knowledge",
-  organisationId: TEST_ORGANISATION_1.id,
+  tenantId: TEST_ORGANISATION_1.id,
   sourceType: "text" as const,
   versionText: TEST_KNOWLEDGE_TEXT,
 };
 
 export const TEST_KNOWLEDGE_PROMPT_TEMPLATE = {
   id: "00000000-1100-1100-1100-123000000000",
-  organisationId: TEST_ORGANISATION_1.id,
+  tenantId: TEST_ORGANISATION_1.id,
   name: "test-knowledge-prompt-template",
   category: "test",
   description: "Test description",

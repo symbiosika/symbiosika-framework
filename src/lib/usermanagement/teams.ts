@@ -1,7 +1,7 @@
 /**
  * CRUD operations for teams
  *
- * Teams are used to group users together inside a organisation
+ * Teams are used to group users together inside a tenant
  */
 
 import { getDb } from "../db/db-connection";
@@ -55,7 +55,7 @@ export const deleteTeam = async (teamId: string): Promise<void> => {
 };
 
 /**
- * Get all teams by an organisation ID
+ * Get all teams by an tenant ID
  */
 export const getTeamsByOrganisation = async (
   orgId: string
@@ -63,7 +63,7 @@ export const getTeamsByOrganisation = async (
   return await getDb()
     .select()
     .from(teams)
-    .where(eq(teams.organisationId, orgId));
+    .where(eq(teams.tenantId, orgId));
 };
 
 /**
@@ -82,7 +82,7 @@ export const getTeamsByUser = async (
     .from(teams)
     .innerJoin(teamMembers, eq(teamMembers.teamId, teams.id))
     .where(
-      and(eq(teamMembers.userId, userId), eq(teams.organisationId, orgId))
+      and(eq(teamMembers.userId, userId), eq(teams.tenantId, orgId))
     );
 };
 
@@ -142,15 +142,15 @@ export const dropUserFromTeam = async (
  */
 export const addTeamMember = async (
   teamId: string,
-  organisationId: string,
+  tenantId: string,
   userId: string,
   role?: "admin" | "member"
 ): Promise<TeamMembersSelect> => {
-  // check if the user is part of the organisation
+  // check if the user is part of the tenant
   const orgs = await getUserOrganisations(userId);
-  const membership = orgs.find((org) => org.organisationId === organisationId);
+  const membership = orgs.find((org) => org.tenantId === tenantId);
   if (!membership) {
-    throw new Error("User is not part of the organisation");
+    throw new Error("User is not part of the tenant");
   }
 
   const result = await getDb()

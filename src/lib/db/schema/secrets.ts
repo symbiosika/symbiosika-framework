@@ -12,7 +12,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { pgBaseTable } from ".";
-import { organisations } from "./users";
+import { tenants } from "./users";
 import {
   createSelectSchema,
   createInsertSchema,
@@ -28,8 +28,8 @@ export const secrets = pgBaseTable(
       .default(sql`gen_random_uuid()`),
     reference: varchar("reference", { length: 255 }).notNull(),
     referenceId: uuid("reference_id"),
-    organisationId: uuid("organisation_id")
-      .references(() => organisations.id, {
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, {
         onDelete: "cascade",
       })
       .notNull(),

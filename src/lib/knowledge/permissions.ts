@@ -12,7 +12,7 @@ import { teamMembers } from "../db/schema/users";
  */
 export const getUserTeamIds = async (
   userId: string,
-  organisationId: string
+  tenantId: string
 ): Promise<string[]> => {
   const userTeams = await getDb().query.teamMembers.findMany({
     where: eq(teamMembers.userId, userId),
@@ -23,9 +23,9 @@ export const getUserTeamIds = async (
       team: true,
     },
   });
-  // Filter the teams by organisationId after fetching
+  // Filter the teams by tenantId after fetching
   return userTeams
-    .filter((t) => t.team.organisationId === organisationId)
+    .filter((t) => t.team.tenantId === tenantId)
     .map((t) => t.teamId);
 };
 
@@ -34,26 +34,26 @@ export const getUserTeamIds = async (
  */
 export const getUserKnowledgeGroupIds = async (
   userId: string,
-  organisationId: string,
+  tenantId: string,
   userTeams?: string[]
 ): Promise<string[]> => {
   const db = getDb();
 
   // Get all teams the user is a member of
   if (!userTeams) {
-    userTeams = await getUserTeamIds(userId, organisationId);
+    userTeams = await getUserTeamIds(userId, tenantId);
   }
 
   // Get knowledge groups where:
   // 1. The user is the direct owner, OR
-  // 2. The group has organisation-wide access, OR
+  // 2. The group has tenant-wide access, OR
   // 3. The group is assigned to one of the user's teams
 
   // Get directly owned and org-wide groups
   const directGroups = await db.query.knowledgeGroup.findMany({
     where: or(
       eq(knowledgeGroup.userId, userId),
-      eq(knowledgeGroup.organisationWideAccess, true)
+      eq(knowledgeGroup.tenantWideAccess, true)
     ),
     columns: {
       id: true,
@@ -96,9 +96,9 @@ export const getUserKnowledgeGroupIds = async (
 export const validateKnowledgeAccess = async (
   knowledgeId: string,
   userId: string,
-  organisationId: string
+  tenantId: string
 ) => {
-  const userTeams = await getUserTeamIds(userId, organisationId);
+  const userTeams = await getUserTeamIds(userId, tenantId);
 
   // First check: user has direct access to the knowledge entry
   const directAccess = await getDb().query.knowledgeEntry.findFirst({
@@ -133,11 +133,11 @@ export const validateKnowledgeAccess = async (
     return false; // No knowledge group assigned
   }
 
-  // Check if the knowledge group is organisation-wide accessible
+  // Check if the knowledge group is tenant-wide accessible
   const groupWithOrgWideAccess = await getDb().query.knowledgeGroup.findFirst({
     where: and(
       eq(knowledgeGroup.id, entryWithGroup.knowledgeGroupId),
-      eq(knowledgeGroup.organisationWideAccess, true)
+      eq(knowledgeGroup.tenantWideAccess, true)
     ),
   });
 
