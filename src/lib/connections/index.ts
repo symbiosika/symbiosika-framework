@@ -6,11 +6,8 @@
 import { getDb } from "../db/db-connection";
 import {
   connections,
-  connectionSessions,
   type ConnectionsInsert,
   type ConnectionsSelect,
-  type ConnectionSessionsInsert,
-  type ConnectionSessionsSelect,
   OrganisationMembersSelect,
 } from "../db/db-schema";
 import { eq, and } from "drizzle-orm";
@@ -321,36 +318,6 @@ async function exchangePublicKeys(
 }
 
 /**
- * Create a new connection session (WebSocket)
- */
-export async function createConnectionSession(
-  connectionId: string,
-  remoteSessionId?: string
-): Promise<ConnectionSessionsSelect> {
-  try {
-    const db = getDb();
-
-    const session: ConnectionSessionsInsert = {
-      connectionId: connectionId,
-      remoteSessionId: remoteSessionId ?? null,
-      status: "active",
-      encryptionAlgorithm: "aes-256-cbc",
-    };
-
-    const result = await db
-      .insert(connectionSessions)
-      .values(session)
-      .returning();
-
-    log.info(`Connection session created: ${result[0].id}`);
-    return result[0];
-  } catch (error) {
-    log.error("Error creating connection session:", error as object);
-    throw error;
-  }
-}
-
-/**
  * Get connection by ID
  */
 export async function getConnection(
@@ -401,7 +368,7 @@ export async function getConnectionByOrganisations(
 /**
  * List all connections for an organisation
  */
-export async function listConnections(organisationId: string) {
+export async function getConnectionByLocalOrganisation(organisationId: string) {
   try {
     const db = getDb();
 
@@ -418,74 +385,11 @@ export async function listConnections(organisationId: string) {
 }
 
 /**
- * List all sessions for a connection
- */
-export async function listConnectionSessions(connectionId: string) {
-  try {
-    const db = getDb();
-
-    const result = await db
-      .select()
-      .from(connectionSessions)
-      .where(eq(connectionSessions.connectionId, connectionId));
-
-    return result;
-  } catch (error) {
-    log.error("Error listing connection sessions:", error as object);
-    throw error;
-  }
-}
-
-/**
- * Update session heartbeat
- */
-export async function updateSessionHeartbeat(sessionId: string) {
-  try {
-    const db = getDb();
-
-    await db
-      .update(connectionSessions)
-      .set({
-        lastHeartbeat: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(connectionSessions.id, sessionId));
-  } catch (error) {
-    log.error("Error updating session heartbeat:", error as object);
-    throw error;
-  }
-}
-
-/**
- * Drop connection session
- */
-export async function dropConnectionSession(sessionId: string) {
-  try {
-    const db = getDb();
-
-    await db
-      .delete(connectionSessions)
-      .where(eq(connectionSessions.id, sessionId));
-
-    log.info(`Connection session dropped: ${sessionId}`);
-  } catch (error) {
-    log.error("Error dropping connection session:", error as object);
-    throw error;
-  }
-}
-
-/**
  * Drop connection
  */
 export async function dropConnection(connectionId: string) {
   try {
     const db = getDb();
-
-    // Delete all sessions first
-    const sessions = await listConnectionSessions(connectionId);
-    for (const session of sessions) {
-      await dropConnectionSession(session.id);
-    }
 
     // Delete connection
     await db.delete(connections).where(eq(connections.id, connectionId));
@@ -498,35 +402,6 @@ export async function dropConnection(connectionId: string) {
 }
 
 /**
- * Authenticate WebSocket connection with key pair
- */
-export async function authenticateConnectionSession(
-  connectionId: string,
-  signature: string,
-  nonce: string
-): Promise<boolean> {
-  try {
-    const connection = await getConnection(connectionId);
-
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-
-    // Verify signature using local public key
-    // This would use the crypto module to verify the signature
-    // For now, we'll implement basic verification
-
-    log.info(
-      `WebSocket connection authenticated for connection: ${connectionId}`
-    );
-    return true;
-  } catch (error) {
-    log.error("Error authenticating connection session:", error as object);
-    return false;
-  }
-}
-
-/**
  * Export service as singleton
  */
 export const connectionsService = {
@@ -534,13 +409,8 @@ export const connectionsService = {
   validateRemoteCredentials,
   initializeConnection,
   acceptConnection,
-  createConnectionSession,
   getConnection,
   getConnectionByOrganisations,
-  listConnections,
-  listConnectionSessions,
-  updateSessionHeartbeat,
-  dropConnectionSession,
+  getConnectionByLocalOrganisation,
   dropConnection,
-  authenticateConnectionSession,
 };

@@ -11,7 +11,7 @@ import {
 } from "../../../../lib/utils/hono-middlewares";
 import { connectionsService } from "../../../../lib/connections";
 import { describeRoute } from "hono-openapi";
-import { resolver, validator } from "hono-openapi";
+import { validator } from "hono-openapi";
 import * as v from "valibot";
 import log from "../../../../lib/log";
 import { validateScope } from "../../../../lib/utils/validate-scope";
@@ -220,7 +220,10 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     async (c) => {
       try {
         const { organisationId } = c.req.valid("param");
-        const conns = await connectionsService.listConnections(organisationId);
+        const conns =
+          await connectionsService.getConnectionByLocalOrganisation(
+            organisationId
+          );
 
         return c.json({
           connections: conns,
@@ -261,64 +264,6 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
         log.error("Error getting connection:", error as object);
         throw new HTTPException(500, {
           message: "Failed to get connection",
-        });
-      }
-    }
-  );
-
-  /**
-   * GET /:connectionId/sessions
-   * List all sessions for a connection
-   */
-  app.get(
-    `${baseRoute}/:connectionId/sessions`,
-    authAndSetUsersInfo,
-    checkUserPermission,
-    validator("param", v.object({ connectionId: v.string() })),
-    validateScope("connections:read"),
-    async (c) => {
-      try {
-        const { connectionId } = c.req.valid("param");
-        const sessions =
-          await connectionsService.listConnectionSessions(connectionId);
-
-        return c.json({
-          sessions,
-        });
-      } catch (error) {
-        log.error("Error listing sessions:", error as object);
-        throw new HTTPException(500, {
-          message: "Failed to list sessions",
-        });
-      }
-    }
-  );
-
-  /**
-   * DELETE /:connectionId/sessions/:sessionId
-   * Drop a specific session
-   */
-  app.delete(
-    `${baseRoute}/:connectionId/sessions/:sessionId`,
-    authAndSetUsersInfo,
-    checkUserPermission,
-    validator(
-      "param",
-      v.object({ connectionId: v.string(), sessionId: v.string() })
-    ),
-    validateScope("connections:write"),
-    async (c) => {
-      try {
-        const { sessionId } = c.req.valid("param");
-        await connectionsService.dropConnectionSession(sessionId);
-
-        return c.json({
-          message: "Session dropped successfully",
-        });
-      } catch (error) {
-        log.error("Error dropping session:", error as object);
-        throw new HTTPException(500, {
-          message: "Failed to drop session",
         });
       }
     }

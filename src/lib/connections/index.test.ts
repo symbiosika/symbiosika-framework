@@ -6,20 +6,17 @@
 import { describe, test, expect, beforeAll } from "bun:test";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
 import { getDb } from "../db/db-connection";
-import { connections, connectionSessions } from "../db/db-schema";
+import { connections } from "../db/db-schema";
 import { eq } from "drizzle-orm";
 import {
   connectionsService,
   generateKeyPair,
   validateRemoteCredentials,
   initializeConnection,
-  createConnectionSession,
+  acceptConnection,
   getConnection,
   getConnectionByOrganisations,
-  listConnections,
-  listConnectionSessions,
-  updateSessionHeartbeat,
-  dropConnectionSession,
+  getConnectionByLocalOrganisation,
   dropConnection,
 } from "./index";
 
@@ -30,10 +27,13 @@ const TEST_CONNECTION_NAME = "Test Connection";
 
 beforeAll(async () => {
   await initTests();
-  // delete all old connections 
-  await getDb().delete(connections).where(eq(connections.organisationId, TEST_ORG_ID));
-  await getDb().delete(connections).where(eq(connections.remoteOrganisationId, TEST_ORG_ID));
-  await getDb().delete(connectionSessions).where(eq(connectionSessions.connectionId, TEST_ORG_ID));
+  // delete all old connections
+  await getDb()
+    .delete(connections)
+    .where(eq(connections.organisationId, TEST_ORG_ID));
+  await getDb()
+    .delete(connections)
+    .where(eq(connections.remoteOrganisationId, TEST_ORG_ID));
 });
 
 describe("Connections Service", () => {
@@ -62,9 +62,9 @@ describe("Connections Service", () => {
    * Test: validateRemoteCredentials
    */
   test("validateRemoteCredentials should fetch and return organisations", async () => {
-    const mockOrgData = {
-      organisations: [{ id: TEST_REMOTE_ORG_ID, name: "Remote Organisation" }],
-    };
+    const mockOrgData = [
+      { organisationId: TEST_REMOTE_ORG_ID, name: "Remote Organisation" },
+    ];
 
     // Mock fetch for login endpoint
     const originalFetch = global.fetch;
@@ -92,7 +92,9 @@ describe("Connections Service", () => {
 
       expect(result.token).toBe("test-token");
       expect(result.organisations).toHaveLength(1);
-      expect((result.organisations[0] as any)?.id).toBe(TEST_REMOTE_ORG_ID);
+      expect((result.organisations[0] as any)?.organisationId).toBe(
+        TEST_REMOTE_ORG_ID
+      );
     } finally {
       (global as any).fetch = originalFetch;
     }
@@ -107,7 +109,11 @@ describe("Connections Service", () => {
     try {
       let threw = false;
       try {
-        await validateRemoteCredentials(TEST_REMOTE_URL, "wrong@example.com", "wrong");
+        await validateRemoteCredentials(
+          TEST_REMOTE_URL,
+          "wrong@example.com",
+          "wrong"
+        );
       } catch {
         threw = true;
       }
@@ -126,7 +132,11 @@ describe("Connections Service", () => {
     try {
       let threw = false;
       try {
-        await validateRemoteCredentials(TEST_REMOTE_URL, "test@example.com", "password");
+        await validateRemoteCredentials(
+          TEST_REMOTE_URL,
+          "test@example.com",
+          "password"
+        );
       } catch {
         threw = true;
       }
@@ -150,15 +160,15 @@ describe("Connections Service", () => {
       } else if (url.includes("/user/organisations")) {
         return {
           ok: true,
-          json: async () => ({
-            organisations: [{ id: TEST_REMOTE_ORG_ID, name: "Remote Org" }],
-          }),
+          json: async () => [
+            { organisationId: TEST_REMOTE_ORG_ID, name: "Remote Org" },
+          ],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
         return {
           ok: true,
           json: async () => ({
-            remotePublicKey:
+            localPublicKey:
               "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----",
           }),
         } as Response;
@@ -204,15 +214,15 @@ describe("Connections Service", () => {
       } else if (url.includes("/user/organisations")) {
         return {
           ok: true,
-          json: async () => ({
-            organisations: [{ id: TEST_REMOTE_ORG_ID, name: "Remote Org" }],
-          }),
+          json: async () => [
+            { organisationId: TEST_REMOTE_ORG_ID, name: "Remote Org" },
+          ],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
         return {
           ok: true,
           json: async () => ({
-            remotePublicKey:
+            localPublicKey:
               "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----",
           }),
         } as Response;
@@ -292,67 +302,37 @@ describe("Connections Service", () => {
   });
 
   /**
-   * Test: createConnectionSession
+   * Test: acceptConnection
    */
-  test("createConnectionSession should create new session", async () => {
+  test("acceptConnection should create connection from remote initiation", async () => {
     const db = getDb();
+    const { publicKey: remotePublicKey } = generateKeyPair();
+    const id = crypto.randomUUID();
+    // Use a unique remote org ID to avoid constraint violation
+    const uniqueRemoteOrgId = "00000000-0000-0000-0000-000000000999";
 
-    // First create a connection
-    const keyPair = generateKeyPair();
-    const connResult = await db
-      .insert(connections)
-      .values({
-        organisationId: TEST_ORG_ID as any,
-        name: "Test Connection",
-        localPublicKey: keyPair.publicKey,
-        localPrivateKey: keyPair.privateKey,
-      })
-      .returning();
+    const result = await acceptConnection(
+      TEST_ORG_ID,
+      TEST_REMOTE_URL,
+      uniqueRemoteOrgId,
+      id,
+      remotePublicKey,
+      "Accepted Connection"
+    );
 
-    const connectionId = connResult[0]?.id;
-    expect(connectionId).toBeDefined();
-
-    // Create session
-    const session = await createConnectionSession(connectionId!);
-
-    expect(session).toBeDefined();
-    expect(session.id).toBeDefined();
-    expect(session.connectionId).toBe(connectionId as any);
-    expect(session.status).toBe("active");
+    expect(result).toBeDefined();
+    expect(result.connectionId).toBeDefined();
+    expect(result.localPublicKey).toContain("BEGIN PUBLIC KEY");
 
     // Verify in database
-    const dbSession = await db
-      .select()
-      .from(connectionSessions)
-      .where(eq(connectionSessions.id, session.id as any));
-
-    expect(dbSession).toHaveLength(1);
-  });
-
-  test("createConnectionSession should store remote session ID", async () => {
-    const db = getDb();
-
-    // Create connection
-    const keyPair = generateKeyPair();
-    const connResult = await db
-      .insert(connections)
-      .values({
-        organisationId: TEST_ORG_ID as any,
-        name: "Test Connection 2",
-        localPublicKey: keyPair.publicKey,
-        localPrivateKey: keyPair.privateKey,
-      })
-      .returning();
-
-    const connectionId = connResult[0]?.id;
-    expect(connectionId).toBeDefined();
-
-    const remoteSessionId = crypto.randomUUID();
-
-    // Create session with remote session ID
-    const session = await createConnectionSession(connectionId!, remoteSessionId);
-
-    expect(session.remoteSessionId).toBe(remoteSessionId as any);
+    const conn = await getConnection(result.connectionId);
+    expect(conn).toBeDefined();
+    expect(conn?.name).toBe("Accepted Connection");
+    expect(conn?.organisationId).toBe(TEST_ORG_ID as any);
+    expect(conn?.remoteOrganisationId).toBe(uniqueRemoteOrgId as any);
+    expect(conn?.remoteConnectionId).toBe(id);
+    expect(conn?.remotePublicKey).toBe(remotePublicKey);
+    expect(conn?.initiatedBy).toBe("server");
   });
 
   /**
@@ -385,9 +365,7 @@ describe("Connections Service", () => {
   });
 
   test("getConnection should return null for non-existent connection", async () => {
-    const conn = await getConnection(
-      "00000000-0000-0000-0000-000000000999"
-    );
+    const conn = await getConnection("00000000-0000-0000-0000-000000000999");
 
     expect(conn).toBeNull();
   });
@@ -412,10 +390,7 @@ describe("Connections Service", () => {
       .returning();
 
     // Retrieve by organisations
-    const conn = await getConnectionByOrganisations(
-      TEST_ORG_ID,
-      TEST_ORG_ID
-    );
+    const conn = await getConnectionByOrganisations(TEST_ORG_ID, TEST_ORG_ID);
 
     expect(conn).toBeDefined();
     expect(conn?.id).toBe(connResult[0]?.id);
@@ -431,11 +406,10 @@ describe("Connections Service", () => {
   });
 
   /**
-   * Test: listConnections
+   * Test: getConnectionByLocalOrganisation
    */
-  test("listConnections should return all connections for organisation", async () => {
+  test("getConnectionByLocalOrganisation should return all connections for organisation", async () => {
     const db = getDb();
-    const testOrgId = TEST_ORG_ID;
 
     // Create multiple connections
     const keyPair1 = generateKeyPair();
@@ -443,13 +417,13 @@ describe("Connections Service", () => {
 
     await db.insert(connections).values([
       {
-        organisationId: testOrgId as any,
+        organisationId: TEST_ORG_ID as any,
         name: "Connection 1",
         localPublicKey: keyPair1.publicKey,
         localPrivateKey: keyPair1.privateKey,
       },
       {
-        organisationId: testOrgId as any,
+        organisationId: TEST_ORG_ID as any,
         name: "Connection 2",
         localPublicKey: keyPair2.publicKey,
         localPrivateKey: keyPair2.privateKey,
@@ -457,15 +431,15 @@ describe("Connections Service", () => {
     ]);
 
     // List connections
-    const conns = await listConnections(testOrgId);
+    const conns = await getConnectionByLocalOrganisation(TEST_ORG_ID);
 
     expect(conns.length).toBeGreaterThanOrEqual(2);
     expect(conns.some((c) => c.name === "Connection 1")).toBe(true);
     expect(conns.some((c) => c.name === "Connection 2")).toBe(true);
   });
 
-  test("listConnections should return empty for organisation with no connections", async () => {
-    const conns = await listConnections(
+  test("getConnectionByLocalOrganisation should return empty for organisation with no connections", async () => {
+    const conns = await getConnectionByLocalOrganisation(
       "00000000-0000-0000-0000-000000000777"
     );
 
@@ -473,137 +447,9 @@ describe("Connections Service", () => {
   });
 
   /**
-   * Test: listConnectionSessions
-   */
-  test("listConnectionSessions should return all sessions for connection", async () => {
-    const db = getDb();
-
-    // Create connection
-    const keyPair = generateKeyPair();
-    const connResult = await db
-      .insert(connections)
-      .values({
-        organisationId: TEST_ORG_ID as any,
-        name: "Sessions Test",
-        localPublicKey: keyPair.publicKey,
-        localPrivateKey: keyPair.privateKey,
-      })
-      .returning();
-
-    const connectionId = connResult[0]?.id;
-    expect(connectionId).toBeDefined();
-
-    // Create multiple sessions
-    const session1 = await createConnectionSession(connectionId!);
-    const session2 = await createConnectionSession(connectionId!);
-
-    // List sessions
-    const sessions = await listConnectionSessions(connectionId!);
-
-    expect(sessions.length).toBeGreaterThanOrEqual(2);
-    expect(sessions.some((s) => s.id === session1.id)).toBe(true);
-    expect(sessions.some((s) => s.id === session2.id)).toBe(true);
-  });
-
-  test("listConnectionSessions should return empty for connection with no sessions", async () => {
-    const db = getDb();
-
-    // Create connection
-    const keyPair = generateKeyPair();
-    const connResult = await db
-      .insert(connections)
-      .values({
-        organisationId: TEST_ORG_ID as any,
-        name: "No Sessions",
-        localPublicKey: keyPair.publicKey,
-        localPrivateKey: keyPair.privateKey,
-      })
-      .returning();
-
-    // List sessions (should be empty)
-    const sessions = await listConnectionSessions(connResult[0]?.id || "");
-
-    expect(sessions).toHaveLength(0);
-  });
-
-  /**
-   * Test: updateSessionHeartbeat
-   */
-  test("updateSessionHeartbeat should update lastHeartbeat", async () => {
-    const db = getDb();
-
-    // Create connection and session
-    const keyPair = generateKeyPair();
-    const connResult = await db
-      .insert(connections)
-      .values({
-        organisationId: TEST_ORG_ID as any,
-        name: "Heartbeat Test",
-        localPublicKey: keyPair.publicKey,
-        localPrivateKey: keyPair.privateKey,
-      })
-      .returning();
-
-    const connectionId = connResult[0]?.id;
-    expect(connectionId).toBeDefined();
-
-    const session = await createConnectionSession(connectionId!);
-    const originalHeartbeat = session.lastHeartbeat;
-
-    // Wait a bit and update
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    await updateSessionHeartbeat(session.id);
-
-    // Verify heartbeat was updated
-    const updated = await db
-      .select()
-      .from(connectionSessions)
-      .where(eq(connectionSessions.id, session.id as any));
-
-    expect(updated[0]?.lastHeartbeat).not.toBe(originalHeartbeat);
-    expect((updated[0]?.lastHeartbeat || "").localeCompare(originalHeartbeat)).toBeGreaterThan(0);
-  });
-
-  /**
-   * Test: dropConnectionSession
-   */
-  test("dropConnectionSession should delete session", async () => {
-    const db = getDb();
-
-    // Create connection and session
-    const keyPair = generateKeyPair();
-    const connResult = await db
-      .insert(connections)
-      .values({
-        organisationId: TEST_ORG_ID as any,
-        name: "Drop Session Test",
-        localPublicKey: keyPair.publicKey,
-        localPrivateKey: keyPair.privateKey,
-      })
-      .returning();
-
-    const connectionId = connResult[0]?.id;
-    expect(connectionId).toBeDefined();
-
-    const session = await createConnectionSession(connectionId!);
-    const sessionId = session.id;
-
-    // Drop session
-    await dropConnectionSession(sessionId);
-
-    // Verify deleted
-    const deleted = await db
-      .select()
-      .from(connectionSessions)
-      .where(eq(connectionSessions.id, sessionId as any));
-
-    expect(deleted).toHaveLength(0);
-  });
-
-  /**
    * Test: dropConnection
    */
-  test("dropConnection should delete connection and all sessions", async () => {
+  test("dropConnection should delete connection", async () => {
     const db = getDb();
 
     // Create connection
@@ -621,10 +467,6 @@ describe("Connections Service", () => {
     const connectionId = connResult[0]?.id;
     expect(connectionId).toBeDefined();
 
-    // Create sessions
-    const session1 = await createConnectionSession(connectionId!);
-    const session2 = await createConnectionSession(connectionId!);
-
     // Drop connection
     await dropConnection(connectionId!);
 
@@ -635,11 +477,6 @@ describe("Connections Service", () => {
       .where(eq(connections.id, connectionId as any));
 
     expect(connDeleted).toHaveLength(0);
-
-    // Verify sessions deleted (cascade)
-    const allSessions = await db.select().from(connectionSessions);
-    expect(allSessions.some((s) => s.id === session1.id)).toBe(false);
-    expect(allSessions.some((s) => s.id === session2.id)).toBe(false);
   });
 
   /**
@@ -649,14 +486,10 @@ describe("Connections Service", () => {
     expect(connectionsService.generateKeyPair).toBeDefined();
     expect(connectionsService.validateRemoteCredentials).toBeDefined();
     expect(connectionsService.initializeConnection).toBeDefined();
-    expect(connectionsService.createConnectionSession).toBeDefined();
+    expect(connectionsService.acceptConnection).toBeDefined();
     expect(connectionsService.getConnection).toBeDefined();
     expect(connectionsService.getConnectionByOrganisations).toBeDefined();
-    expect(connectionsService.listConnections).toBeDefined();
-    expect(connectionsService.listConnectionSessions).toBeDefined();
-    expect(connectionsService.updateSessionHeartbeat).toBeDefined();
-    expect(connectionsService.dropConnectionSession).toBeDefined();
+    expect(connectionsService.getConnectionByLocalOrganisation).toBeDefined();
     expect(connectionsService.dropConnection).toBeDefined();
-    expect(connectionsService.authenticateConnectionSession).toBeDefined();
   });
 });
