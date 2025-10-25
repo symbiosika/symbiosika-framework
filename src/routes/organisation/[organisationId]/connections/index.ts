@@ -106,8 +106,13 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     async (c) => {
       try {
         const { organisationId } = c.req.valid("param");
-        const { remoteUrl, remoteEmail, remotePassword, remoteOrganisationId, name } =
-          c.req.valid("json");
+        const {
+          remoteUrl,
+          remoteEmail,
+          remotePassword,
+          remoteOrganisationId,
+          name,
+        } = c.req.valid("json");
 
         const result = await connectionsService.initializeConnection(
           organisationId,
@@ -139,8 +144,8 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     validator(
       "json",
       v.object({
-        localPublicKey: v.string("Local public key is required"),
-        remoteConnectionId: v.string("Remote connection ID is required"),
+        publicKey: v.string("Public key is required"),
+        connectionId: v.string("Connection ID is required"),
       })
     ),
     validator("param", v.object({ organisationId: v.string() })),
@@ -148,17 +153,19 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     async (c) => {
       try {
         const { organisationId } = c.req.valid("param");
-        const { localPublicKey, remoteConnectionId } = c.req.valid("json");
+        const { publicKey, connectionId } = c.req.valid("json");
 
         // Get or create connection from remote
-        let connection = await connectionsService.getConnection(remoteConnectionId);
+        let connection = await connectionsService.getConnection(connectionId);
 
         if (!connection) {
           // Create new connection for server-initiated connection
-          const allConnections = await connectionsService.listConnections(organisationId);
+          const allConnections =
+            await connectionsService.listConnections(organisationId);
           connection =
-            allConnections.find((conn) => conn.remoteConnectionId === remoteConnectionId) ||
-            null;
+            allConnections.find(
+              (conn) => conn.remoteConnectionId === connectionId
+            ) || null;
         }
 
         if (!connection) {
@@ -175,7 +182,8 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
       } catch (error) {
         log.error("Error exchanging keys:", error as object);
         throw new HTTPException(400, {
-          message: error instanceof Error ? error.message : "Key exchange failed",
+          message:
+            error instanceof Error ? error.message : "Key exchange failed",
         });
       }
     }
@@ -261,7 +269,8 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     async (c) => {
       try {
         const { connectionId } = c.req.valid("param");
-        const sessions = await connectionsService.listConnectionSessions(connectionId);
+        const sessions =
+          await connectionsService.listConnectionSessions(connectionId);
 
         return c.json({
           sessions,

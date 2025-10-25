@@ -231,8 +231,8 @@ async function exchangePublicKeys(
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          localPublicKey,
-          localConnectionId,
+          publicKey: localPublicKey,
+          connectionId: localConnectionId,
         }),
       }
     );

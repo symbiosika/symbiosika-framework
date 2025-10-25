@@ -477,9 +477,9 @@ describe("Connections API Routes", () => {
         `${BASEPATH}/organisation/${TEST_ORG_ID}/connections/exchange-keys`,
         adminToken,
         {
-          localPublicKey:
+          publicKey:
             "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----",
-          remoteConnectionId: connectionId,
+          connectionId: connectionId,
         }
       );
 
