@@ -39,6 +39,7 @@ import { defineFilesRoutes } from "./routes/organisation/[organisationId]/files"
 
 import defineOrganisationRoutes from "./routes/organisation";
 import defineTeamRoutes from "./routes/organisation/[organisationId]/teams";
+import defineConnectionsRoutes from "./routes/organisation/[organisationId]/connections";
 import definePermissionGroupRoutes from "./routes/organisation/[organisationId]/permission-groups";
 import defineInvitationRoutes from "./routes/organisation/[organisationId]/invitations";
 // import { defineCollectionRoutes } from "./routes/collections";
@@ -185,6 +186,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
       definePermissionGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineInvitationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineSearchInOrganisationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      defineConnectionsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
        * Adds collection routes
@@ -345,3 +347,4 @@ export * from "./types";
 export { log };
 export { smtpService };
 export const GLOBAL_SERVER_CONFIG = _GLOBAL_SERVER_CONFIG;
+export { connectionsService } from "./lib/connections";
