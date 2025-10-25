@@ -1,365 +1,336 @@
+/**
+ * Routes to manage server-to-server connections
+ * These routes are protected by JWT and CheckPermission middleware
+ */
+
 import type { FastAppHono } from "../../../../types";
-import { describeRoute } from "hono-openapi";
-import { upgradeWebSocket } from "hono/bun";
-import { resolver, validator } from "hono-openapi";
-import * as v from "valibot";
-import { randomUUID } from "node:crypto";
+import { HTTPException } from "hono/http-exception";
 import {
   authAndSetUsersInfo,
   checkUserPermission,
 } from "../../../../lib/utils/hono-middlewares";
-import { isOrganisationMember } from "../..";
-import {
-  connectionsInsertSchema,
-  connectionsSelectSchema,
-} from "../../../../lib/db/db-schema";
 import { connectionsService } from "../../../../lib/connections";
-import { getDb } from "../../../../lib/db/db-connection";
-import { and, eq } from "drizzle-orm";
-import { connections } from "../../../../lib/db/db-schema";
-import { validateScope } from "../../../../lib/utils/validate-scope";
-import { HTTPException } from "hono/http-exception";
+import { describeRoute } from "hono-openapi";
+import { resolver, validator } from "hono-openapi";
+import * as v from "valibot";
 import log from "../../../../lib/log";
+import { validateScope } from "../../../../lib/utils/validate-scope";
 
-const initSchema = v.object({
-  name: v.optional(v.string()),
-  remoteUrl: v.optional(v.string()),
-  initiatedBy: v.optional(v.picklist(["client", "server"]), "client"),
-});
+/**
+ * Define connections routes
+ */
+const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
+  const baseRoute = `${basePath}/organisation/:organisationId/connections`;
 
-const connectSchema = v.object({
-  connectionId: v.string(),
-  connectToken: v.string(),
-  clientPublicKey: v.string(),
-});
-
-const connectToServerSchema = v.object({
-  name: v.optional(v.string()),
-  remoteBaseUrl: v.string(),
-  remoteOrganisationId: v.string(),
-  authenticationType: v.picklist(["api_token", "basic_auth"]),
-  credentials: v.string(), // API token or username:password
-});
-
-export default function defineConnectionsRoutes(
-  app: FastAppHono,
-  API_BASE_PATH: string
-) {
-  // INCOMING: Init a new connection (called by remote servers connecting to this server)
-  // Creates keys and returns connection with a short-lived connect token
+  /**
+   * POST /validate-credentials
+   * Validate remote server credentials and list organisations
+   */
   app.post(
-    API_BASE_PATH + "/organisation/:organisationId/connections/init",
+    `${baseRoute}/validate-credentials`,
     authAndSetUsersInfo,
     checkUserPermission,
-    isOrganisationMember,
+    validator(
+      "json",
+      v.object({
+        remoteUrl: v.string("Remote URL is required"),
+        email: v.string("Email is required"),
+        password: v.string("Password is required"),
+      })
+    ),
+    validateScope("connections:write"),
     describeRoute({
-      tags: ["connections"],
-      summary: "[INCOMING] Initialize a new connection",
-      description: "Called by remote servers to initiate a connection to this server",
+      description: "Validate remote server credentials",
       responses: {
         200: {
-          description: "Successful response",
-          content: {
-            "application/json": {
-              schema: resolver(connectionsSelectSchema),
-            },
-          },
+          description: "Credentials validated successfully",
+        },
+        400: {
+          description: "Invalid credentials or server error",
         },
       },
     }),
-    validateScope("connections:write"),
-    validator("json", initSchema),
     async (c) => {
-      const organisationId = c.req.param("organisationId")!;
-      const userId = c.get("usersId");
-      const payload = c.req.valid("json");
+      try {
+        const { remoteUrl, email, password } = c.req.valid("json");
 
-      const row = await connectionsService.createConnection({
-        organisationId,
-        name: payload.name,
-        remoteUrl: payload.remoteUrl,
-        initiatedBy: payload.initiatedBy || "server",
-        createdByUserId: userId,
-      });
-
-      const token = await connectionsService.createConnectToken(row.id);
-      return c.json({ ...row, meta: { connectToken: token.token, connectTokenExp: token.exp } });
-    }
-  );
-
-  // INCOMING: Validate connect token and establish connection (called by remote servers)
-  app.post(
-    API_BASE_PATH + "/organisation/:organisationId/connections/connect",
-    describeRoute({
-      tags: ["connections"],
-      summary: "[INCOMING] Connect using token",
-      description: "Called by remote servers to finalize connection with connect token",
-      responses: { 200: { description: "OK" } },
-    }),
-    validator("json", connectSchema),
-    async (c) => {
-      const organisationId = c.req.param("organisationId")!;
-      const body = c.req.valid("json");
-      const { connectionId, connectToken, clientPublicKey } = body;
-
-      const res = await connectionsService.validateAndConsumeConnectToken(
-        connectionId,
-        connectToken
-      );
-      if (!res.ok) {
-        throw new HTTPException(400, { message: `Connect token ${res.reason}` });
-      }
-      const [row] = await getDb()
-        .select()
-        .from(connections)
-        .where(eq(connections.id, connectionId));
-      if (!row || row.organisationId !== organisationId) {
-        throw new HTTPException(403, { message: "Organisation mismatch" });
-      }
-      await connectionsService.setRemotePublicKey(connectionId, clientPublicKey);
-      return c.json({ status: "ok", wsKey: res.wsKey });
-    }
-  );
-
-  // WS endpoint to actually attach websocket after connect approved
-  app.get(
-    API_BASE_PATH + "/organisation/:organisationId/connections/:connectionId/ws",
-    upgradeWebSocket(async (c) => {
-      const organisationId = c.req.param("organisationId")!;
-      const connectionId = c.req.param("connectionId")!;
-      const wsKey = c.req.query("key") || "";
-
-      const [row] = await getDb()
-        .select()
-        .from(connections)
-        .where(
-          and(eq(connections.id, connectionId), eq(connections.organisationId, organisationId))
+        const result = await connectionsService.validateRemoteCredentials(
+          remoteUrl,
+          email,
+          password
         );
-      if (!row || row.status !== "active") {
-        throw new HTTPException(403, { message: "Connection not active" });
-      }
-      const meta: any = row.meta || {};
-      if (!wsKey || wsKey !== meta.wsKey) {
-        throw new HTTPException(403, { message: "Invalid key" });
-      }
 
-      return {
-        onOpen(ws) {
-          connectionsService.attachSocket(connectionId, organisationId, ws as any);
-          log.info("WebSocket opened", { connectionId, organisationId });
-        },
-        onMessage(ws, message: unknown) {
-          try {
-            let text = "";
-            if (typeof message === "string") {
-              text = message;
-            } else if (message instanceof ArrayBuffer) {
-              text = new TextDecoder().decode(new Uint8Array(message));
-            } else if (message && typeof (message as any).data !== "undefined") {
-              const data = (message as any).data;
-              text = typeof data === "string" ? data : new TextDecoder().decode(data as ArrayBuffer);
-            }
-            (ws as any).send(text);
-          } catch {
-            log.error("Error sending message", { connectionId, organisationId, message });
-          }
-        },
-        onClose() {
-          log.info("WebSocket closed", { connectionId, organisationId });
-        },
-      };
-    })
+        return c.json({
+          organisations: result.organisations,
+        });
+      } catch (error) {
+        log.error("Error validating credentials:", error as object);
+        throw new HTTPException(400, {
+          message: error instanceof Error ? error.message : "Validation failed",
+        });
+      }
+    }
   );
 
-  // List connections
-  app.get(
-    API_BASE_PATH + "/organisation/:organisationId/connections",
+  /**
+   * POST /init
+   * Initialize a new connection to a remote server
+   */
+  app.post(
+    `${baseRoute}/init`,
     authAndSetUsersInfo,
     checkUserPermission,
-    isOrganisationMember,
+    validator(
+      "json",
+      v.object({
+        remoteUrl: v.string("Remote URL is required"),
+        remoteEmail: v.string("Remote email is required"),
+        remotePassword: v.string("Remote password is required"),
+        remoteOrganisationId: v.string("Remote organisation ID is required"),
+        name: v.string("Connection name is required"),
+      })
+    ),
+    validator("param", v.object({ organisationId: v.string() })),
+    validateScope("connections:write"),
     describeRoute({
-      tags: ["connections"],
-      summary: "List connections",
+      description: "Initialize connection to remote server",
       responses: {
-        200: { description: "OK" },
+        201: {
+          description: "Connection initialized successfully",
+        },
+        400: {
+          description: "Invalid request or connection failed",
+        },
       },
     }),
+    async (c) => {
+      try {
+        const { organisationId } = c.req.valid("param");
+        const { remoteUrl, remoteEmail, remotePassword, remoteOrganisationId, name } =
+          c.req.valid("json");
+
+        const result = await connectionsService.initializeConnection(
+          organisationId,
+          remoteUrl,
+          remoteEmail,
+          remotePassword,
+          remoteOrganisationId,
+          name
+        );
+
+        return c.json(result, 201);
+      } catch (error) {
+        log.error("Error initializing connection:", error as object);
+        throw new HTTPException(400, {
+          message: error instanceof Error ? error.message : "Connection failed",
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /exchange-keys
+   * Receive and respond to public key exchange (called by remote server)
+   */
+  app.post(
+    `${baseRoute}/exchange-keys`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    validator(
+      "json",
+      v.object({
+        localPublicKey: v.string("Local public key is required"),
+        remoteConnectionId: v.string("Remote connection ID is required"),
+      })
+    ),
+    validator("param", v.object({ organisationId: v.string() })),
+    validateScope("connections:write"),
+    async (c) => {
+      try {
+        const { organisationId } = c.req.valid("param");
+        const { localPublicKey, remoteConnectionId } = c.req.valid("json");
+
+        // Get or create connection from remote
+        let connection = await connectionsService.getConnection(remoteConnectionId);
+
+        if (!connection) {
+          // Create new connection for server-initiated connection
+          const allConnections = await connectionsService.listConnections(organisationId);
+          connection =
+            allConnections.find((conn) => conn.remoteConnectionId === remoteConnectionId) ||
+            null;
+        }
+
+        if (!connection) {
+          throw new Error("Connection not found");
+        }
+
+        // Get our public key
+        const ourPublicKey = connection.localPublicKey;
+
+        return c.json({
+          remotePublicKey: ourPublicKey,
+          remoteConnectionId: connection.id,
+        });
+      } catch (error) {
+        log.error("Error exchanging keys:", error as object);
+        throw new HTTPException(400, {
+          message: error instanceof Error ? error.message : "Key exchange failed",
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /
+   * List all connections for this organisation
+   */
+  app.get(
+    `${baseRoute}`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    validator("param", v.object({ organisationId: v.string() })),
+    validateScope("connections:read"),
+    describeRoute({
+      description: "List all connections",
+      responses: {
+        200: {
+          description: "Connections retrieved successfully",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const { organisationId } = c.req.valid("param");
+        const conns = await connectionsService.listConnections(organisationId);
+
+        return c.json({
+          connections: conns,
+        });
+      } catch (error) {
+        log.error("Error listing connections:", error as object);
+        throw new HTTPException(500, {
+          message: "Failed to list connections",
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /:connectionId
+   * Get a specific connection
+   */
+  app.get(
+    `${baseRoute}/:connectionId`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    validator("param", v.object({ connectionId: v.string() })),
     validateScope("connections:read"),
     async (c) => {
-      const organisationId = c.req.param("organisationId")!;
-      const rows = await getDb()
-        .select({
-          id: connections.id,
-          organisationId: connections.organisationId,
-          name: connections.name,
-          remoteUrl: connections.remoteUrl,
-          initiatedBy: connections.initiatedBy,
-          status: connections.status,
-          localPublicKey: connections.localPublicKey,
-          remotePublicKey: connections.remotePublicKey,
-          remoteOrganisationId: connections.remoteOrganisationId,
-          remoteConnectionId: connections.remoteConnectionId,
-          authenticationType: connections.authenticationType,
-          createdAt: connections.createdAt,
-          updatedAt: connections.updatedAt,
-          lastConnectedAt: connections.lastConnectedAt,
-        })
-        .from(connections)
-        .where(eq(connections.organisationId, organisationId));
-      return c.json(rows);
-    }
-  );
-
-  // OUTGOING: Connect to a remote server (server-to-server)
-  app.post(
-    API_BASE_PATH + "/organisation/:organisationId/connections/connect-to-server",
-    authAndSetUsersInfo,
-    checkUserPermission,
-    isOrganisationMember,
-    describeRoute({
-      tags: ["connections"],
-      summary: "[OUTGOING] Connect to a remote server",
-      description: "Initiates an outgoing connection to a remote server using API token or username/password authentication",
-      responses: {
-        200: {
-          description: "Connection established",
-          content: {
-            "application/json": {
-              schema: v.object({
-                localConnectionId: v.string(),
-                remoteConnectionId: v.string(),
-              }),
-            },
-          },
-        },
-      },
-    }),
-    validateScope("connections:write"),
-    validator("json", connectToServerSchema),
-    async (c) => {
-      const organisationId = c.req.param("organisationId")!;
-      const userId = c.get("usersId");
-      const payload = c.req.valid("json");
-
       try {
-        const result = await connectionsService.connectToServer({
-          organisationId,
-          remoteBaseUrl: payload.remoteBaseUrl,
-          remoteOrganisationId: payload.remoteOrganisationId,
-          authenticationType: payload.authenticationType,
-          credentials: payload.credentials, 
-          name: payload.name,
-          createdByUserId: userId,
+        const { connectionId } = c.req.valid("param");
+        const connection = await connectionsService.getConnection(connectionId);
+
+        if (!connection) {
+          throw new HTTPException(404, {
+            message: "Connection not found",
+          });
+        }
+
+        return c.json(connection);
+      } catch (error) {
+        if (error instanceof HTTPException) throw error;
+        log.error("Error getting connection:", error as object);
+        throw new HTTPException(500, {
+          message: "Failed to get connection",
         });
-
-        return c.json(result);
-      } catch (error: any) {
-        log.error("Failed to connect to server", { error: error.message, organisationId });
-        throw new HTTPException(500, { message: error.message || "Failed to connect to server" });
       }
     }
   );
 
-  // INCOMING: Generate new WebSocket key for reconnection (called by remote servers)
-  app.post(
-    API_BASE_PATH + "/organisation/:organisationId/connections/:connectionId/reconnect",
+  /**
+   * GET /:connectionId/sessions
+   * List all sessions for a connection
+   */
+  app.get(
+    `${baseRoute}/:connectionId/sessions`,
     authAndSetUsersInfo,
     checkUserPermission,
-    isOrganisationMember,
-    describeRoute({
-      tags: ["connections"],
-      summary: "[INCOMING] Generate new reconnect key",
-      description: "Generates a new WebSocket key for reconnecting to an existing connection. Called by remote servers when they need to reconnect.",
-      responses: {
-        200: {
-          description: "New wsKey generated",
-          content: {
-            "application/json": {
-              schema: v.object({
-                wsKey: v.string(),
-              }),
-            },
-          },
-        },
-      },
-    }),
-    validateScope("connections:write"),
+    validator("param", v.object({ connectionId: v.string() })),
+    validateScope("connections:read"),
     async (c) => {
-      const organisationId = c.req.param("organisationId")!;
-      const connectionId = c.req.param("connectionId")!;
+      try {
+        const { connectionId } = c.req.valid("param");
+        const sessions = await connectionsService.listConnectionSessions(connectionId);
 
-      // Verify connection belongs to this organisation
-      const [row] = await getDb()
-        .select()
-        .from(connections)
-        .where(
-          and(eq(connections.id, connectionId), eq(connections.organisationId, organisationId))
-        );
-
-      if (!row) {
-        throw new HTTPException(404, { message: "Connection not found" });
+        return c.json({
+          sessions,
+        });
+      } catch (error) {
+        log.error("Error listing sessions:", error as object);
+        throw new HTTPException(500, {
+          message: "Failed to list sessions",
+        });
       }
-
-      // Generate new wsKey
-      const wsKey = randomUUID();
-      await getDb()
-        .update(connections)
-        .set({
-          meta: { ...(row.meta || {}), wsKey },
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(connections.id, connectionId));
-
-      return c.json({ wsKey });
     }
   );
 
-  // Delete/Close a connection
+  /**
+   * DELETE /:connectionId/sessions/:sessionId
+   * Drop a specific session
+   */
   app.delete(
-    API_BASE_PATH + "/organisation/:organisationId/connections/:connectionId",
+    `${baseRoute}/:connectionId/sessions/:sessionId`,
     authAndSetUsersInfo,
     checkUserPermission,
-    isOrganisationMember,
-    describeRoute({
-      tags: ["connections"],
-      summary: "Close and delete a connection",
-      description: "Closes the WebSocket and marks the connection as revoked",
-      responses: {
-        200: { description: "Connection closed" },
-      },
-    }),
+    validator(
+      "param",
+      v.object({ connectionId: v.string(), sessionId: v.string() })
+    ),
     validateScope("connections:write"),
     async (c) => {
-      const organisationId = c.req.param("organisationId")!;
-      const connectionId = c.req.param("connectionId")!;
+      try {
+        const { sessionId } = c.req.valid("param");
+        await connectionsService.dropConnectionSession(sessionId);
 
-      // Verify connection belongs to this organisation
-      const [row] = await getDb()
-        .select()
-        .from(connections)
-        .where(
-          and(eq(connections.id, connectionId), eq(connections.organisationId, organisationId))
-        );
-
-      if (!row) {
-        throw new HTTPException(404, { message: "Connection not found" });
+        return c.json({
+          message: "Session dropped successfully",
+        });
+      } catch (error) {
+        log.error("Error dropping session:", error as object);
+        throw new HTTPException(500, {
+          message: "Failed to drop session",
+        });
       }
-
-      // Close WebSocket
-      connectionsService.close(connectionId);
-
-      // Mark as revoked
-      await getDb()
-        .update(connections)
-        .set({
-          status: "revoked",
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(connections.id, connectionId));
-
-      return c.json({ status: "closed" });
     }
   );
-}
 
+  /**
+   * DELETE /:connectionId
+   * Drop a connection and all its sessions
+   */
+  app.delete(
+    `${baseRoute}/:connectionId`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    validator("param", v.object({ connectionId: v.string() })),
+    validateScope("connections:write"),
+    async (c) => {
+      try {
+        const { connectionId } = c.req.valid("param");
+        await connectionsService.dropConnection(connectionId);
 
+        return c.json({
+          message: "Connection dropped successfully",
+        });
+      } catch (error) {
+        log.error("Error dropping connection:", error as object);
+        throw new HTTPException(500, {
+          message: "Failed to drop connection",
+        });
+      }
+    }
+  );
+};
+
+export default defineConnectionsRoutes;

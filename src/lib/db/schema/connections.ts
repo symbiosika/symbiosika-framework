@@ -12,7 +12,11 @@ import {
 import { pgBaseTable } from ".";
 import { organisations, users } from "./users";
 import { relations } from "drizzle-orm";
-import { createInsertSchema, createSelectSchema, createUpdateSchema } from "drizzle-valibot";
+import {
+  createInsertSchema,
+  createSelectSchema,
+  createUpdateSchema,
+} from "drizzle-valibot";
 
 export const connectionStatusEnum = pgEnum("connection_status", [
   "pending",
@@ -22,12 +26,6 @@ export const connectionStatusEnum = pgEnum("connection_status", [
 ]);
 
 export const initiatedByEnum = pgEnum("initiated_by", ["client", "server"]);
-
-export const authenticationTypeEnum = pgEnum("authentication_type", [
-  "none",
-  "api_token",
-  "basic_auth",
-]);
 
 export const connections = pgBaseTable(
   "connections",
@@ -41,42 +39,30 @@ export const connections = pgBaseTable(
     name: varchar("name", { length: 255 }),
     remoteUrl: text("remote_url"),
     initiatedBy: initiatedByEnum("initiated_by").notNull().default("client"),
-    status: connectionStatusEnum("status").notNull().default("pending"),
-    // Local key pair (this server/app instance)
     localPublicKey: text("local_public_key").notNull(),
     localPrivateKey: text("local_private_key").notNull(),
     localPrivateKeyType: varchar("local_private_key_type", { length: 255 })
       .notNull()
       .default("aes-256-cbc"),
-    // Remote public key (client when initiatedBy=client)
     remotePublicKey: text("remote_public_key"),
-    // Remote server details (for server-to-server connections)
     remoteOrganisationId: uuid("remote_organisation_id"),
     remoteConnectionId: uuid("remote_connection_id"),
-    // Authentication for remote server
-    authenticationType: authenticationTypeEnum("authentication_type")
-      .notNull()
-      .default("none"),
-    remoteCredentials: text("remote_credentials"), // encrypted API token or username:password
-    remoteCredentialsType: varchar("remote_credentials_type", { length: 255 })
-      .default("aes-256-cbc"),
-    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "string" })
       .notNull()
       .defaultNow(),
-    lastConnectedAt: timestamp("last_connected_at", { mode: "string" }),
     meta: jsonb("meta").default({}).notNull(),
   },
   (t) => [
     index("connections_org_idx").on(t.organisationId),
-    index("connections_status_idx").on(t.status),
     index("connections_remote_url_idx").on(t.remoteUrl),
-    uniqueIndex("connections_name_org_idx").on(t.organisationId, t.name),
+    // only one connection per organisation and remote organisation
+    uniqueIndex("connections_org_remote_org_idx").on(
+      t.organisationId,
+      t.remoteOrganisationId
+    ),
   ]
 );
 
@@ -84,10 +70,6 @@ export const connectionsRelations = relations(connections, ({ one }) => ({
   organisation: one(organisations, {
     fields: [connections.organisationId],
     references: [organisations.id],
-  }),
-  createdBy: one(users, {
-    fields: [connections.createdByUserId],
-    references: [users.id],
   }),
 }));
 
@@ -98,4 +80,53 @@ export const connectionsSelectSchema = createSelectSchema(connections);
 export const connectionsInsertSchema = createInsertSchema(connections);
 export const connectionsUpdateSchema = createUpdateSchema(connections);
 
+/**
+ * Connections sessions - stores active WebSocket connections between servers
+ */
+export const connectionSessions = pgBaseTable(
+  "connection_sessions",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(() => connections.id, { onDelete: "cascade" }),
+    remoteSessionId: uuid("remote_session_id"),
+    status: varchar("status", { length: 50 }).notNull().default("active"),
+    encryptionAlgorithm: varchar("encryption_algorithm", { length: 255 })
+      .notNull()
+      .default("aes-256-cbc"),
+    metadata: jsonb("metadata").default({}).notNull(),
+    lastHeartbeat: timestamp("last_heartbeat", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("connection_sessions_connection_idx").on(t.connectionId),
+    index("connection_sessions_status_idx").on(t.status),
+  ]
+);
 
+export const connectionSessionsRelations = relations(
+  connectionSessions,
+  ({ one }) => ({
+    connection: one(connections, {
+      fields: [connectionSessions.connectionId],
+      references: [connections.id],
+    }),
+  })
+);
+
+export type ConnectionSessionsSelect = typeof connectionSessions.$inferSelect;
+export type ConnectionSessionsInsert = typeof connectionSessions.$inferInsert;
+
+export const connectionSessionsSelectSchema = createSelectSchema(connectionSessions);
+export const connectionSessionsInsertSchema = createInsertSchema(connectionSessions);
+export const connectionSessionsUpdateSchema = createUpdateSchema(connectionSessions);
