@@ -53,6 +53,7 @@ export const connections = pgBaseTable(
     updatedAt: timestamp("updated_at", { mode: "string" })
       .notNull()
       .defaultNow(),
+    lastConnectedAt: timestamp("last_connected_at", { mode: "string" }),
     meta: jsonb("meta").default({}).notNull(),
   },
   (t) => [

@@ -36,6 +36,13 @@
       "when": 1761398857377,
       "tag": "0004_windy_firebird",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1761399233543,
+      "tag": "0005_broad_maggott",
+      "breakpoints": true
     }
   ]
 }
