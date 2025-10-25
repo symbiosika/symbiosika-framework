@@ -3,7 +3,6 @@
  * Manages server-to-server connections with cryptographic key exchange
  */
 
-import { createPrivateKey, createPublicKey, randomBytes } from "crypto";
 import { getDb } from "../db/db-connection";
 import {
   connections,
@@ -12,28 +11,27 @@ import {
   type ConnectionsSelect,
   type ConnectionSessionsInsert,
   type ConnectionSessionsSelect,
+  OrganisationMembersSelect,
 } from "../db/db-schema";
 import { eq, and } from "drizzle-orm";
 import log from "../log";
+import { generateKeyPairSync } from "node:crypto";
 
 /**
  * Generate RSA key pair for connection
  */
 export function generateKeyPair() {
-  const { privateKey, publicKey } = require("crypto").generateKeyPairSync(
-    "rsa",
-    {
-      modulusLength: 4096,
-      publicKeyEncoding: {
-        type: "spki",
-        format: "pem",
-      },
-      privateKeyEncoding: {
-        type: "pkcs8",
-        format: "pem",
-      },
-    }
-  );
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+    modulusLength: 4096,
+    publicKeyEncoding: {
+      type: "spki",
+      format: "pem",
+    },
+    privateKeyEncoding: {
+      type: "pkcs8",
+      format: "pem",
+    },
+  });
 
   return {
     publicKey,
@@ -50,7 +48,7 @@ export async function validateRemoteCredentials(
   password: string
 ) {
   try {
-    const response = await fetch(`${remoteUrl}/api/user/login`, {
+    const response = await fetch(`${remoteUrl}/api/v1/user/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -72,7 +70,7 @@ export async function validateRemoteCredentials(
     }
 
     // Get user's organizations
-    const orgsResponse = await fetch(`${remoteUrl}/api/user/organisations`, {
+    const orgsResponse = await fetch(`${remoteUrl}/api/v1/user/organisations`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${data.token}`,
@@ -85,13 +83,11 @@ export async function validateRemoteCredentials(
       );
     }
 
-    const orgsData = (await orgsResponse.json()) as {
-      organisations?: unknown[];
-    };
+    const orgsData = (await orgsResponse.json()) as OrganisationMembersSelect[];
 
     return {
       token: data.token,
-      organisations: orgsData.organisations || [],
+      organisations: orgsData || [],
     };
   } catch (error) {
     log.error("Error validating remote credentials:", error as object);
@@ -127,7 +123,8 @@ export async function initializeConnection(
 
     // Verify remote organisation exists
     const remoteOrg = organisations.find(
-      (o: unknown) => (o as { id?: unknown })?.id === remoteOrganisationId
+      (o: OrganisationMembersSelect) =>
+        o.organisationId === remoteOrganisationId
     );
     if (!remoteOrg) {
       throw new Error("Remote organisation not found");
@@ -139,8 +136,8 @@ export async function initializeConnection(
       .from(connections)
       .where(
         and(
-          eq(connections.organisationId, localOrganisationId as any),
-          eq(connections.remoteOrganisationId, remoteOrganisationId as any)
+          eq(connections.organisationId, localOrganisationId),
+          eq(connections.remoteOrganisationId, remoteOrganisationId)
         )
       );
 
@@ -159,15 +156,15 @@ export async function initializeConnection(
           localPrivateKey,
           updatedAt: new Date().toISOString(),
         })
-        .where(eq(connections.id, connectionId as any));
+        .where(eq(connections.id, connectionId));
 
       log.info(`Connection updated: ${connectionId}`);
     } else {
       // Create new connection
       const newConnection: ConnectionsInsert = {
-        organisationId: localOrganisationId as any,
+        organisationId: localOrganisationId,
         remoteUrl,
-        remoteOrganisationId: remoteOrganisationId as any,
+        remoteOrganisationId: remoteOrganisationId,
         name,
         initiatedBy: "client",
         localPublicKey,
@@ -200,7 +197,7 @@ export async function initializeConnection(
         remotePublicKey,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(connections.id, connectionId as any));
+      .where(eq(connections.id, connectionId));
 
     return {
       connectionId,
@@ -226,7 +223,7 @@ async function exchangePublicKeys(
 ) {
   try {
     const response = await fetch(
-      `${remoteUrl}/api/organisation/${remoteOrganisationId}/connections/exchange-keys`,
+      `${remoteUrl}/api/v1/organisation/${remoteOrganisationId}/connections/exchange-keys`,
       {
         method: "POST",
         headers: {
@@ -241,9 +238,7 @@ async function exchangePublicKeys(
     );
 
     if (!response.ok) {
-      throw new Error(
-        `Failed to exchange public keys: ${response.statusText}`
-      );
+      throw new Error(`Failed to exchange public keys: ${response.statusText}`);
     }
 
     const data = (await response.json()) as {
@@ -267,8 +262,8 @@ export async function createConnectionSession(
     const db = getDb();
 
     const session: ConnectionSessionsInsert = {
-      connectionId: connectionId as any,
-      remoteSessionId: (remoteSessionId ?? null) as any,
+      connectionId: connectionId,
+      remoteSessionId: remoteSessionId ?? null,
       status: "active",
       encryptionAlgorithm: "aes-256-cbc",
     };
@@ -298,7 +293,7 @@ export async function getConnection(
     const result = await db
       .select()
       .from(connections)
-      .where(eq(connections.id, connectionId as any));
+      .where(eq(connections.id, connectionId));
 
     return result.length > 0 ? result[0] : null;
   } catch (error) {
@@ -322,8 +317,8 @@ export async function getConnectionByOrganisations(
       .from(connections)
       .where(
         and(
-          eq(connections.organisationId, organisationId as any),
-          eq(connections.remoteOrganisationId, remoteOrganisationId as any)
+          eq(connections.organisationId, organisationId),
+          eq(connections.remoteOrganisationId, remoteOrganisationId)
         )
       );
 
@@ -344,7 +339,7 @@ export async function listConnections(organisationId: string) {
     const result = await db
       .select()
       .from(connections)
-      .where(eq(connections.organisationId, organisationId as any));
+      .where(eq(connections.organisationId, organisationId));
 
     return result;
   } catch (error) {
@@ -363,7 +358,7 @@ export async function listConnectionSessions(connectionId: string) {
     const result = await db
       .select()
       .from(connectionSessions)
-      .where(eq(connectionSessions.connectionId, connectionId as any));
+      .where(eq(connectionSessions.connectionId, connectionId));
 
     return result;
   } catch (error) {
@@ -385,7 +380,7 @@ export async function updateSessionHeartbeat(sessionId: string) {
         lastHeartbeat: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(connectionSessions.id, sessionId as any));
+      .where(eq(connectionSessions.id, sessionId));
   } catch (error) {
     log.error("Error updating session heartbeat:", error as object);
     throw error;
@@ -401,7 +396,7 @@ export async function dropConnectionSession(sessionId: string) {
 
     await db
       .delete(connectionSessions)
-      .where(eq(connectionSessions.id, sessionId as any));
+      .where(eq(connectionSessions.id, sessionId));
 
     log.info(`Connection session dropped: ${sessionId}`);
   } catch (error) {
@@ -424,9 +419,7 @@ export async function dropConnection(connectionId: string) {
     }
 
     // Delete connection
-    await db
-      .delete(connections)
-      .where(eq(connections.id, connectionId as any));
+    await db.delete(connections).where(eq(connections.id, connectionId));
 
     log.info(`Connection dropped: ${connectionId}`);
   } catch (error) {
