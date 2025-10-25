@@ -23,6 +23,12 @@ export const connectionStatusEnum = pgEnum("connection_status", [
 
 export const initiatedByEnum = pgEnum("initiated_by", ["client", "server"]);
 
+export const authenticationTypeEnum = pgEnum("authentication_type", [
+  "none",
+  "api_token",
+  "basic_auth",
+]);
+
 export const connections = pgBaseTable(
   "connections",
   {
@@ -44,6 +50,16 @@ export const connections = pgBaseTable(
       .default("aes-256-cbc"),
     // Remote public key (client when initiatedBy=client)
     remotePublicKey: text("remote_public_key"),
+    // Remote server details (for server-to-server connections)
+    remoteOrganisationId: uuid("remote_organisation_id"),
+    remoteConnectionId: uuid("remote_connection_id"),
+    // Authentication for remote server
+    authenticationType: authenticationTypeEnum("authentication_type")
+      .notNull()
+      .default("none"),
+    remoteCredentials: text("remote_credentials"), // encrypted API token or username:password
+    remoteCredentialsType: varchar("remote_credentials_type", { length: 255 })
+      .default("aes-256-cbc"),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),

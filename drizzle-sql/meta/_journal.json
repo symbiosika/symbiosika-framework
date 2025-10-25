@@ -15,6 +15,13 @@
       "when": 1761334664952,
       "tag": "0001_faulty_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1761384130842,
+      "tag": "0002_vengeful_solo",
+      "breakpoints": true
     }
   ]
 }
