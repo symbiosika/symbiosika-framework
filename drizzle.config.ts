@@ -3,6 +3,8 @@ import { resolve } from "path";
 
 // Get absolute path for current directory
 const BASE_PATH = resolve(__dirname);
+const CWD = process.cwd();
+const IS_LOCAL = CWD === BASE_PATH;
 
 // Get environment variables for database connection
 const POSTGRES_DB = process.env.POSTGRES_DB ?? "";
@@ -29,8 +31,8 @@ const PREFIX = "base_";
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: resolve(BASE_PATH, "./src/lib/db/db-schema.ts"),
-  out: resolve(BASE_PATH, "./drizzle-sql"),
+  schema: IS_LOCAL ? "./src/lib/db/db-schema.ts" : resolve(BASE_PATH, "./src/lib/db/db-schema.ts"),
+  out: IS_LOCAL ? "./drizzle-sql" : resolve(BASE_PATH, "./drizzle-sql"),
 
   tablesFilter: PREFIX + "*",
   migrations: {
