@@ -14,7 +14,7 @@ import {
   boolean,
 } from "drizzle-orm/pg-core";
 import { pgBaseTable } from ".";
-import { organisations, users } from "./users";
+import { tenants, users } from "./users";
 import {
   createSelectSchema,
   createInsertSchema,
@@ -35,11 +35,11 @@ export const apiTokens = pgBaseTable(
         onDelete: "cascade",
       })
       .notNull(), // user that created the token
-    organisationId: uuid("organisation_id")
-      .references(() => organisations.id, {
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, {
         onDelete: "cascade",
       })
-      .notNull(), // organisation that the token belongs to
+      .notNull(), // tenant that the token belongs to
     scopes: jsonb("scopes").notNull(), // permissions of the token as json array
     lastUsed: timestamp("last_used", { mode: "string" }),
     expiresAt: timestamp("expires_at", { mode: "string" }), // optional: expiration date of the token
@@ -54,7 +54,7 @@ export const apiTokens = pgBaseTable(
   (apiTokens) => [
     unique("api_tokens_token_idx").on(apiTokens.token),
     index("api_tokens_user_id_idx").on(apiTokens.userId),
-    index("api_tokens_organisation_id_idx").on(apiTokens.organisationId),
+    index("api_tokens_tenant_id_idx").on(apiTokens.tenantId),
     index("api_tokens_auto_delete_idx").on(apiTokens.autoDelete),
   ]
 );

@@ -1,1 +1,0 @@
-ALTER TABLE "base_connections" ADD COLUMN "last_connected_at" timestamp;

@@ -15,7 +15,7 @@ import { applyPostProcessors } from "./pre-processors";
 export const parseFile = async (
   file: File,
   context: {
-    organisationId: string;
+    tenantId: string;
     userId?: string;
     teamId?: string;
     workspaceId?: string;
@@ -71,7 +71,7 @@ export const parseFile = async (
  */
 export const parseDocument = async (data: {
   sourceType: FileSourceType;
-  organisationId: string;
+  tenantId: string;
   sourceId?: string;
   sourceFileBucket?: string;
   sourceUrl?: string;
@@ -91,12 +91,12 @@ export const parseDocument = async (data: {
 
   if (data.sourceType === "db" && data.sourceId && data.sourceFileBucket) {
     log.debug(
-      `Get file from DB: ${data.sourceId} ${data.sourceFileBucket} for organisation ${data.organisationId}`
+      `Get file from DB: ${data.sourceId} ${data.sourceFileBucket} for tenant ${data.tenantId}`
     );
     const file = await getFileFromDb(
       data.sourceId,
       data.sourceFileBucket,
-      data.organisationId
+      data.tenantId
     );
     const {
       text,
@@ -105,7 +105,7 @@ export const parseDocument = async (data: {
     } = await parseFile(
       file,
       {
-        organisationId: data.organisationId,
+        tenantId: data.tenantId,
         teamId: data.teamId,
         workspaceId: data.workspaceId,
       },
@@ -124,12 +124,12 @@ export const parseDocument = async (data: {
     data.sourceFileBucket
   ) {
     log.debug(
-      `Get file from local disc: ${data.sourceId} ${data.sourceFileBucket} for organisation ${data.organisationId}`
+      `Get file from local disc: ${data.sourceId} ${data.sourceFileBucket} for tenant ${data.tenantId}`
     );
     const file = await getFileFromLocalDisc(
       data.sourceId,
       data.sourceFileBucket,
-      data.organisationId
+      data.tenantId
     );
     const {
       text,
@@ -138,7 +138,7 @@ export const parseDocument = async (data: {
     } = await parseFile(
       file,
       {
-        organisationId: data.organisationId,
+        tenantId: data.tenantId,
         teamId: data.teamId,
         workspaceId: data.workspaceId,
       },
@@ -180,7 +180,7 @@ export const parseDocument = async (data: {
   if (data.usePostProcessors && data.usePostProcessors.length > 0) {
     content = await applyPostProcessors(
       content,
-      data.organisationId,
+      data.tenantId,
       data.usePostProcessors
     );
     // set pages to undefined since we don't have pages after post processing

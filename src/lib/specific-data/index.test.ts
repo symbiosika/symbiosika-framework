@@ -137,15 +137,15 @@ describe("App Specific Data", () => {
 
 describe("Organisation Specific Data", () => {
   const testData = {
-    organisationId: TEST_ORGANISATION_1.id,
+    tenantId: TEST_ORGANISATION_1.id,
     key: "test-key",
     data: { value: "test-value" },
   };
 
-  test("should create and retrieve organisation specific data", async () => {
+  test("should create and retrieve tenant specific data", async () => {
     const created = await createOrganisationSpecificData(testData);
     expect(created).toBeDefined();
-    expect(created.organisationId).toBe(TEST_ORGANISATION_1.id);
+    expect(created.tenantId).toBe(TEST_ORGANISATION_1.id);
     expect(created.key).toBe(testData.key);
     expect(created.data).toEqual(testData.data);
 
@@ -156,7 +156,7 @@ describe("Organisation Specific Data", () => {
     expect(retrieved).toEqual(created);
   });
 
-  test("should update organisation specific data", async () => {
+  test("should update tenant specific data", async () => {
     const created = await createOrganisationSpecificData({
       ...testData,
       key: "update-key",
@@ -171,7 +171,7 @@ describe("Organisation Specific Data", () => {
     expect(updated.data).toEqual({ value: "updated-value" });
   });
 
-  test("should delete organisation specific data", async () => {
+  test("should delete tenant specific data", async () => {
     const created = await createOrganisationSpecificData({
       ...testData,
       key: "delete-key",

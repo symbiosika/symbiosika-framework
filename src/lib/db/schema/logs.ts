@@ -10,7 +10,7 @@ import {
   text,
 } from "drizzle-orm/pg-core";
 import { pgBaseTable } from ".";
-import { organisations } from "./users";
+import { tenants } from "./users";
 import {
   createSelectSchema,
   createInsertSchema,
@@ -35,9 +35,9 @@ export const appLogs = pgBaseTable(
     source: varchar("source", { length: 100 }).notNull(), // Application component or service name
     category: varchar("category", { length: 50 }).notNull(), // e.g., 'security', 'performance', 'user-action'
     sessionId: uuid("session_id"), // Optional a session id. For debugging sessions
-    organisationId: uuid("organisation_id").references(() => organisations.id, {
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
       onDelete: "cascade",
-    }), // optional, if the log is related to an organisation
+    }), // optional, if the log is related to an tenant
     message: text("message").notNull(),
     metadata: jsonb("metadata").default("{}"), // Additional structured data
     version: integer("version").notNull().default(0),
@@ -51,7 +51,7 @@ export const appLogs = pgBaseTable(
     index("app_logs_source_idx").on(table.source),
     index("app_logs_created_at_idx").on(table.createdAt),
     index("app_logs_version_idx").on(table.version),
-    index("app_logs_organisation_id_idx").on(table.organisationId),
+    index("app_logs_tenant_id_idx").on(table.tenantId),
   ]
 );
 

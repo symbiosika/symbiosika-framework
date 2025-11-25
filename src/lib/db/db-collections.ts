@@ -1,6 +1,6 @@
 import {
   jobs,
-  organisations,
+  tenants,
   teamMembers,
   teams,
   userGroupMembers,
@@ -114,11 +114,11 @@ export const initializeCollectionPermissions = (
       },
     },
 
-    organisations: {
+    tenants: {
       GET: {
         customWhere(params) {
           return inArray(
-            organisations.id,
+            tenants.id,
             getDb()
               .select({ id: teamMembers.teamId })
               .from(teamMembers)

@@ -16,7 +16,7 @@ export function isValidSecretName(name: string) {
 export async function setSecret(data: {
   name: string;
   value: string;
-  organisationId: string;
+  tenantId: string;
 }): Promise<SecretsSelect> {
   if (!isValidSecretName(data.name)) {
     throw new Error(
@@ -35,7 +35,7 @@ export async function setSecret(data: {
       label: data.name,
       value: encrypted.value,
       type: encrypted.algorithm,
-      organisationId: data.organisationId,
+      tenantId: data.tenantId,
     })
     .onConflictDoUpdate({
       target: [secrets.reference, secrets.name],
@@ -54,7 +54,7 @@ export async function setSecret(data: {
  */
 export async function getSecret(
   name: string,
-  organisationId: string
+  tenantId: string
 ): Promise<string | null> {
   const result = await getDb()
     .select()
@@ -63,7 +63,7 @@ export async function getSecret(
       and(
         eq(secrets.reference, "VARIABLES"),
         eq(secrets.name, name),
-        eq(secrets.organisationId, organisationId)
+        eq(secrets.tenantId, tenantId)
       )
     )
     .limit(1);
@@ -81,14 +81,14 @@ export async function getSecret(
 /**
  * Delete a backend secret by its name
  */
-export async function deleteSecret(name: string, organisationId: string) {
+export async function deleteSecret(name: string, tenantId: string) {
   return await getDb()
     .delete(secrets)
     .where(
       and(
         eq(secrets.reference, "VARIABLES"),
         eq(secrets.name, name),
-        eq(secrets.organisationId, organisationId)
+        eq(secrets.tenantId, tenantId)
       )
     )
     .returning();
@@ -97,7 +97,7 @@ export async function deleteSecret(name: string, organisationId: string) {
 /**
  * Get all backend secrets
  */
-export async function getSecrets(organisationId: string) {
+export async function getSecrets(tenantId: string) {
   return await getDb()
     .select({
       id: secrets.id,
@@ -107,7 +107,7 @@ export async function getSecrets(organisationId: string) {
     .where(
       and(
         eq(secrets.reference, "VARIABLES"),
-        eq(secrets.organisationId, organisationId)
+        eq(secrets.tenantId, tenantId)
       )
     );
 }

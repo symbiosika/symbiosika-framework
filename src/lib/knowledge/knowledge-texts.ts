@@ -16,8 +16,8 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
   // check permission
   if (data.userId && data.teamId) {
     await checkTeamMemberRole(data.teamId, data.userId, ["admin"]);
-  } else if (data.userId && data.organisationWide) {
-    await checkOrganisationMemberRole(data.organisationId, data.userId, [
+  } else if (data.userId && data.tenantWide) {
+    await checkOrganisationMemberRole(data.tenantId, data.userId, [
       "admin",
       "owner",
     ]);
@@ -32,7 +32,7 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
  */
 export const getKnowledgeText = async (filters: {
   id?: string;
-  organisationId: string;
+  tenantId: string;
   teamId?: string;
   userId?: string;
   workspaceId?: string;
@@ -40,7 +40,7 @@ export const getKnowledgeText = async (filters: {
   page?: number;
 }) => {
   const permissionConditions: SQLWrapper[] = [
-    eq(knowledgeText.organisationId, filters.organisationId),
+    eq(knowledgeText.tenantId, filters.tenantId),
   ];
 
   if (filters.userId) {
@@ -51,7 +51,7 @@ export const getKnowledgeText = async (filters: {
         // Team specific entries (only if user is a member of the team)
         and(
           isNull(knowledgeText.teamId),
-          eq(knowledgeText.organisationWide, true)
+          eq(knowledgeText.tenantWide, true)
         ),
         exists(
           getDb()
@@ -93,11 +93,11 @@ export const getKnowledgeText = async (filters: {
 };
 
 /**
- * Get a knowledgeText entry by name, category and organisationId
+ * Get a knowledgeText entry by name, category and tenantId
  */
 export const getKnowledgeTextByTitle = async (filters: {
   title: string;
-  organisationId: string;
+  tenantId: string;
 }) => {
   const result = await getDb()
     .select()
@@ -105,7 +105,7 @@ export const getKnowledgeTextByTitle = async (filters: {
     .where(
       and(
         eq(knowledgeText.title, filters.title),
-        eq(knowledgeText.organisationId, filters.organisationId)
+        eq(knowledgeText.tenantId, filters.tenantId)
       )
     );
   if (result.length === 0) {
@@ -121,7 +121,7 @@ export const updateKnowledgeText = async (
   id: string,
   data: Partial<KnowledgeTextInsert>,
   context: {
-    organisationId: string;
+    tenantId: string;
     userId?: string;
     teamId?: string;
     workspaceId?: string;
@@ -130,7 +130,7 @@ export const updateKnowledgeText = async (
   // First check if user has permission to update this entry
   const existing = await getKnowledgeText({
     id,
-    organisationId: context.organisationId,
+    tenantId: context.tenantId,
     userId: context.userId,
     teamId: context.teamId,
     workspaceId: context.workspaceId,
@@ -141,9 +141,9 @@ export const updateKnowledgeText = async (
     throw new Error("Knowledge text not found or access denied");
   } else if (context.userId) {
     const item = existing[0];
-    if (item.organisationWide) {
+    if (item.tenantWide) {
       await checkOrganisationMemberRole(
-        context.organisationId,
+        context.tenantId,
         context.userId,
         ["admin", "owner"]
       );
@@ -168,7 +168,7 @@ export const updateKnowledgeText = async (
 export const deleteKnowledgeText = async (
   id: string,
   context: {
-    organisationId: string;
+    tenantId: string;
     userId?: string;
     teamId?: string;
     workspaceId?: string;
@@ -176,7 +176,7 @@ export const deleteKnowledgeText = async (
 ) => {
   const e = await getKnowledgeText({
     id,
-    organisationId: context.organisationId,
+    tenantId: context.tenantId,
     userId: context.userId,
     teamId: context.teamId,
     workspaceId: context.workspaceId,
@@ -186,9 +186,9 @@ export const deleteKnowledgeText = async (
     throw new Error("Knowledge text not found or access denied");
   } else if (context.userId) {
     const item = e[0];
-    if (item.organisationWide) {
+    if (item.tenantWide) {
       await checkOrganisationMemberRole(
-        context.organisationId,
+        context.tenantId,
         context.userId,
         ["admin", "owner"]
       );

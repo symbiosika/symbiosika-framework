@@ -23,17 +23,17 @@ describe("Scope Validation Tests", () => {
     const userReadTokenData = await createApiToken({
       name: "User Read Token",
       userId: TEST_ADMIN_USER.id,
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
       scopes: ["user:read"],
     });
     userReadToken = userReadTokenData.token;
 
-    // Create API token with organisations:read scope
+    // Create API token with tenants:read scope
     const orgReadTokenData = await createApiToken({
       name: "Org Read Token",
       userId: TEST_ADMIN_USER.id,
-      organisationId: TEST_ORGANISATION_1.id,
-      scopes: ["organisations:read"],
+      tenantId: TEST_ORGANISATION_1.id,
+      scopes: ["tenants:read"],
     });
     orgReadToken = orgReadTokenData.token;
   });
@@ -52,7 +52,7 @@ describe("Scope Validation Tests", () => {
     expect(data.email).toBeDefined();
   });
 
-  test("API token with organisations:read scope should not access /user/me endpoint", async () => {
+  test("API token with tenants:read scope should not access /user/me endpoint", async () => {
     const response = await app.request(`/api/user/me?token=${orgReadToken}`, {
       method: "GET",
       headers: {

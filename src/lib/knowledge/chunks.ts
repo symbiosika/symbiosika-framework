@@ -21,7 +21,7 @@ import { getUserTeamIds } from "./permissions";
  */
 export const getKnowledgeChunkById = async (
   id: string,
-  organisationId: string,
+  tenantId: string,
   userId: string
 ) => {
   const filters: SQLWrapper[] = [
@@ -33,13 +33,13 @@ export const getKnowledgeChunkById = async (
         .where(
           and(
             eq(knowledgeEntry.id, knowledgeChunks.knowledgeEntryId),
-            eq(knowledgeEntry.organisationId, organisationId)
+            eq(knowledgeEntry.tenantId, tenantId)
           )
         )
     ),
   ];
 
-  const userTeams = await getUserTeamIds(userId, organisationId);
+  const userTeams = await getUserTeamIds(userId, tenantId);
 
   filters.push(
     exists(
@@ -63,7 +63,7 @@ export const getKnowledgeChunkById = async (
                   .where(
                     and(
                       eq(knowledgeGroup.id, knowledgeEntry.knowledgeGroupId),
-                      eq(knowledgeGroup.organisationWideAccess, true)
+                      eq(knowledgeGroup.tenantWideAccess, true)
                     )
                   )
               ),

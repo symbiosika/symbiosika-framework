@@ -17,7 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { pgBaseTable } from ".";
-import { organisations, teams, users } from "./users";
+import { tenants, teams, users } from "./users";
 import {
   createSelectSchema,
   createInsertSchema,
@@ -42,10 +42,10 @@ export const knowledgeText = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
-    organisationWide: boolean("organisation_wide").notNull().default(false),
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    tenantWide: boolean("tenant_wide").notNull().default(false),
     // optional team id to organize knowledge entries into teams.
     // security feature to limit access to knowledge entries
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
@@ -68,8 +68,8 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_updated_at_idx").on(knowledgeText.updatedAt),
     index("knowledge_text_deleted_at_idx").on(knowledgeText.deletedAt),
     index("knowledge_text_title_idx").on(knowledgeText.title),
-    index("knowledge_text_organisation_id_idx").on(
-      knowledgeText.organisationId
+    index("knowledge_text_tenant_id_idx").on(
+      knowledgeText.tenantId
     ),
     index("knowledge_text_team_id_idx").on(knowledgeText.teamId),
     index("knowledge_text_user_id_idx").on(knowledgeText.userId),
@@ -97,10 +97,10 @@ export const knowledgeGroup = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
-    organisationWideAccess: boolean("organisation_wide_access")
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    tenantWideAccess: boolean("tenant_wide_access")
       .notNull()
       .default(false),
     userId: uuid("user_id")
@@ -116,8 +116,8 @@ export const knowledgeGroup = pgBaseTable(
       .defaultNow(),
   },
   (table) => [
-    unique("knowledge_group_name_org_idx").on(table.name, table.organisationId),
-    index("knowledge_group_organisation_id_idx").on(table.organisationId),
+    unique("knowledge_group_name_org_idx").on(table.name, table.tenantId),
+    index("knowledge_group_tenant_id_idx").on(table.tenantId),
     index("knowledge_group_user_id_idx").on(table.userId),
   ]
 );
@@ -206,9 +206,9 @@ export const knowledgeEntry = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
+      .references(() => tenants.id, { onDelete: "cascade" }),
     // optional team id to organize knowledge entries into teams.
     // security feature to limit access to knowledge entries
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
@@ -247,7 +247,7 @@ export const knowledgeEntry = pgBaseTable(
     uniqueIndex("knowledgeentry_name_idx").on(
       knowledgeEntry.name,
       knowledgeEntry.parentId,
-      knowledgeEntry.organisationId,
+      knowledgeEntry.tenantId,
       knowledgeEntry.teamId,
       knowledgeEntry.userId,
       knowledgeEntry.version
@@ -255,8 +255,8 @@ export const knowledgeEntry = pgBaseTable(
     index("knowledgeentry_created_at_idx").on(knowledgeEntry.createdAt),
     index("knowledgeentry_updated_at_idx").on(knowledgeEntry.updatedAt),
     index("knowledgeentry_deleted_at_idx").on(knowledgeEntry.deletedAt),
-    index("knowledgeentry_organisation_id_idx").on(
-      knowledgeEntry.organisationId
+    index("knowledgeentry_tenant_id_idx").on(
+      knowledgeEntry.tenantId
     ),
     index("knowledge_entry_team_id_idx").on(knowledgeEntry.teamId),
     index("knowledge_entry_user_id_idx").on(knowledgeEntry.userId),
@@ -329,9 +329,9 @@ export const knowledgeFilters = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
+      .references(() => tenants.id, { onDelete: "cascade" }),
     category: varchar("category", { length: 50 }).notNull(), // z.B. 'department', 'topic', 'level'
     name: varchar("name", { length: 255 }).notNull(),
     createdAt: timestamp("created_at", { mode: "string" })
@@ -363,9 +363,9 @@ export const knowledgeEntryRelations = relations(
   knowledgeEntry,
   ({ many, one }) => ({
     knowledgeChunks: many(knowledgeChunks),
-    organisation: one(organisations, {
-      fields: [knowledgeEntry.organisationId],
-      references: [organisations.id],
+    tenant: one(tenants, {
+      fields: [knowledgeEntry.tenantId],
+      references: [tenants.id],
     }),
     team: one(teams, {
       fields: [knowledgeEntry.teamId],
@@ -395,9 +395,9 @@ export const knowledgeChunksRelations = relations(
 export const knowledgeTextRelations = relations(
   knowledgeText,
   ({ many, one }) => ({
-    organisation: one(organisations, {
-      fields: [knowledgeText.organisationId],
-      references: [organisations.id],
+    tenant: one(tenants, {
+      fields: [knowledgeText.tenantId],
+      references: [tenants.id],
     }),
     team: one(teams, {
       fields: [knowledgeText.teamId],

@@ -32,7 +32,7 @@ describe("Knowledge Chunks CRUD Operations", () => {
     const entry = await getDb()
       .insert(knowledgeEntry)
       .values({
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         name: "Test Knowledge Entry",
         description: "Test description",
         userId: TEST_ADMIN_USER.id,
@@ -58,7 +58,7 @@ describe("Knowledge Chunks CRUD Operations", () => {
     const team = await getDb()
       .insert(teams)
       .values({
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         name: "Test Team",
         description: "Test team description",
       })
@@ -69,11 +69,11 @@ describe("Knowledge Chunks CRUD Operations", () => {
     const group = await getDb()
       .insert(knowledgeGroup)
       .values({
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         name: "Test Knowledge Group",
         description: "Test knowledge group description",
         userId: TEST_ADMIN_USER.id,
-        organisationWideAccess: false,
+        tenantWideAccess: false,
       })
       .returning();
     testKnowledgeGroupId = group[0].id;
@@ -132,7 +132,7 @@ describe("Knowledge Chunks CRUD Operations", () => {
       const groupEntry = await getDb()
         .insert(knowledgeEntry)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Group Knowledge Entry",
           description: "Entry associated with a knowledge group",
           userId: TEST_ADMIN_USER.id,
@@ -157,7 +157,7 @@ describe("Knowledge Chunks CRUD Operations", () => {
       const userTeam = await getDb()
         .insert(teams)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "User Team",
           description: "User's team",
         })
@@ -205,11 +205,11 @@ describe("Knowledge Chunks CRUD Operations", () => {
       const orgWideGroup = await getDb()
         .insert(knowledgeGroup)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Org-Wide Knowledge Group",
           description: "Organization-wide accessible group",
           userId: TEST_ADMIN_USER.id,
-          organisationWideAccess: true, // Organization-wide access
+          tenantWideAccess: true, // Organization-wide access
         })
         .returning();
 
@@ -217,7 +217,7 @@ describe("Knowledge Chunks CRUD Operations", () => {
       const orgWideEntry = await getDb()
         .insert(knowledgeEntry)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Org-Wide Entry",
           description: "Entry with org-wide access",
           userId: TEST_ADMIN_USER.id,
@@ -265,11 +265,11 @@ describe("Knowledge Chunks CRUD Operations", () => {
       const restrictedGroup = await getDb()
         .insert(knowledgeGroup)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Restricted Knowledge Group",
           description: "Team-restricted group",
           userId: TEST_ADMIN_USER.id,
-          organisationWideAccess: false,
+          tenantWideAccess: false,
         })
         .returning();
 
@@ -277,7 +277,7 @@ describe("Knowledge Chunks CRUD Operations", () => {
       const restrictedEntry = await getDb()
         .insert(knowledgeEntry)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Restricted Entry",
           description: "Entry with restricted access",
           userId: TEST_ADMIN_USER.id,
@@ -302,7 +302,7 @@ describe("Knowledge Chunks CRUD Operations", () => {
       const restrictedTeam = await getDb()
         .insert(teams)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Restricted Team",
           description: "Team for restricted access",
         })
@@ -361,12 +361,12 @@ describe("Knowledge Chunks CRUD Operations", () => {
       ).rejects.toThrow("Knowledge chunk not found");
     });
 
-    test("should throw error for chunk from different organisation", async () => {
-      // Create a chunk in a different organisation
+    test("should throw error for chunk from different tenant", async () => {
+      // Create a chunk in a different tenant
       const otherOrgEntry = await getDb()
         .insert(knowledgeEntry)
         .values({
-          organisationId: TEST_ORGANISATION_2.id,
+          tenantId: TEST_ORGANISATION_2.id,
           name: "Other Org Entry",
           description: "Test description",
         })

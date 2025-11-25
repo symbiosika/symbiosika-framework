@@ -10,7 +10,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { organisations, users } from "./users";
+import { tenants, users } from "./users";
 import { pgBaseTable } from ".";
 import {
   createSelectSchema,
@@ -37,12 +37,12 @@ export const webhooks = pgBaseTable(
         onDelete: "cascade",
       })
       .notNull(),
-    organisationId: uuid("organisation_id")
-      .references(() => organisations.id, {
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, {
         onDelete: "cascade",
       })
       .notNull(),
-    organisationWide: boolean("organisation_wide").notNull().default(false),
+    tenantWide: boolean("tenant_wide").notNull().default(false),
     name: text("name").notNull(),
     type: webhookTypeEnum("type").notNull(), // 'n8n'
     event: webhookEventEnum("event").notNull(), // 'chat-output' or 'tool'
@@ -61,11 +61,11 @@ export const webhooks = pgBaseTable(
       .notNull(),
   },
   (webhooks) => [
-    index("webhooks_organisation_id_idx").on(webhooks.organisationId),
-    uniqueIndex("webhooks_name_organisation_id_idx").on(
+    index("webhooks_tenant_id_idx").on(webhooks.tenantId),
+    uniqueIndex("webhooks_name_tenant_id_idx").on(
       webhooks.name,
       webhooks.webhookUrl,
-      webhooks.organisationId,
+      webhooks.tenantId,
       webhooks.event,
       webhooks.type
     ),
@@ -73,9 +73,9 @@ export const webhooks = pgBaseTable(
 );
 
 export const webhooksRelations = relations(webhooks, ({ one }) => ({
-  organisation: one(organisations, {
-    fields: [webhooks.organisationId],
-    references: [organisations.id],
+  tenant: one(tenants, {
+    fields: [webhooks.tenantId],
+    references: [tenants.id],
   }),
 }));
 

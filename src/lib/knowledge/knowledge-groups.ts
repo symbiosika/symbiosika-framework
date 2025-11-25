@@ -23,24 +23,24 @@ export const createKnowledgeGroup = async (
 };
 
 /**
- * Get knowledge groups by organisation ID with optional filtering
+ * Get knowledge groups by tenant ID with optional filtering
  */
 export const getKnowledgeGroups = async (params: {
-  organisationId: string;
+  tenantId: string;
   userId?: string;
   teamId?: string;
   includeTeamAssignments?: boolean;
 }): Promise<KnowledgeGroupSelect[]> => {
   const db = getDb();
 
-  const conditions = [eq(knowledgeGroup.organisationId, params.organisationId)];
+  const conditions = [eq(knowledgeGroup.tenantId, params.tenantId)];
 
   // Filter by user if provided
   if (params.userId) {
     conditions.push(
       or(
         eq(knowledgeGroup.userId, params.userId),
-        eq(knowledgeGroup.organisationWideAccess, true)
+        eq(knowledgeGroup.tenantWideAccess, true)
       ) as SQL<unknown>
     );
   }
@@ -54,7 +54,7 @@ export const getKnowledgeGroups = async (params: {
 
     conditions.push(
       or(
-        eq(knowledgeGroup.organisationWideAccess, true),
+        eq(knowledgeGroup.tenantWideAccess, true),
         inArray(knowledgeGroup.id, teamGroupIds)
       ) as SQL<unknown>
     );
@@ -92,7 +92,7 @@ export const getKnowledgeGroups = async (params: {
 export const getKnowledgeGroupById = async (
   id: string,
   params: {
-    organisationId: string;
+    tenantId: string;
     userId?: string;
     includeTeamAssignments?: boolean;
   }
@@ -101,7 +101,7 @@ export const getKnowledgeGroupById = async (
 
   const conditions = [
     eq(knowledgeGroup.id, id),
-    eq(knowledgeGroup.organisationId, params.organisationId),
+    eq(knowledgeGroup.tenantId, params.tenantId),
   ];
 
   // Add user check if specified
@@ -109,7 +109,7 @@ export const getKnowledgeGroupById = async (
     conditions.push(
       or(
         eq(knowledgeGroup.userId, params.userId),
-        eq(knowledgeGroup.organisationWideAccess, true)
+        eq(knowledgeGroup.tenantWideAccess, true)
       ) as SQL<unknown>
     );
   }
@@ -146,7 +146,7 @@ export const updateKnowledgeGroup = async (
   id: string,
   data: Partial<KnowledgeGroupInsert>,
   params: {
-    organisationId: string;
+    tenantId: string;
     userId: string;
   }
 ): Promise<KnowledgeGroupSelect> => {
@@ -154,7 +154,7 @@ export const updateKnowledgeGroup = async (
 
   // Check if user has permission to update this group
   const group = await getKnowledgeGroupById(id, {
-    organisationId: params.organisationId,
+    tenantId: params.tenantId,
     userId: params.userId,
   });
 
@@ -174,7 +174,7 @@ export const updateKnowledgeGroup = async (
     .where(
       and(
         eq(knowledgeGroup.id, id),
-        eq(knowledgeGroup.organisationId, params.organisationId)
+        eq(knowledgeGroup.tenantId, params.tenantId)
       )
     )
     .returning();
@@ -188,7 +188,7 @@ export const updateKnowledgeGroup = async (
 export const deleteKnowledgeGroup = async (
   id: string,
   params: {
-    organisationId: string;
+    tenantId: string;
     userId: string;
   }
 ): Promise<void> => {
@@ -196,7 +196,7 @@ export const deleteKnowledgeGroup = async (
 
   // Check if user has permission to delete this group
   const group = await getKnowledgeGroupById(id, {
-    organisationId: params.organisationId,
+    tenantId: params.tenantId,
     userId: params.userId,
   });
 
@@ -212,7 +212,7 @@ export const deleteKnowledgeGroup = async (
     .where(
       and(
         eq(knowledgeGroup.id, id),
-        eq(knowledgeGroup.organisationId, params.organisationId)
+        eq(knowledgeGroup.tenantId, params.tenantId)
       )
     );
 };
@@ -224,7 +224,7 @@ export const assignTeamToKnowledgeGroup = async (
   knowledgeGroupId: string,
   teamId: string,
   params: {
-    organisationId: string;
+    tenantId: string;
     userId: string;
   }
 ): Promise<void> => {
@@ -232,7 +232,7 @@ export const assignTeamToKnowledgeGroup = async (
 
   // Check if user has permission to update this group
   const group = await getKnowledgeGroupById(knowledgeGroupId, {
-    organisationId: params.organisationId,
+    tenantId: params.tenantId,
     userId: params.userId,
   });
 
@@ -270,7 +270,7 @@ export const removeTeamFromKnowledgeGroup = async (
   knowledgeGroupId: string,
   teamId: string,
   params: {
-    organisationId: string;
+    tenantId: string;
     userId: string;
   }
 ): Promise<void> => {
@@ -278,7 +278,7 @@ export const removeTeamFromKnowledgeGroup = async (
 
   // Check if user has permission to update this group
   const group = await getKnowledgeGroupById(knowledgeGroupId, {
-    organisationId: params.organisationId,
+    tenantId: params.tenantId,
     userId: params.userId,
   });
 
@@ -305,7 +305,7 @@ export const removeTeamFromKnowledgeGroup = async (
 export const getTeamsForKnowledgeGroup = async (
   knowledgeGroupId: string,
   params: {
-    organisationId: string;
+    tenantId: string;
     userId: string;
   }
 ): Promise<{ id: string; teamId: string; teamName: string | null }[]> => {
@@ -313,7 +313,7 @@ export const getTeamsForKnowledgeGroup = async (
 
   // Check if user has permission to view this group
   const group = await getKnowledgeGroupById(knowledgeGroupId, {
-    organisationId: params.organisationId,
+    tenantId: params.tenantId,
     userId: params.userId,
   });
 

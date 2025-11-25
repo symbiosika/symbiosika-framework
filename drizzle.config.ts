@@ -4,7 +4,10 @@ import path, { resolve } from "path";
 // Get absolute path for current directory
 const BASE_PATH = resolve(__dirname);
 const CWD = process.cwd();
-const RELATIVE_PATH = path.relative(CWD, BASE_PATH);
+let RELATIVE_PATH = path.relative(CWD, BASE_PATH);
+if (RELATIVE_PATH === "") {
+  RELATIVE_PATH = ".";
+}
 console.log("RELATIVE_PATH is", RELATIVE_PATH);
 
 // Get environment variables for database connection

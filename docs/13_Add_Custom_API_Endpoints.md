@@ -107,7 +107,7 @@ app.get(
   async (c) => {
     const userId = c.get("usersId"); // Authenticated user ID
     const userEmail = c.get("usersEmail"); // User email
-    const orgId = c.get("organisationId"); // User's organization ID
+    const orgId = c.get("tenantId"); // User's organization ID
     
     // Your secure logic here
   }

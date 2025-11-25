@@ -5,7 +5,7 @@ export type PostProcessor = {
   description: string;
   execute: (input: {
     text: string;
-    organisationId: string;
+    tenantId: string;
   }) => Promise<{ text: string }>;
 };
 
@@ -39,7 +39,7 @@ export function getAllPostProcessors(): Omit<PostProcessor, "execute">[] {
  */
 export async function applyPostProcessors(
   text: string,
-  organisationId: string,
+  tenantId: string,
   processorNames?: string[]
 ): Promise<string> {
   if (!processorNames || processorNames.length === 0) {
@@ -54,7 +54,7 @@ export async function applyPostProcessors(
     }
     const processed = await processor.execute({
       text: result,
-      organisationId: organisationId,
+      tenantId: tenantId,
     });
     result = processed.text;
   }

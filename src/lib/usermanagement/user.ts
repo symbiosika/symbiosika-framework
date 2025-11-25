@@ -2,8 +2,8 @@ import { getDb } from "../db/db-connection";
 import { eq, and } from "drizzle-orm";
 import {
   users,
-  organisationMembers,
-  organisations,
+  tenantMembers,
+  tenants,
   teamMembers,
   teams,
   type UsersInsert,
@@ -53,7 +53,7 @@ export const getUserById = async (userId: string) => {
  */
 export const getUserByEmail = async (
   email: string,
-  organisationId?: string
+  tenantId?: string
 ) => {
   const q = getDb()
     .select({
@@ -66,12 +66,12 @@ export const getUserByEmail = async (
     .where(eq(users.email, email))
     .$dynamic();
 
-  if (organisationId) {
+  if (tenantId) {
     q.innerJoin(
-      organisationMembers,
+      tenantMembers,
       and(
-        eq(organisationMembers.userId, users.id),
-        eq(organisationMembers.organisationId, organisationId)
+        eq(tenantMembers.userId, users.id),
+        eq(tenantMembers.tenantId, tenantId)
       )
     );
   }
@@ -122,52 +122,52 @@ export const updateUser = async (
 };
 
 /**
- * Get the organisations of a user
+ * Get the tenants of a user
  */
 export const getUserOrganisations = async (userId: string) => {
   return await getDb()
     .select({
-      organisationId: organisations.id,
-      name: organisations.name,
-      role: organisationMembers.role,
-      joinedAt: organisationMembers.joinedAt,
+      tenantId: tenants.id,
+      name: tenants.name,
+      role: tenantMembers.role,
+      joinedAt: tenantMembers.joinedAt,
     })
-    .from(organisationMembers)
+    .from(tenantMembers)
     .innerJoin(
-      organisations,
-      eq(organisations.id, organisationMembers.organisationId)
+      tenants,
+      eq(tenants.id, tenantMembers.tenantId)
     )
-    .where(eq(organisationMembers.userId, userId));
+    .where(eq(tenantMembers.userId, userId));
 };
 
 /**
- * Add a user to an organisation
+ * Add a user to an tenant
  */
 export const addUserToOrganisation = async (
   userId: string,
-  organisationId: string,
+  tenantId: string,
   role: "admin" | "member" | "owner" = "member"
 ) => {
-  await getDb().insert(organisationMembers).values({
+  await getDb().insert(tenantMembers).values({
     userId,
-    organisationId,
+    tenantId,
     role,
   });
 };
 
 /**
- * Remove a user from an organisation
+ * Remove a user from an tenant
  */
 export const removeUserFromOrganisation = async (
   userId: string,
-  organisationId: string
+  tenantId: string
 ) => {
   await getDb()
-    .delete(organisationMembers)
+    .delete(tenantMembers)
     .where(
       and(
-        eq(organisationMembers.userId, userId),
-        eq(organisationMembers.organisationId, organisationId)
+        eq(tenantMembers.userId, userId),
+        eq(tenantMembers.tenantId, tenantId)
       )
     );
 };
@@ -180,7 +180,7 @@ export const getUserTeams = async (userId: string) => {
     .select({
       teamId: teams.id,
       teamName: teams.name,
-      organisationId: teams.organisationId,
+      tenantId: teams.tenantId,
       role: teamMembers.role,
       joinedAt: teamMembers.joinedAt,
     })
@@ -214,27 +214,27 @@ export const removeUserFromTeam = async (userId: string, teamId: string) => {
 };
 
 /**
- * Set the last selected organisation of a user
+ * Set the last selected tenant of a user
  */
 export const setUsersLastOrganisation = async (
   userId: string,
-  organisationId?: string
+  tenantId?: string
 ) => {
   const usersOrganisations = await getUserOrganisations(userId);
 
   if (
-    organisationId &&
-    usersOrganisations.some((org) => org.organisationId === organisationId)
+    tenantId &&
+    usersOrganisations.some((org) => org.tenantId === tenantId)
   ) {
     await getDb()
       .update(users)
-      .set({ lastOrganisationId: organisationId })
+      .set({ lastOrganisationId: tenantId })
       .where(eq(users.id, userId));
   } else {
     if (usersOrganisations.length > 0) {
       await getDb()
         .update(users)
-        .set({ lastOrganisationId: usersOrganisations[0].organisationId })
+        .set({ lastOrganisationId: usersOrganisations[0].tenantId })
         .where(eq(users.id, userId));
     } else {
       await getDb()
@@ -246,11 +246,11 @@ export const setUsersLastOrganisation = async (
 };
 
 /**
- * Set another organisation as the last selected organisation
+ * Set another tenant as the last selected tenant
  */
 export const setAnotherOrganisationAsLast = async (
   userId: string,
-  organisationIdThatCannotBeLast: string
+  tenantIdThatCannotBeLast: string
 ) => {
   const usersLastOrganisation = await getDb()
     .select({
@@ -261,16 +261,16 @@ export const setAnotherOrganisationAsLast = async (
 
   if (
     usersLastOrganisation[0]?.lastOrganisationId ===
-    organisationIdThatCannotBeLast
+    tenantIdThatCannotBeLast
   ) {
     await setUsersLastOrganisation(userId);
   }
 };
 
 /**
- * Get the last selected organisation of a user
- * Will set the last selected organisation to the first organisation
- * if the user has no last selected organisation
+ * Get the last selected tenant of a user
+ * Will set the last selected tenant to the first tenant
+ * if the user has no last selected tenant
  */
 export const getUsersLastSelectedOrganisation = async (
   userId: string
@@ -278,12 +278,12 @@ export const getUsersLastSelectedOrganisation = async (
   const user = await getUserById(userId);
 
   if (!user.lastOrganisationId) {
-    const organisations = await getUserOrganisations(userId);
-    if (organisations.length > 0) {
+    const tenants = await getUserOrganisations(userId);
+    if (tenants.length > 0) {
       await setUsersLastOrganisation(userId);
-      return organisations[0].organisationId;
+      return tenants[0].tenantId;
     } else {
-      throw new Error("User has no organisations");
+      throw new Error("User has no tenants");
     }
   }
 

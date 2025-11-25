@@ -1,7 +1,7 @@
 import { eq, and, isNull } from "drizzle-orm";
 import {
   invitationCodes,
-  organisationMembers,
+  tenantMembers,
   sessions,
   users,
   type UserSelectBasic,
@@ -228,7 +228,7 @@ const changePassword = async (
 /**
  * Check if a general invitation code is valid
  * This will check if there are any general invitation codes and if the provided code is valid
- * If the code is valid, it will return the organisationId to set if a organisation is provided
+ * If the code is valid, it will return the tenantId to set if a tenant is provided
  */
 const checkGeneralInvitationCode = async (
   code: string | undefined
@@ -254,7 +254,7 @@ const checkGeneralInvitationCode = async (
     return {
       usedInvitationCode: true,
       check: true,
-      setOrganisationId: found.organisationId,
+      setOrganisationId: found.tenantId,
     };
   }
 };
@@ -303,13 +303,13 @@ export const LocalAuth = {
     const user = await setUserInDb(email, password, sendVerificationEmail);
     log.info(`New user registered: ${user.id}`);
 
-    // check if an organisation was provided via invitation code
+    // check if an tenant was provided via invitation code
     if (firstOrganisationId) {
-      // check if the organisation has already members
+      // check if the tenant has already members
       const members = await getDb()
         .select()
-        .from(organisationMembers)
-        .where(eq(organisationMembers.organisationId, firstOrganisationId));
+        .from(tenantMembers)
+        .where(eq(tenantMembers.tenantId, firstOrganisationId));
 
       let role: "member" | "owner" = "member";
       if (members.length === 0) {
@@ -323,8 +323,8 @@ export const LocalAuth = {
 
     // accept all pending invitations if there are any
     if (invitedInOrganisationIds.length > 0) {
-      for (const organisationId of invitedInOrganisationIds) {
-        await acceptAllPendingInvitationsForUser(user.id, organisationId);
+      for (const tenantId of invitedInOrganisationIds) {
+        await acceptAllPendingInvitationsForUser(user.id, tenantId);
       }
     }
 

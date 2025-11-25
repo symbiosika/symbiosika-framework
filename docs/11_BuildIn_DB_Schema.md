@@ -27,13 +27,13 @@ Defined in `additional-data.ts`.
 | createdAt | created_at | timestamp |
 | updatedAt | updated_at | timestamp |
 
-## organisation_specific_data
+## tenant_specific_data
 Defined in `additional-data.ts`.
 
 | Property | Column | Type |
 | --- | --- | --- |
 | id | id | uuid |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 | key | category | varchar |
 | version | version | integer |
 | data | data | jsonb |
@@ -62,7 +62,7 @@ Defined in `api-tokens.ts`.
 | name | name | varchar |
 | token | token | text |
 | userId | user_id | uuid |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 | scopes | scopes | jsonb |
 | lastUsed | last_used | timestamp |
 | expiresAt | expires_at | timestamp |
@@ -78,7 +78,7 @@ Defined in `files.ts`.
 | id | id | uuid |
 | createdAt | created_at | timestamp |
 | updatedAt | updated_at | timestamp |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 | bucket | bucket | varchar |
 | name | name | varchar |
 | fileType | file_type | varchar |
@@ -93,7 +93,7 @@ Defined in `jobs.ts`.
 | --- | --- | --- |
 | id | id | uuid |
 | userId | user_id | uuid |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 | type | type | text |
 | status | status | jobStatusEnum |
 | metadata | metadata | jsonb |
@@ -108,8 +108,8 @@ Defined in `knowledge.ts`.
 | Property | Column | Type |
 | --- | --- | --- |
 | id | id | uuid |
-| organisationId | organisation_id | uuid |
-| organisationWide | organisation_wide | boolean |
+| tenantId | tenant_id | uuid |
+| tenantWide | tenant_wide | boolean |
 | teamId | team_id | uuid |
 | userId | user_id | uuid |
 | text | text | text |
@@ -125,8 +125,8 @@ Defined in `knowledge.ts`.
 | Property | Column | Type |
 | --- | --- | --- |
 | id | id | uuid |
-| organisationId | organisation_id | uuid |
-| organisationWideAccess | organisation_wide_access | boolean |
+| tenantId | tenant_id | uuid |
+| tenantWideAccess | tenant_wide_access | boolean |
 | userId | user_id | uuid |
 | name | name | varchar |
 | description | description | text |
@@ -150,7 +150,7 @@ Defined in `knowledge.ts`.
 | Property | Column | Type |
 | --- | --- | --- |
 | id | id | uuid |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 | teamId | team_id | uuid |
 | userId | user_id | uuid |
 | userOwned | user_owned | boolean |
@@ -187,7 +187,7 @@ Defined in `knowledge.ts`.
 | Property | Column | Type |
 | --- | --- | --- |
 | id | id | uuid |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 | category | category | varchar |
 | name | name | varchar |
 | createdAt | created_at | timestamp |
@@ -203,7 +203,7 @@ Defined in `logs.ts`.
 | source | source | varchar |
 | category | category | varchar |
 | sessionId | session_id | uuid |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 | message | message | text |
 | metadata | metadata | jsonb |
 | version | version | integer |
@@ -217,7 +217,7 @@ Defined in `secrets.ts`.
 | id | id | uuid |
 | reference | reference | varchar |
 | referenceId | reference_id | uuid |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 | name | name | varchar |
 | label | label | varchar |
 | value | value | text |
@@ -236,7 +236,7 @@ Defined in `server.ts`.
 | createdAt | created_at | timestamp |
 | updatedAt | updated_at | timestamp |
 
-## organisations
+## tenants
 Defined in `users.ts`.
 
 | Property | Column | Type |
@@ -272,7 +272,7 @@ Defined in `users.ts`.
 | profileImage | profile_image | bytea |
 | profileImageName | profile_image_name | varchar |
 | profileImageContentType | profile_image_content_type | varchar |
-| lastOrganisationId | last_organisation_id | uuid |
+| lastOrganisationId | last_tenant_id | uuid |
 
 ## sessions
 Defined in `users.ts`.
@@ -293,7 +293,7 @@ Defined in `users.ts`.
 | meta | meta | jsonb |
 | createdAt | created_at | timestamp |
 | updatedAt | updated_at | timestamp |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 
 ## user_group_members
 Defined in `users.ts`.
@@ -330,7 +330,7 @@ Defined in `users.ts`.
 | pathExpression | path_expression | text |
 | createdAt | created_at | timestamp |
 | updatedAt | updated_at | timestamp |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 
 ## group_permissions
 Defined in `users.ts`.
@@ -351,7 +351,7 @@ Defined in `users.ts`.
 | meta | meta | jsonb |
 | createdAt | created_at | timestamp |
 | updatedAt | updated_at | timestamp |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 
 ## team_members
 Defined in `users.ts`.
@@ -363,27 +363,27 @@ Defined in `users.ts`.
 | role | role | teamMemberRoleEnum |
 | joinedAt | joined_at | timestamp |
 
-## organisation_invitations
+## tenant_invitations
 Defined in `users.ts`.
 
 | Property | Column | Type |
 | --- | --- | --- |
 | id | id | uuid |
 | email | email | text |
-| role | role | organisationMemberRoleEnum |
-| organisationId | organisation_id | uuid |
+| role | role | tenantMemberRoleEnum |
+| tenantId | tenant_id | uuid |
 | status | status | varchar |
 | createdAt | created_at | timestamp |
 | updatedAt | updated_at | timestamp |
 
-## organisation_members
+## tenant_members
 Defined in `users.ts`.
 
 | Property | Column | Type |
 | --- | --- | --- |
 | userId | user_id | uuid |
-| organisationId | organisation_id | uuid |
-| role | role | organisationMemberRoleEnum |
+| tenantId | tenant_id | uuid |
+| role | role | tenantMemberRoleEnum |
 | joinedAt | joined_at | timestamp |
 
 ## invitation_codes
@@ -394,7 +394,7 @@ Defined in `users.ts`.
 | id | id | uuid |
 | isActive | is_active | boolean |
 | code | code | text |
-| organisationId | organisation_id | uuid |
+| tenantId | tenant_id | uuid |
 | createdAt | created_at | timestamp |
 | expiresAt | expires_at | timestamp |
 | maxUses | max_uses | integer |
@@ -407,8 +407,8 @@ Defined in `webhooks.ts`.
 | --- | --- | --- |
 | id | id | uuid |
 | userId | user_id | uuid |
-| organisationId | organisation_id | uuid |
-| organisationWide | organisation_wide | boolean |
+| tenantId | tenant_id | uuid |
+| tenantWide | tenant_wide | boolean |
 | name | name | text |
 | type | type | webhookTypeEnum |
 | event | event | webhookEventEnum |

@@ -17,13 +17,13 @@ describe("Knowledge Text Flow", () => {
     const knowledgeText = await createKnowledgeText({
       text: testText,
       title: "Test Document",
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
     });
     expect(knowledgeText.id).toBeDefined();
 
     // 2. Extract knowledge with filters
     const result = await extractKnowledgeFromExistingDbEntry({
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
       sourceType: "text",
       sourceId: knowledgeText.id,
       filters: {
@@ -39,7 +39,7 @@ describe("Knowledge Text Flow", () => {
         "test-case": ["test-1"],
       },
       userId: TEST_ORGANISATION_1.id,
-      organisationId: TEST_ORGANISATION_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
     });
     expect(foundKnowledge).toBeDefined();
     expect(foundKnowledge.length).toBeGreaterThan(0);

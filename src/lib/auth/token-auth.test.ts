@@ -43,7 +43,7 @@ describe("Token Authentication", () => {
       const result = await createApiToken({
         name: "Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read", "user:write"],
       });
 
@@ -55,7 +55,7 @@ describe("Token Authentication", () => {
       const result = await createApiToken({
         name: "Expiring Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read"],
         expiresIn: 5, // 5 minutes
       });
@@ -69,7 +69,7 @@ describe("Token Authentication", () => {
       const { token } = await createApiToken({
         name: "Search Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read"],
       });
 
@@ -93,7 +93,7 @@ describe("Token Authentication", () => {
       const { token } = await createApiToken({
         name: "JWT Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read", "user:write"],
       });
 
@@ -106,7 +106,7 @@ describe("Token Authentication", () => {
       const { token } = await createApiToken({
         name: "Scope Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read", "user:write"],
       });
 
@@ -118,7 +118,7 @@ describe("Token Authentication", () => {
       const { token } = await createApiToken({
         name: "Scope Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read"],
       });
 
@@ -136,7 +136,7 @@ describe("Token Authentication", () => {
       const { token } = await createApiToken({
         name: "Revoke Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read"],
       });
 
@@ -158,14 +158,14 @@ describe("Token Authentication", () => {
       await createApiToken({
         name: "List Test Token 1",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read"],
       });
 
       await createApiToken({
         name: "List Test Token 2",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:write"],
       });
 

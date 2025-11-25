@@ -237,8 +237,8 @@ export const stdTemplatePasswordResetWelcome: EmailTemplateFunction = async (
 export const stdTemplateInviteToOrganization: EmailTemplateFunction = async (
   data
 ) => {
-  // Determine organisation name if present
-  const orgName = data.organisation?.name;
+  // Determine tenant name if present
+  const orgName = data.tenant?.name;
 
   // English content for organization invite
   const englishContent = orgName
@@ -270,7 +270,7 @@ export const stdTemplateInviteToOrganization: EmailTemplateFunction = async (
       <p>Viele Grüße,<br>Ihr ${data.appName}-Team</p>
     `;
 
-  // Subject with organisation name if present
+  // Subject with tenant name if present
   const subject = orgName
     ? `Invitation to Join ${orgName} on ${data.appName} / Einladung zu ${orgName} auf ${data.appName}`
     : `Invitation to Join ${data.appName} / Einladung zu ${data.appName}`;
@@ -290,8 +290,8 @@ export const stdTemplateInviteToOrganization: EmailTemplateFunction = async (
 
 export const stdTemplateInviteToOrganizationWhenUserExists: EmailTemplateFunction =
   async (data) => {
-    // Determine organisation name if present
-    const orgName = data.organisation?.name;
+    // Determine tenant name if present
+    const orgName = data.tenant?.name;
 
     // English content for existing user organization invite
     const englishContent = orgName
@@ -331,7 +331,7 @@ export const stdTemplateInviteToOrganizationWhenUserExists: EmailTemplateFunctio
         <p>Viele Grüße,<br>Ihr ${data.appName}-Team</p>
       `;
 
-    // Subject with organisation name if present
+    // Subject with tenant name if present
     const subject = orgName
       ? `Invitation to Join ${orgName} on ${data.appName} / Einladung zu ${orgName} auf ${data.appName}`
       : `Invitation to Join an Organization on ${data.appName} / Einladung zu einer Organisation auf ${data.appName}`;

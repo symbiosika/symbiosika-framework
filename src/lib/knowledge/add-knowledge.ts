@@ -58,7 +58,7 @@ const storeKnowledgeChunk = async (data: KnowledgeChunksInsert) => {
  * Extract knowledge from a file and store it in the database
  */
 export const extractKnowledgeFromText = async (data: {
-  organisationId: string;
+  tenantId: string;
   title: string;
   text?: string;
   pages?: PageContent[];
@@ -96,7 +96,7 @@ export const extractKnowledgeFromText = async (data: {
       try {
         if (chunk.text?.length > 10) {
           const embedding = await generateEmbedding(chunk.text, {
-            organisationId: data.organisationId,
+            tenantId: data.tenantId,
             userId: data.userId,
           });
           return { ...chunk, embedding };
@@ -131,7 +131,7 @@ export const extractKnowledgeFromText = async (data: {
       //   chunks,
       //   data.title,
       //   {
-      //     organisationId: data.organisationId,
+      //     tenantId: data.tenantId,
       //     userId: data.userId,
       //   },
       //   {
@@ -146,7 +146,7 @@ export const extractKnowledgeFromText = async (data: {
       //   fullText,
       //   data.title,
       //   {
-      //     organisationId: data.organisationId,
+      //     tenantId: data.tenantId,
       //     userId: data.userId,
       //   },
       //   {
@@ -171,7 +171,7 @@ export const extractKnowledgeFromText = async (data: {
   const knowledgeEntry = await storeKnowledgeEntry(
     {
       ...data,
-      organisationId: data.organisationId,
+      tenantId: data.tenantId,
       name: title,
       meta,
       userId: data.userId,
@@ -211,7 +211,7 @@ export const extractKnowledgeFromText = async (data: {
  * Extract knowledge from a file and store it in the database
  */
 export const extractKnowledgeFromExistingDbEntry = async (data: {
-  organisationId: string;
+  tenantId: string;
   sourceType: FileSourceType;
   sourceId?: string;
   sourceFileBucket?: string;
@@ -243,7 +243,7 @@ export const extractKnowledgeFromExistingDbEntry = async (data: {
     sourceFileBucket: data.sourceFileBucket,
     sourceId: data.sourceId,
     sourceUrl: data.sourceUrl,
-    organisationId: data.organisationId,
+    tenantId: data.tenantId,
     userId: data.userId,
     teamId: data.teamId,
     workspaceId: data.workspaceId,
@@ -261,7 +261,7 @@ export const extractKnowledgeFromExistingDbEntry = async (data: {
  */
 export const extractKnowledgeInOneStep = async (
   data: {
-    organisationId: string;
+    tenantId: string;
     filters?: Record<string, string>;
     teamId?: string;
     workspaceId?: string;
@@ -290,14 +290,14 @@ export const extractKnowledgeInOneStep = async (
   if (data.file) {
     // 1. parse file content
     const parsed = await parseFile(data.file, {
-      organisationId: data.organisationId,
+      tenantId: data.tenantId,
       teamId: data.teamId,
       workspaceId: data.workspaceId,
     });
 
     // 2. Extract knowledge
     const result = await extractKnowledgeFromText({
-      organisationId: data.organisationId,
+      tenantId: data.tenantId,
       title: data.file.name ?? "Unknown",
       text: parsed.text,
       filters: data.filters,
@@ -319,7 +319,7 @@ export const extractKnowledgeInOneStep = async (
   // if the text is provided, extract knowledge from it
   else if (data.data) {
     return extractKnowledgeFromText({
-      organisationId: data.organisationId,
+      tenantId: data.tenantId,
       title: data.data.title,
       text: data.data.text,
       filters: data.filters,

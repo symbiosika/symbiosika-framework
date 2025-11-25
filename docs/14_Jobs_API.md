@@ -24,10 +24,10 @@ function getJob(id: string): Promise<any>
 ```
 
 ## getJobsByOrganisation
-List jobs for an organisation.
+List jobs for an tenant.
 
 ```typescript
-function getJobsByOrganisation(organisationId: string, options?: {
+function getJobsByOrganisation(tenantId: string, options?: {
   status?: JobStatus;
   type?: string;
   limit?: number;
@@ -39,7 +39,7 @@ function getJobsByOrganisation(organisationId: string, options?: {
 Create a new job.
 
 ```typescript
-function createJob(type: string, metadata: any, organisationId: string): Promise<any>
+function createJob(type: string, metadata: any, tenantId: string): Promise<any>
 ```
 
 ## updateJobProgress

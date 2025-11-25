@@ -41,7 +41,7 @@ FastApp Framework is a TypeScript backend framework built on Hono and Bun runtim
 ### Route Structure
 Organization-centric multi-tenant API design:
 - `/user/*` - User management and authentication
-- `/organisation/{orgId}/*` - Organization-scoped resources
+- `/tenant/{orgId}/*` - Organization-scoped resources
   - `/ai/*` - AI features (chat, knowledge, models, templates)
   - `/files/*` - File management
   - `/teams/*` - Team management
@@ -51,7 +51,7 @@ Organization-centric multi-tenant API design:
 
 ### Database Schema
 Multi-tenant PostgreSQL schema with pgvector for AI features:
-- Core tables: `users`, `organisations`, `workspaces`, `teams`
+- Core tables: `users`, `tenants`, `workspaces`, `teams`
 - AI tables: `chat`, `knowledge`, `embeddings`, `prompts`, `models`
 - System tables: `jobs`, `logs`, `files`, `webhooks`, `plugins`
 - Security tables: `secrets`, `api_tokens`

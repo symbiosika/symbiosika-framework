@@ -96,14 +96,14 @@ export async function getJob(id: string) {
   return res[0];
 }
 
-export async function getJobsByOrganisation(organisationId: string, options?: {
+export async function getJobsByOrganisation(tenantId: string, options?: {
   status?: JobStatus;
   type?: string;
   limit?: number;
   offset?: number;
 }) {
   const db = getDb();
-  const conditions = [eq(jobs.organisationId, organisationId)];
+  const conditions = [eq(jobs.tenantId, tenantId)];
   
   if (options?.status) {
     conditions.push(eq(jobs.status, options.status));
@@ -149,11 +149,11 @@ export async function getJobsByOrganisation(organisationId: string, options?: {
 export async function createJob(
   type: string,
   metadata: any,
-  organisationId: string
+  tenantId: string
 ) {
   const res = await getDb()
     .insert(jobs)
-    .values({ type, metadata, status: "pending", organisationId })
+    .values({ type, metadata, status: "pending", tenantId })
     .returning();
   return res[0];
 }

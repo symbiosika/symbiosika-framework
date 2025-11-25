@@ -23,7 +23,7 @@ type KnowledgeChunk = {
  * Get the n nearest embeddings to the search text
  */
 export async function getNearestEmbeddings(q: {
-  organisationId: string;
+  tenantId: string;
   searchText: string;
   n?: number;
   addBeforeN?: number;
@@ -46,7 +46,7 @@ export async function getNearestEmbeddings(q: {
 > {
   // Generate the embedding for the search text
   const embed = await generateEmbedding(q.searchText, {
-    organisationId: q.organisationId,
+    tenantId: q.tenantId,
   });
 
   // set some default values
@@ -77,8 +77,8 @@ export async function getNearestEmbeddings(q: {
 
   const whereClause =
     filters.length > 0
-      ? sql`WHERE ${sql.join(filters, sql` AND `)} AND ${knowledgeEntry.organisationId} = ${q.organisationId}`
-      : sql`WHERE ${knowledgeEntry.organisationId} = ${q.organisationId}`;
+      ? sql`WHERE ${sql.join(filters, sql` AND `)} AND ${knowledgeEntry.tenantId} = ${q.tenantId}`
+      : sql`WHERE ${knowledgeEntry.tenantId} = ${q.tenantId}`;
 
   const rows = (await getDb().execute<KnowledgeChunk>(sql`
     SELECT
@@ -138,7 +138,7 @@ export async function getNearestEmbeddings(q: {
             ${knowledgeEntry} ON ${knowledgeChunks.knowledgeEntryId} = ${knowledgeEntry.id}
         WHERE 
             ${knowledgeChunks.knowledgeEntryId} = ${e.knowledgeEntryId}
-            AND ${knowledgeEntry.organisationId} = ${q.organisationId}
+            AND ${knowledgeEntry.tenantId} = ${q.tenantId}
             AND ${knowledgeChunks.order} >= ${e.order - q.addBeforeN}
             AND ${knowledgeChunks.order} <= ${e.order + q.addAfterN}
         `)) as KnowledgeChunk[];
@@ -156,7 +156,7 @@ export async function getNearestEmbeddings(q: {
  * This will search for the nearest chunks and then get the full source documents
  */
 export async function getFullSourceDocumentsForSimilaritySearch(q: {
-  organisationId: string;
+  tenantId: string;
   searchText: string;
   n?: number;
   filterKnowledgeEntryIds?: string[];
@@ -173,7 +173,7 @@ export async function getFullSourceDocumentsForSimilaritySearch(q: {
     nearestChunks.map((chunk) =>
       getFullSourceDocumentsForKnowledgeEntry(
         chunk.knowledgeEntryId,
-        q.organisationId,
+        q.tenantId,
         q.userId
       )
     )

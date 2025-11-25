@@ -12,7 +12,7 @@ console.log("Server´s upload directory: ", ATTACHMENT_DIR);
 export const saveFileToLocalDisc: SaveFileFunction = async (
   file,
   bucket,
-  organisationId
+  tenantId
 ) => {
   const id = crypto.randomUUID();
   const fileName = file.name;
@@ -35,17 +35,17 @@ export const saveFileToLocalDisc: SaveFileFunction = async (
   const publicFileName = fileExtension ? `${id}.${fileExtension}` : id;
 
   return {
-    path: `/api/v1/organisation/${organisationId}/files/local/${bucket}/${publicFileName}`,
+    path: `/api/v1/tenant/${tenantId}/files/local/${bucket}/${publicFileName}`,
     id: id,
     name: fileName,
-    organisationId: organisationId,
+    tenantId: tenantId,
   };
 };
 
 export const getFileFromLocalDisc: GetFileFunction = async (
   name,
   bucket,
-  organisationId
+  tenantId
 ) => {
   // Generate the file path
   const filePath = path.join(ATTACHMENT_DIR, bucket, name);
@@ -61,7 +61,7 @@ export const getFileFromLocalDisc: GetFileFunction = async (
 export const deleteFileFromLocalDisc: DeleteFileFunction = async (
   name,
   bucket,
-  organisationId
+  tenantId
 ) => {
   // Generate the file path
   const filePath = path.join(ATTACHMENT_DIR, bucket, name);

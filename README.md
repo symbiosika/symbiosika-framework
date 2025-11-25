@@ -49,13 +49,13 @@ The framework provides several pre-built services:
 The framework automatically sets up various API endpoints:
 
 - User Management (`/user/*`)
-- Organization Management (`/organisation/*`)
+- Organization Management (`/tenant/*`)
 - File Management (`/files/*`)
 - AI Features (`/ai/*`)
 - Payment Processing (`/payment/*`)
 - Plugin Management (`/plugins/*`)
 - Webhook Management (`/webhooks/*`)
-- Connections (`/organisation/:organisationId/connections/*`)
+- Connections (`/tenant/:tenantId/connections/*`)
 - And more...
 
 ### Database Integration

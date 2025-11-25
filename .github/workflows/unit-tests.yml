@@ -109,7 +109,7 @@ jobs:
         run: bun test src/test/check-connection.test.ts
 
       # - name: Single test
-      #   run: bun test src/routes/organisation/[organisationId]/invitations/security.test.ts
+      #   run: bun test src/routes/tenant/[tenantId]/invitations/security.test.ts
 
       - name: Run tests
         run: bun test --reporter=junit --reporter-outfile=./junit.xml

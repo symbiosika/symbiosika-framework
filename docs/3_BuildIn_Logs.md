@@ -62,7 +62,7 @@ All admin log endpoints require appropriate authentication and the `app:logs` sc
 | source         | string    | Application component or service name       |
 | category       | string    | Log category (e.g., security, performance)  |
 | sessionId      | uuid      | Optional session ID                         |
-| organisationId | uuid      | Optional organisation ID                    |
+| tenantId | uuid      | Optional tenant ID                    |
 | message        | text      | Log message                                 |
 | metadata       | jsonb     | Additional structured data                  |
 | version        | integer   | Version (default: 0)                        |

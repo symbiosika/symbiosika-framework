@@ -3,7 +3,7 @@ import { eq, and } from "drizzle-orm";
 import {
   userSpecificData,
   appSpecificData,
-  organisationSpecificData,
+  tenantSpecificData,
   teamSpecificData,
   type UserSpecificDataInsert,
   type AppSpecificDataInsert,
@@ -103,23 +103,23 @@ export const createOrganisationSpecificData = async (
   data: OrganisationSpecificDataInsert
 ) => {
   const result = await getDb()
-    .insert(organisationSpecificData)
+    .insert(tenantSpecificData)
     .values(data)
     .returning();
   return result[0];
 };
 
 export const getOrganisationSpecificData = async (
-  organisationId: string,
+  tenantId: string,
   key: string
 ) => {
   const data = await getDb()
     .select()
-    .from(organisationSpecificData)
+    .from(tenantSpecificData)
     .where(
       and(
-        eq(organisationSpecificData.organisationId, organisationId),
-        eq(organisationSpecificData.key, key)
+        eq(tenantSpecificData.tenantId, tenantId),
+        eq(tenantSpecificData.key, key)
       )
     );
   if (data.length === 0) {
@@ -129,17 +129,17 @@ export const getOrganisationSpecificData = async (
 };
 
 export const updateOrganisationSpecificData = async (
-  organisationId: string,
+  tenantId: string,
   key: string,
   data: Partial<OrganisationSpecificDataSelect>
 ) => {
   const result = await getDb()
-    .update(organisationSpecificData)
+    .update(tenantSpecificData)
     .set({ ...data, updatedAt: new Date().toISOString() })
     .where(
       and(
-        eq(organisationSpecificData.organisationId, organisationId),
-        eq(organisationSpecificData.key, key)
+        eq(tenantSpecificData.tenantId, tenantId),
+        eq(tenantSpecificData.key, key)
       )
     )
     .returning();
@@ -147,15 +147,15 @@ export const updateOrganisationSpecificData = async (
 };
 
 export const deleteOrganisationSpecificData = async (
-  organisationId: string,
+  tenantId: string,
   key: string
 ) => {
   await getDb()
-    .delete(organisationSpecificData)
+    .delete(tenantSpecificData)
     .where(
       and(
-        eq(organisationSpecificData.organisationId, organisationId),
-        eq(organisationSpecificData.key, key)
+        eq(tenantSpecificData.tenantId, tenantId),
+        eq(tenantSpecificData.key, key)
       )
     );
 };

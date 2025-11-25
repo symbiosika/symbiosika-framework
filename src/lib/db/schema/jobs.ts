@@ -8,7 +8,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { organisations, users } from "./users";
+import { tenants, users } from "./users";
 import { pgBaseTable } from ".";
 import {
   createSelectSchema,
@@ -35,8 +35,8 @@ export const jobs = pgBaseTable(
     userId: uuid("user_id").references(() => users.id, {
       onDelete: "cascade",
     }),
-    organisationId: uuid("organisation_id")
-      .references(() => organisations.id, {
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, {
         onDelete: "cascade",
       })
       .notNull(),

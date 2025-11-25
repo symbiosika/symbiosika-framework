@@ -8,7 +8,7 @@ The Fastapp Framework provides a built-in file management system for organizatio
 
 ## API Route Prefix
 
-All file management API routes are prefixed with `/api/v1/` by default. For example, uploading a file is available at `/api/v1/organisation/:organisationId/files/:type/:bucket`.
+All file management API routes are prefixed with `/api/v1/` by default. For example, uploading a file is available at `/api/v1/tenant/:tenantId/files/:type/:bucket`.
 
 ---
 
@@ -16,10 +16,10 @@ All file management API routes are prefixed with `/api/v1/` by default. For exam
 
 The following endpoints are available for managing files within an organization:
 
-- **POST `/api/v1/organisation/:organisationId/files/:type/:bucket`**  
+- **POST `/api/v1/tenant/:tenantId/files/:type/:bucket`**  
   Upload a file to a specific bucket, either to the database (`type=db`) or local disk (`type=local`). Only organization admins can upload files.
   **Params:**
-    - `organisationId` (string, URL param)
+    - `tenantId` (string, URL param)
     - `type` ("db" | "local", URL param)
     - `bucket` (string, URL param)
   **Body:**
@@ -30,24 +30,24 @@ The following endpoints are available for managing files within an organization:
     "path": "string",
     "id": "string",
     "name": "string",
-    "organisationId": "string"
+    "tenantId": "string"
   }
   ```
 
-- **GET `/api/v1/organisation/:organisationId/files/:type/:bucket/:filename`**  
+- **GET `/api/v1/tenant/:tenantId/files/:type/:bucket/:filename`**  
   Retrieve a file by filename from a specific bucket (database or local disk). Only organization members can access files.
   **Params:**
-    - `organisationId` (string, URL param)
+    - `tenantId` (string, URL param)
     - `type` ("db" | "local", URL param)
     - `bucket` (string, URL param)
     - `filename` (string, URL param)
   **Response:**
     - Returns the file as a binary response with the correct `Content-Type` header.
 
-- **GET `/api/v1/organisation/:organisationId/files/:type/:bucket/:id/info`**  
+- **GET `/api/v1/tenant/:tenantId/files/:type/:bucket/:id/info`**  
   Get metadata/info about a file by its ID (only for files stored in the database). Only organization members can access file info.
   **Params:**
-    - `organisationId` (string, URL param)
+    - `tenantId` (string, URL param)
     - `type` (must be "db", URL param)
     - `bucket` (string, URL param)
     - `id` (string, URL param)
@@ -60,7 +60,7 @@ The following endpoints are available for managing files within an organization:
     "extension": "string",
     "createdAt": "string",
     "updatedAt": "string",
-    "organisationId": "string",
+    "tenantId": "string",
     "bucket": "string",
     "chatId": "string | null",
     "workspaceId": "string | null",
@@ -68,10 +68,10 @@ The following endpoints are available for managing files within an organization:
   }
   ```
 
-- **DELETE `/api/v1/organisation/:organisationId/files/:type/:bucket/:id`**  
+- **DELETE `/api/v1/tenant/:tenantId/files/:type/:bucket/:id`**  
   Delete a file by its ID from a specific bucket (database or local disk). Only organization members can delete files.
   **Params:**
-    - `organisationId` (string, URL param)
+    - `tenantId` (string, URL param)
     - `type` ("db" | "local", URL param)
     - `bucket` (string, URL param)
     - `id` (string, URL param)
@@ -101,7 +101,7 @@ The following endpoints are available for managing files within an organization:
 
 ### Upload a File
 
-`POST /api/v1/organisation/0000-000-0000/files/db/general`
+`POST /api/v1/tenant/0000-000-0000/files/db/general`
 
 Form-data:
 - file: (binary file)
@@ -110,12 +110,12 @@ Form-data:
 
 ### Get a File
 
-`GET /api/v1/organisation/0000-000-0000/files/db/general/myfile.pdf`
+`GET /api/v1/tenant/0000-000-0000/files/db/general/myfile.pdf`
 
 ### Get File Info
 
-`GET /api/v1/organisation/0000-000-0000/files/db/general/abc123/info`
+`GET /api/v1/tenant/0000-000-0000/files/db/general/abc123/info`
 
 ### Delete a File
 
-`DELETE /api/v1/organisation/0000-000-0000/files/db/general/abc123`
+`DELETE /api/v1/tenant/0000-000-0000/files/db/general/abc123`
