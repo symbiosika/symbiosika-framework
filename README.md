@@ -78,13 +78,13 @@ The framework includes:
 1. Install the framework:
 
 ```bash
-npm install fastapp-framework
+npm install kinaut-webserver
 ```
 
 2. Create your application entry point:
 
 ```typescript
-import { defineServer } from "fastapp-framework";
+import { defineServer } from "kinaut-webserver";
 
 const server = defineServer({
   // Your configuration here

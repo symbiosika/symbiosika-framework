@@ -231,7 +231,7 @@ Each tool is defined as a factory function that receives a context and returns a
 **Example: Registering a Custom Tool with Input Parameters**
 
 ```typescript
-import { addBaseTool } from "./fastapp-framework/src/lib/ai/interaction/tools";
+import { addBaseTool } from "./src/lib/ai/interaction/tools";
 
 // Define your tool factory
 function getMyCustomTool(context) {

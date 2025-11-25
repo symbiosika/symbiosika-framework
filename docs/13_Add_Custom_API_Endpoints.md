@@ -1,10 +1,10 @@
 # Adding Custom API Endpoints
 
-This guide explains how to create and secure custom API endpoints in the fastapp-framework.
+This guide explains how to create and secure custom API endpoints in the framework.
 
 ## Overview
 
-The fastapp-framework allows you to add custom API routes using Hono.js with built-in authentication, validation, database access, and encryption services. Custom routes are defined as functions that accept a `FastAppHono` app instance and register endpoints on it.
+The framework allows you to add custom API routes using Hono.js with built-in authentication, validation, database access, and encryption services. Custom routes are defined as functions that accept a `FastAppHono` app instance and register endpoints on it.
 
 ## Basic Structure
 
@@ -19,10 +19,10 @@ import {
   middlewareService,
   secretsService,
   log,
-} from "fastapp-framework";
+} from "kinaut-webserver";
 import { resolver, validator } from "hono-openapi/valibot";
 import * as v from "valibot";
-import { getDb } from "fastapp-framework/dbSchema";
+import { getDb } from "kinaut-webserver/dbSchema";
 
 export function defineMyCustomRoutes(app: FastAppHono) {
   // Your routes will be defined here
@@ -213,7 +213,7 @@ app.get(
 Access the database using the framework's Drizzle instance:
 
 ```typescript
-import { getDb } from "fastapp-framework/dbSchema";
+import { getDb } from "kinaut-webserver/dbSchema";
 import { and, eq, desc, asc } from "drizzle-orm";
 import { myTable } from "../db-schema"; // Your custom schema
 
@@ -283,7 +283,7 @@ const updateMyData = async (userId: string, id: string, updates: any) => {
 Use the framework's encryption service for sensitive data:
 
 ```typescript
-import { secretsService } from "fastapp-framework";
+import { secretsService } from "kinaut-webserver";
 
 const storeSensitiveData = async (userId: string, sensitiveData: any) => {
   // Encrypt the data
@@ -330,7 +330,7 @@ const getSensitiveData = async (userId: string) => {
 Use `HTTPException` for proper error responses:
 
 ```typescript
-import { HTTPException } from "fastapp-framework";
+import { HTTPException } from "kinaut-webserver";
 
 // Client errors (4xx)
 throw new HTTPException(400, { message: "Invalid request data" });
@@ -365,7 +365,7 @@ app.post("/endpoint", async (c) => {
 Use the framework's logging service:
 
 ```typescript
-import { log } from "fastapp-framework";
+import { log } from "kinaut-webserver";
 
 app.post("/endpoint", async (c) => {
   const userId = c.get("usersId");
@@ -391,7 +391,7 @@ app.post("/endpoint", async (c) => {
 In your main server file (e.g., `src/index.ts`), register your custom routes using the `customHonoApps` configuration:
 
 ```typescript
-import { defineServer } from "./fastapp-framework/src";
+import { defineServer } from "./kinaut-webserver/src";
 import { defineMyCustomRoutes } from "./lib/routes/my-custom-routes";
 
 const server = defineServer({

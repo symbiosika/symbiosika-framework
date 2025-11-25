@@ -1,6 +1,6 @@
 # Adding Custom Database Schema
 
-The fastapp-framework provides many built-in database tables (see [Built-in DB Schema](./11_BuildIn_DB_Schema.md)), but your application can also define custom tables with its own prefix.
+The kinaut-webserver provides many built-in database tables (see [Built-in DB Schema](./11_BuildIn_DB_Schema.md)), but your application can also define custom tables with its own prefix.
 
 ## Overview
 
@@ -145,7 +145,7 @@ export default defineConfig({
 });
 ```
 
-### Framework Tables Configuration (`drizzle.fastapp.config.ts`)
+### Framework Tables Configuration (`drizzle.framework.config.ts`)
 
 ```typescript
 import { defineConfig } from "drizzle-kit";
@@ -172,8 +172,8 @@ console.log(
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./src/fastapp-framework/src/lib/db/db-schema.ts", // Framework schema
-  out: "./src/fastapp-framework/drizzle-sql",
+  schema: "./src/framework/src/lib/db/schema/server.ts", // Framework schema
+  out: "./src/framework/drizzle-sql",
   tablesFilter: PREFIX + "*", // Only framework tables
   migrations: {
     table: `${PREFIX}migrations`, // Framework migrations table
@@ -204,7 +204,7 @@ Add these scripts to your `package.json`:
 ```json
 {
   "scripts": {
-    "fastapp:migrate": "drizzle-kit migrate --config drizzle.fastapp.config.ts",
+    "framework:migrate": "drizzle-kit migrate --config drizzle.framework.config.ts",
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate"
   }
@@ -218,7 +218,7 @@ Add these scripts to your `package.json`:
 1. **Generate framework migrations** (first time setup):
 
    ```bash
-   npm run fastapp:migrate
+   npm run framework:migrate
    ```
 
 2. **Generate your custom table migrations**:
@@ -249,10 +249,10 @@ When you modify your custom schema:
 
 ### Framework Updates
 
-When updating the fastapp-framework:
+When updating the framework:
 
 ```bash
-npm run fastapp:migrate
+npm run framework:migrate
 ```
 
 ## 5. Using Custom Tables in Code
@@ -261,7 +261,7 @@ npm run fastapp:migrate
 
 ```typescript
 import { coachingSessions, progressTracking } from "./db-schema";
-import { db } from "./src/fastapp-framework/src/lib/db/database";
+import { db } from "./src/lib/db/database";
 
 // Create a new coaching session
 const newSession = await db
@@ -298,7 +298,7 @@ await db
 ### API Integration
 
 ```typescript
-import { defineServer } from "./src/fastapp-framework";
+import { defineServer } from "./src";
 import { coachingSessions } from "./src/db-schema";
 
 const server = defineServer({
