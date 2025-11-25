@@ -9,8 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docker compose down` - Stop development database
 
 ### Database Migrations
-- `bun run fastapp:migrate` - Run database migrations. Should be run on each start of development server to be up to date.
-- `bun run fastapp:generate` - Generate new migration files after schema changes
+- `bun run framework:migrate` - Run database migrations. Should be run on each start of development server to be up to date.
+- `bun run framework:generate` - Generate new migration files after schema changes
 
 ### Basic Development
 - `bun dev` - Start development server with hot reload

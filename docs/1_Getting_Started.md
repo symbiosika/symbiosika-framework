@@ -1,19 +1,19 @@
 # Fastapp Framework Webserver - Get Started
 
-This guide explains how to quickly set up a webserver using the `fastapp-framework`.
+This guide explains how to quickly set up a webserver using the `kinaut-webserver`.
 
 ## Quick Start
 
 1. **Install dependencies** (if not already):
 
    ```sh
-   bun install fastapp-framework
+   bun install kinaut-webserver
    ```
 
 2. **Create your server entry file** (e.g., `src/index.ts`):
 
    ```typescript
-   import { defineServer } from "fastapp-framework";
+   import { defineServer } from "kinaut-webserver";
    import fs from "fs";
 
    const server = defineServer({

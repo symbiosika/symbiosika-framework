@@ -10,7 +10,7 @@ alwaysApply: false
 ---
 # Example Unit Test
 
-- Always run unit-test from root dir like this `bun test src/fastapp-framework/src/lib/ai/a.test.ts`
+- Always run unit-test from root dir like this `bun test src/framework/src/lib/ai/a.test.ts`
 - never use "cd" command
 
 - never MOCK functions!
@@ -27,7 +27,7 @@ import {
   TEST_USER_1,
   TEST_ORGANISATION_2,
 } from "../../../test/init.test";
-// the base path is: "src/fastapp-framework/src/test/init.test.ts"
+// the base path is: "src/framework/src/test/init.test.ts"
 
 beforeAll(async () => {
   await initTests();
