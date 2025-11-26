@@ -8,7 +8,7 @@ import {
   connections,
   type ConnectionsInsert,
   type ConnectionsSelect,
-  OrganisationMembersSelect,
+  TenantsSelect,
 } from "../db/db-schema";
 import { eq, and } from "drizzle-orm";
 import log from "../log";
@@ -67,25 +67,23 @@ export async function validateRemoteCredentials(
       throw new Error("No authentication token received");
     }
 
-    // Get user's organizations
-    const orgsResponse = await fetch(`${remoteUrl}/api/v1/user/tenants`, {
+    // Get user's tenants
+    const tenantsResponse = await fetch(`${remoteUrl}/api/v1/user/tenants`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${data.token}`,
       },
     });
 
-    if (!orgsResponse.ok) {
-      throw new Error(
-        `Failed to fetch tenants: ${orgsResponse.statusText}`
-      );
+    if (!tenantsResponse.ok) {
+      throw new Error(`Failed to fetch tenants: ${tenantsResponse.statusText}`);
     }
 
-    const orgsData = (await orgsResponse.json()) as OrganisationMembersSelect[];
+    const tenants = (await tenantsResponse.json()) as TenantsSelect[];
 
     return {
       token: data.token,
-      tenants: orgsData || [],
+      tenants: tenants || [],
     };
   } catch (error) {
     log.error("Error validating remote credentials:", error as object);
@@ -98,11 +96,11 @@ export async function validateRemoteCredentials(
  * Creates key pairs and exchanges public keys
  */
 export async function initializeConnection(
-  localOrganisationId: string,
+  localTenantId: string,
   remoteUrl: string,
   remoteEmail: string,
   remotePassword: string,
-  remoteOrganisationId: string,
+  remoteTenantId: string,
   name: string
 ) {
   try {
@@ -120,12 +118,11 @@ export async function initializeConnection(
     );
 
     // Verify remote tenant exists
-    const remoteOrg = tenants.find(
-      (o: OrganisationMembersSelect) =>
-        o.tenantId === remoteOrganisationId
+    const remoteTenant = tenants.find(
+      (o: TenantsSelect) => o.id === remoteTenantId
     );
-    if (!remoteOrg) {
-      throw new Error("Remote tenant not found");
+    if (!remoteTenant) {
+      throw new Error(`Remote tenant ${remoteTenantId} not found`);
     }
 
     // Check if connection already exists
@@ -134,8 +131,8 @@ export async function initializeConnection(
       .from(connections)
       .where(
         and(
-          eq(connections.tenantId, localOrganisationId),
-          eq(connections.remoteOrganisationId, remoteOrganisationId)
+          eq(connections.tenantId, localTenantId),
+          eq(connections.remoteTenantId, remoteTenantId)
         )
       );
 
@@ -160,9 +157,9 @@ export async function initializeConnection(
     } else {
       // Create new connection
       const newConnection: ConnectionsInsert = {
-        tenantId: localOrganisationId,
+        tenantId: localTenantId,
         remoteUrl,
-        remoteOrganisationId: remoteOrganisationId,
+        remoteTenantId: remoteTenantId,
         name,
         initiatedBy: "client",
         localPublicKey,
@@ -186,7 +183,7 @@ export async function initializeConnection(
       const remotePublicKey = await exchangePublicKeys(
         remoteUrl,
         token,
-        remoteOrganisationId,
+        remoteTenantId,
         localPublicKey,
         connectionId,
         localServerUrl,
@@ -230,9 +227,9 @@ export async function initializeConnection(
  * If a connection with the same tenant combination already exists, it will be replaced
  */
 export async function acceptConnection(
-  localOrganisationId: string,
+  localTenantId: string,
   remoteUrl: string,
-  remoteOrganisationId: string,
+  remoteTenantId: string,
   remoteConnectionId: string,
   remotePublicKey: string,
   connectionName: string
@@ -250,8 +247,8 @@ export async function acceptConnection(
       .from(connections)
       .where(
         and(
-          eq(connections.tenantId, localOrganisationId),
-          eq(connections.remoteOrganisationId, remoteOrganisationId)
+          eq(connections.tenantId, localTenantId),
+          eq(connections.remoteTenantId, remoteTenantId)
         )
       );
 
@@ -267,9 +264,9 @@ export async function acceptConnection(
 
     // Create new connection on this side (initiated by remote = "server")
     const newConnection: ConnectionsInsert = {
-      tenantId: localOrganisationId,
+      tenantId: localTenantId,
       remoteUrl,
-      remoteOrganisationId: remoteOrganisationId,
+      remoteTenantId: remoteTenantId,
       remoteConnectionId: remoteConnectionId,
       remotePublicKey: remotePublicKey,
       name: connectionName,
@@ -304,7 +301,7 @@ export async function acceptConnection(
 async function exchangePublicKeys(
   remoteUrl: string,
   token: string,
-  remoteOrganisationId: string,
+  remoteTenantId: string,
   localPublicKey: string,
   localConnectionId: string,
   localServerUrl: string,
@@ -312,7 +309,7 @@ async function exchangePublicKeys(
 ) {
   try {
     const response = await fetch(
-      `${remoteUrl}/api/v1/tenant/${remoteOrganisationId}/connections/exchange-keys`,
+      `${remoteUrl}/api/v1/tenant/${remoteTenantId}/connections/exchange-keys`,
       {
         method: "POST",
         headers: {
@@ -323,7 +320,7 @@ async function exchangePublicKeys(
           // Complete connection info for remote side to accept
           remotePublicKey: localPublicKey,
           remoteConnectionId: localConnectionId,
-          remoteOrganisationId: remoteOrganisationId,
+          remoteTenantId: remoteTenantId,
           remoteUrl: localServerUrl,
           connectionName: connectionName,
         }),
@@ -374,9 +371,9 @@ export async function getConnection(
 /**
  * Get connection by tenant and remote tenant
  */
-export async function getConnectionByOrganisations(
+export async function getConnectionByTenants(
   tenantId: string,
-  remoteOrganisationId: string
+  remoteTenantId: string
 ): Promise<ConnectionsSelect | null> {
   try {
     const db = getDb();
@@ -387,7 +384,7 @@ export async function getConnectionByOrganisations(
       .where(
         and(
           eq(connections.tenantId, tenantId),
-          eq(connections.remoteOrganisationId, remoteOrganisationId)
+          eq(connections.remoteTenantId, remoteTenantId)
         )
       );
 
@@ -401,7 +398,7 @@ export async function getConnectionByOrganisations(
 /**
  * List all connections for an tenant
  */
-export async function getConnectionByLocalOrganisation(tenantId: string) {
+export async function getConnectionByLocalTenant(tenantId: string) {
   try {
     const db = getDb();
 
@@ -443,7 +440,7 @@ export const connectionsService = {
   initializeConnection,
   acceptConnection,
   getConnection,
-  getConnectionByOrganisations,
-  getConnectionByLocalOrganisation,
+  getConnectionByTenants,
+  getConnectionByLocalTenant,
   dropConnection,
 };

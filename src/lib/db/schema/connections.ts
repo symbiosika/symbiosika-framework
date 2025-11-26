@@ -45,7 +45,7 @@ export const connections = pgBaseTable(
       .notNull()
       .default("aes-256-cbc"),
     remotePublicKey: text("remote_public_key"),
-    remoteOrganisationId: uuid("remote_tenant_id"),
+    remoteTenantId: uuid("remote_tenant_id"),
     remoteConnectionId: uuid("remote_connection_id"),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
@@ -57,12 +57,12 @@ export const connections = pgBaseTable(
     meta: jsonb("meta").default({}).notNull(),
   },
   (t) => [
-    index("connections_org_idx").on(t.tenantId),
+    index("connections_tenant_idx").on(t.tenantId),
     index("connections_remote_url_idx").on(t.remoteUrl),
     // only one connection per tenant and remote tenant
-    uniqueIndex("connections_org_remote_org_idx").on(
+    uniqueIndex("connections_tenant_remote_tenant_idx").on(
       t.tenantId,
-      t.remoteOrganisationId
+      t.remoteTenantId
     ),
   ]
 );

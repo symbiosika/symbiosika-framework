@@ -47,8 +47,8 @@ export const tenants = pgBaseTable(
   (tenants) => [unique("tenants_name_idx").on(tenants.name)]
 );
 
-export type OrganisationsSelect = typeof tenants.$inferSelect;
-export type OrganisationsInsert = typeof tenants.$inferInsert;
+export type TenantsSelect = typeof tenants.$inferSelect;
+export type TenantsInsert = typeof tenants.$inferInsert;
 
 export const tenantsSelectSchema = createSelectSchema(tenants);
 export const tenantsInsertSchema = createInsertSchema(tenants);
@@ -102,12 +102,9 @@ export const users = pgBaseTable(
     profileImageContentType: varchar("profile_image_content_type", {
       length: 255,
     }),
-    lastOrganisationId: uuid("last_tenant_id").references(
-      () => tenants.id,
-      {
-        onDelete: "set null",
-      }
-    ),
+    lastTenantId: uuid("last_tenant_id").references(() => tenants.id, {
+      onDelete: "set null",
+    }),
   },
   (users) => [
     index("users_email_idx").on(users.email),
@@ -490,10 +487,11 @@ export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
   }),
 }));
 
-export const tenantInvitationStatusEnum = pgEnum(
-  "tenant_invitation_status",
-  ["pending", "accepted", "declined"]
-);
+export const tenantInvitationStatusEnum = pgEnum("tenant_invitation_status", [
+  "pending",
+  "accepted",
+  "declined",
+]);
 
 export const tenantMemberRoleEnum = pgEnum("tenant_member_role", [
   "owner",
@@ -531,20 +529,15 @@ export const tenantInvitations = pgBaseTable(
   ]
 );
 
-export type OrganisationInvitationsSelect =
-  typeof tenantInvitations.$inferSelect;
-export type OrganisationInvitationsInsert =
-  typeof tenantInvitations.$inferInsert;
+export type TenantInvitationsSelect = typeof tenantInvitations.$inferSelect;
+export type TenantInvitationsInsert = typeof tenantInvitations.$inferInsert;
 
-export const tenantInvitationsSelectSchema = createSelectSchema(
-  tenantInvitations
-);
-export const tenantInvitationsInsertSchema = createInsertSchema(
-  tenantInvitations
-);
-export const tenantInvitationsUpdateSchema = createUpdateSchema(
-  tenantInvitations
-);
+export const tenantInvitationsSelectSchema =
+  createSelectSchema(tenantInvitations);
+export const tenantInvitationsInsertSchema =
+  createInsertSchema(tenantInvitations);
+export const tenantInvitationsUpdateSchema =
+  createUpdateSchema(tenantInvitations);
 
 export const tenantMembers = pgBaseTable(
   "tenant_members",
@@ -563,37 +556,27 @@ export const tenantMembers = pgBaseTable(
       columns: [tenantMembers.userId, tenantMembers.tenantId],
     }),
     index("tenant_members_user_id_idx").on(tenantMembers.userId),
-    index("tenant_members_tenant_id_idx").on(
-      tenantMembers.tenantId
-    ),
+    index("tenant_members_tenant_id_idx").on(tenantMembers.tenantId),
   ]
 );
 
-export type OrganisationMembersSelect = typeof tenantMembers.$inferSelect;
-export type OrganisationMembersInsert = typeof tenantMembers.$inferInsert;
+export type TenantMembersSelect = typeof tenantMembers.$inferSelect;
+export type TenantMembersInsert = typeof tenantMembers.$inferInsert;
 
-export const tenantMembersSelectSchema =
-  createSelectSchema(tenantMembers);
-export const tenantMembersInsertSchema =
-  createInsertSchema(tenantMembers);
-export const tenantMembersUpdateSchema =
-  createUpdateSchema(tenantMembers);
+export const tenantMembersSelectSchema = createSelectSchema(tenantMembers);
+export const tenantMembersInsertSchema = createInsertSchema(tenantMembers);
+export const tenantMembersUpdateSchema = createUpdateSchema(tenantMembers);
 
-// Neue Beziehungen für tenantMembers
-
-export const tenantMembersRelations = relations(
-  tenantMembers,
-  ({ one }) => ({
-    user: one(users, {
-      fields: [tenantMembers.userId],
-      references: [users.id],
-    }),
-    tenant: one(tenants, {
-      fields: [tenantMembers.tenantId],
-      references: [tenants.id],
-    }),
-  })
-);
+export const tenantMembersRelations = relations(tenantMembers, ({ one }) => ({
+  user: one(users, {
+    fields: [tenantMembers.userId],
+    references: [users.id],
+  }),
+  tenant: one(tenants, {
+    fields: [tenantMembers.tenantId],
+    references: [tenants.id],
+  }),
+}));
 
 // Invitation Codes Table
 export const invitationCodes = pgBaseTable(
@@ -616,9 +599,7 @@ export const invitationCodes = pgBaseTable(
   },
   (invitationCodes) => [
     uniqueIndex("unique_invitation_code").on(invitationCodes.code),
-    index("invitation_codes_tenant_id_idx").on(
-      invitationCodes.tenantId
-    ),
+    index("invitation_codes_tenant_id_idx").on(invitationCodes.tenantId),
     index("invitation_codes_expires_at_idx").on(invitationCodes.expiresAt),
   ]
 );
