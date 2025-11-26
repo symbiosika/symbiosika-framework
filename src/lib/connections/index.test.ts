@@ -15,9 +15,9 @@ import {
   initializeConnection,
   acceptConnection,
   getConnection,
-  getConnectionByOrganisations,
-  getConnectionByLocalOrganisation,
   dropConnection,
+  getConnectionByTenants,
+  getConnectionByLocalTenant,
 } from "./index";
 
 const TEST_ORG_ID = TEST_ORGANISATION_1.id;
@@ -33,7 +33,7 @@ beforeAll(async () => {
     .where(eq(connections.tenantId, TEST_ORG_ID));
   await getDb()
     .delete(connections)
-    .where(eq(connections.remoteOrganisationId, TEST_ORG_ID));
+    .where(eq(connections.remoteTenantId, TEST_ORG_ID));
 });
 
 describe("Connections Service", () => {
@@ -92,9 +92,7 @@ describe("Connections Service", () => {
 
       expect(result.token).toBe("test-token");
       expect(result.tenants).toHaveLength(1);
-      expect((result.tenants[0] as any)?.tenantId).toBe(
-        TEST_REMOTE_ORG_ID
-      );
+      expect((result.tenants[0] as any)?.tenantId).toBe(TEST_REMOTE_ORG_ID);
     } finally {
       (global as any).fetch = originalFetch;
     }
@@ -197,7 +195,7 @@ describe("Connections Service", () => {
       expect(conn).toBeDefined();
       expect(conn?.name).toBe(TEST_CONNECTION_NAME);
       expect(conn?.tenantId).toBe(TEST_ORG_ID as any);
-      expect(conn?.remoteOrganisationId).toBe(TEST_REMOTE_ORG_ID as any);
+      expect(conn?.remoteTenantId).toBe(TEST_REMOTE_ORG_ID as any);
     } finally {
       (global as any).fetch = originalFetch;
     }
@@ -329,7 +327,7 @@ describe("Connections Service", () => {
     expect(conn).toBeDefined();
     expect(conn?.name).toBe("Accepted Connection");
     expect(conn?.tenantId).toBe(TEST_ORG_ID as any);
-    expect(conn?.remoteOrganisationId).toBe(uniqueRemoteOrgId as any);
+    expect(conn?.remoteTenantId).toBe(uniqueRemoteOrgId as any);
     expect(conn?.remoteConnectionId).toBe(id);
     expect(conn?.remotePublicKey).toBe(remotePublicKey);
     expect(conn?.initiatedBy).toBe("server");
@@ -382,7 +380,7 @@ describe("Connections Service", () => {
       .insert(connections)
       .values({
         tenantId: TEST_ORG_ID,
-        remoteOrganisationId: TEST_ORG_ID,
+        remoteTenantId: TEST_ORG_ID,
         name: "Org Connection",
         localPublicKey: keyPair.publicKey,
         localPrivateKey: keyPair.privateKey,
@@ -390,14 +388,14 @@ describe("Connections Service", () => {
       .returning();
 
     // Retrieve by tenants
-    const conn = await getConnectionByOrganisations(TEST_ORG_ID, TEST_ORG_ID);
+    const conn = await getConnectionByTenants(TEST_ORG_ID, TEST_ORG_ID);
 
     expect(conn).toBeDefined();
     expect(conn?.id).toBe(connResult[0]?.id);
   });
 
   test("getConnectionByOrganisations should return null for non-existent combination", async () => {
-    const conn = await getConnectionByOrganisations(
+    const conn = await getConnectionByTenants(
       "00000000-0000-0000-0000-000000000888",
       "00000000-0000-0000-0000-000000000999"
     );
@@ -431,15 +429,15 @@ describe("Connections Service", () => {
     ]);
 
     // List connections
-    const conns = await getConnectionByLocalOrganisation(TEST_ORG_ID);
+    const conns = await getConnectionByLocalTenant(TEST_ORG_ID);
 
     expect(conns.length).toBeGreaterThanOrEqual(2);
-    expect(conns.some((c) => c.name === "Connection 1")).toBe(true);
-    expect(conns.some((c) => c.name === "Connection 2")).toBe(true);
+    expect(conns.some((c: any) => c.name === "Connection 1")).toBe(true);
+    expect(conns.some((c: any) => c.name === "Connection 2")).toBe(true);
   });
 
   test("getConnectionByLocalOrganisation should return empty for tenant with no connections", async () => {
-    const conns = await getConnectionByLocalOrganisation(
+    const conns = await getConnectionByLocalTenant(
       "00000000-0000-0000-0000-000000000777"
     );
 
@@ -488,8 +486,8 @@ describe("Connections Service", () => {
     expect(connectionsService.initializeConnection).toBeDefined();
     expect(connectionsService.acceptConnection).toBeDefined();
     expect(connectionsService.getConnection).toBeDefined();
-    expect(connectionsService.getConnectionByOrganisations).toBeDefined();
-    expect(connectionsService.getConnectionByLocalOrganisation).toBeDefined();
+    expect(connectionsService.getConnectionByTenants).toBeDefined();
+    expect(connectionsService.getConnectionByLocalTenant).toBeDefined();
     expect(connectionsService.dropConnection).toBeDefined();
   });
 });
