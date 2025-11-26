@@ -1,4 +1,4 @@
-name: Unit tests for fastapp-framework
+name: Unit tests for framework
 
 on:
   push:
@@ -103,7 +103,7 @@ jobs:
         run: bun install
 
       - name: run migrations
-        run: npm run fastapp:migrate
+        run: npm run framework:migrate
 
       - name: Check connection
         run: bun test src/test/check-connection.test.ts
