@@ -44,8 +44,8 @@ export const parsePdfFileAsMardownLlama = async (
     throw new Error(`Upload failed: ${uploadResponse.statusText}`);
   }
 
-  const uploadedJobData = await uploadResponse.json();
-  const jobId = uploadedJobData.id;
+  const uploadedJobData: any = await uploadResponse.json();
+  const jobId: string = uploadedJobData.id;
   log.debug(`Job ID: ${JSON.stringify(uploadedJobData)}`);
 
   // Poll for job completion
@@ -63,7 +63,7 @@ export const parsePdfFileAsMardownLlama = async (
       throw new Error(`Status check failed: ${statusResponse.statusText}`);
     }
 
-    const statusData = await statusResponse.json();
+    const statusData: any = await statusResponse.json();
     log.debug(`Status: ${statusData.status}`);
     isComplete = statusData.status === "SUCCESS";
     if (!isComplete) await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -83,7 +83,7 @@ export const parsePdfFileAsMardownLlama = async (
   }
 
   log.debug("Result retrieved successfully.");
-  const r = await resultResponse.json();
+  const r: any = await resultResponse.json();
 
   // Parse the markdown into pages
   // By default, LlamaParse will separate pages in the markdown and text output by \n---\n.

@@ -19,6 +19,9 @@ export const createKnowledgeGroup = async (
 
   const [newGroup] = await db.insert(knowledgeGroup).values(data).returning();
 
+  if (!newGroup) {
+    throw new Error("Failed to create knowledge group");
+  }
   return newGroup;
 };
 
@@ -179,6 +182,9 @@ export const updateKnowledgeGroup = async (
     )
     .returning();
 
+  if (!updatedGroup) {
+    throw new Error("Failed to update knowledge group");
+  }
   return updatedGroup;
 };
 

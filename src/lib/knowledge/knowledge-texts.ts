@@ -6,7 +6,7 @@ import {
 } from "../db/schema/knowledge";
 import { RESPONSES } from "../responses";
 import { teamMembers } from "../db/schema/users";
-import { checkOrganisationMemberRole } from "../usermanagement/oganisations";
+import { checkTenantMemberRole } from "../usermanagement/tenants";
 import { checkTeamMemberRole } from "../usermanagement/teams";
 
 /**
@@ -17,13 +17,13 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
   if (data.userId && data.teamId) {
     await checkTeamMemberRole(data.teamId, data.userId, ["admin"]);
   } else if (data.userId && data.tenantWide) {
-    await checkOrganisationMemberRole(data.tenantId, data.userId, [
-      "admin",
-      "owner",
-    ]);
+    await checkTenantMemberRole(data.tenantId, data.userId, ["admin", "owner"]);
   }
 
   const e = await getDb().insert(knowledgeText).values(data).returning();
+  if (!e[0]) {
+    throw new Error("Failed to create knowledge text");
+  }
   return e[0];
 };
 
@@ -49,10 +49,7 @@ export const getKnowledgeText = async (filters: {
         // User specific entries
         eq(knowledgeText.userId, filters.userId),
         // Team specific entries (only if user is a member of the team)
-        and(
-          isNull(knowledgeText.teamId),
-          eq(knowledgeText.tenantWide, true)
-        ),
+        and(isNull(knowledgeText.teamId), eq(knowledgeText.tenantWide, true)),
         exists(
           getDb()
             .select()
@@ -136,17 +133,18 @@ export const updateKnowledgeText = async (
     workspaceId: context.workspaceId,
   });
 
-  // check permission
-  if (context.userId && existing.length === 0) {
+  if (!existing[0]) {
     throw new Error("Knowledge text not found or access denied");
-  } else if (context.userId) {
+  }
+
+  // check permission
+  if (context.userId) {
     const item = existing[0];
     if (item.tenantWide) {
-      await checkOrganisationMemberRole(
-        context.tenantId,
-        context.userId,
-        ["admin", "owner"]
-      );
+      await checkTenantMemberRole(context.tenantId, context.userId, [
+        "admin",
+        "owner",
+      ]);
     } else if (item.teamId) {
       await checkTeamMemberRole(item.teamId, context.userId, ["admin"]);
     }
@@ -159,6 +157,9 @@ export const updateKnowledgeText = async (
     .where(eq(knowledgeText.id, id))
     .returning();
 
+  if (!e[0]) {
+    throw new Error("Failed to update knowledge text");
+  }
   return e[0];
 };
 
@@ -182,16 +183,17 @@ export const deleteKnowledgeText = async (
     workspaceId: context.workspaceId,
   });
 
-  if (context.userId && e.length === 0) {
-    throw new Error("Knowledge text not found or access denied");
-  } else if (context.userId) {
+  if (!e[0]) {
+    throw new Error("Knowledge text not found");
+  }
+
+  if (context.userId) {
     const item = e[0];
     if (item.tenantWide) {
-      await checkOrganisationMemberRole(
-        context.tenantId,
-        context.userId,
-        ["admin", "owner"]
-      );
+      await checkTenantMemberRole(context.tenantId, context.userId, [
+        "admin",
+        "owner",
+      ]);
     } else if (item.teamId) {
       await checkTeamMemberRole(item.teamId, context.userId, ["admin"]);
     }

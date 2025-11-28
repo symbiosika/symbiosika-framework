@@ -161,7 +161,7 @@ export const parseDocument = async (data: {
       .select()
       .from(knowledgeText)
       .where(eq(knowledgeText.id, data.sourceId!));
-    if (dbResults.length === 0) {
+    if (!dbResults[0]) {
       throw new Error(`Knowledge text not found: ${data.sourceId}`);
     }
     content = dbResults[0].text;

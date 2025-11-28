@@ -121,6 +121,9 @@ export const verifyApiTokenAndGetJwt = async (
 ): Promise<{ token: string; expiresAt: Date }> => {
   // search for the token in the database
   const tokenRecord = await searchForToken(token);
+  if (!tokenRecord) {
+    throw new Error("Token not found");
+  }
 
   // Update lastUsed
   await updateTokenLastUsed(tokenRecord.id);
@@ -139,6 +142,9 @@ export const verifyApiTokenAndGetJwt = async (
 
   // Get the associated user
   const user = await getUserById(tokenRecord.userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
 
   // Generate a short-lived JWT with the requested scopes
   const jwt = await generateJwt(
@@ -163,12 +169,18 @@ export const verifyApiTokenAndGetJwt = async (
 export const generateTemporaryJwtFromToken = async (token: string) => {
   // search for the token in the database
   const tokenRecord = await searchForToken(token);
+  if (!tokenRecord) {
+    throw new Error("Token not found");
+  }
 
   // Update lastUsed
   await updateTokenLastUsed(tokenRecord.id);
 
   // Get the associated user
   const user = await getUserById(tokenRecord.userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
 
   // Generate a short-lived JWT with the requested scopes
   const jwt = await generateJwt(

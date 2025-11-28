@@ -39,6 +39,7 @@ describe("Knowledge Texts Test", () => {
     });
 
     expect(readText.length).toBe(1);
+    if (!readText[0]) return; // end test if readText is undefined
     expect(readText[0].text).toBe(newText.text);
     expect(readText[0].title).toBe(newText.title);
   });

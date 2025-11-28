@@ -18,11 +18,10 @@ import {
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { preRegisterCustomVerifications, postRegisterActions } from "./actions";
 import log from "../log";
-import { addOrganisationMember } from "../usermanagement/oganisations";
+import { addTenantMember } from "../usermanagement/tenants";
 import { updateUser } from "../usermanagement/user";
 import {
-  acceptAllPendingInvitationsForUser,
-  acceptOrganisationInvitation,
+  acceptAllPendingInvitationsForTenantMember,
   getPendingInvitationsForEmail,
 } from "../usermanagement/invitations";
 
@@ -68,7 +67,7 @@ const getUserFromDb = async (
       .from(users)
       .where(eq(users.email, email));
 
-    if (user.length === 0 || !user[0].password) {
+    if (!user[0] || !user[0].password) {
       throw "user not found";
     }
 
@@ -126,6 +125,9 @@ const setUserInDb = async (
     });
   }
 
+  if (!user[0]) {
+    throw new Error("Failed to set user in database");
+  }
   return user[0];
 };
 
@@ -235,7 +237,7 @@ const checkGeneralInvitationCode = async (
 ): Promise<{
   usedInvitationCode: boolean;
   check: boolean;
-  setOrganisationId: string | null;
+  setTenantId: string | null;
 }> => {
   const codes = await getDb()
     .select()
@@ -243,7 +245,7 @@ const checkGeneralInvitationCode = async (
     .where(eq(invitationCodes.isActive, true));
 
   if (codes.length === 0) {
-    return { usedInvitationCode: false, check: true, setOrganisationId: null }; // no general invitation codes active, so we can register without one
+    return { usedInvitationCode: false, check: true, setTenantId: null }; // no general invitation codes active, so we can register without one
   } else if (!code) {
     throw "No invitation code provided but is required";
   } else {
@@ -254,7 +256,7 @@ const checkGeneralInvitationCode = async (
     return {
       usedInvitationCode: true,
       check: true,
-      setOrganisationId: found.tenantId,
+      setTenantId: found.tenantId,
     };
   }
 };
@@ -276,7 +278,7 @@ export const LocalAuth = {
     }
   ) {
     log.info(`Registering user: ${email}`);
-    
+
     // go through all pre-register custom verifications
     for (const verification of preRegisterCustomVerifications) {
       log.info(`Running pre-register custom verification`);
@@ -287,44 +289,46 @@ export const LocalAuth = {
     }
 
     // check if the user has pending invitations
-    const { invitedInOrganisationIds } =
-      await getPendingInvitationsForEmail(email);
+    const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);
 
     // check if we can register without an invitation code
     // then we can skip the invitation code check
-    let firstOrganisationId: string | null = null;
-    if (invitedInOrganisationIds.length < 1) {
-      const { usedInvitationCode, setOrganisationId } =
+    let firstTenantId: string | null = null;
+    if (invitedInTenantIds.length < 1) {
+      const { usedInvitationCode, setTenantId } =
         await checkGeneralInvitationCode(meta?.invitationCode);
-      firstOrganisationId = setOrganisationId;
+      firstTenantId = setTenantId;
     }
 
     // add user to db
     const user = await setUserInDb(email, password, sendVerificationEmail);
+    if (!user) {
+      throw new Error("Failed to register user");
+    }
     log.info(`New user registered: ${user.id}`);
 
     // check if an tenant was provided via invitation code
-    if (firstOrganisationId) {
+    if (firstTenantId) {
       // check if the tenant has already members
       const members = await getDb()
         .select()
         .from(tenantMembers)
-        .where(eq(tenantMembers.tenantId, firstOrganisationId));
+        .where(eq(tenantMembers.tenantId, firstTenantId));
 
       let role: "member" | "owner" = "member";
-      if (members.length === 0) {
+      if (!members[0]) {
         role = "owner";
       }
-      await addOrganisationMember(firstOrganisationId, user.id, role);
+      await addTenantMember(firstTenantId, user.id, role);
       await updateUser(user.id, {
-        lastOrganisationId: firstOrganisationId,
+        lastTenantId: firstTenantId,
       });
     }
 
     // accept all pending invitations if there are any
-    if (invitedInOrganisationIds.length > 0) {
-      for (const tenantId of invitedInOrganisationIds) {
-        await acceptAllPendingInvitationsForUser(user.id, tenantId);
+    if (invitedInTenantIds.length > 0) {
+      for (const tenantId of invitedInTenantIds) {
+        await acceptAllPendingInvitationsForTenantMember(user.id, tenantId);
       }
     }
 
@@ -379,7 +383,7 @@ export const LocalAuth = {
       })
       .from(users)
       .where(eq(users.id, userId));
-    if (!user || user.length === 0) {
+    if (!user[0]) {
       throw "User not found";
     }
     const { token, expiresAt } = await generateJwt(

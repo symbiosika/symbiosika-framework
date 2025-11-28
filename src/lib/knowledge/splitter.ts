@@ -1,5 +1,5 @@
 import type { Chunk } from "../types/chunks";
-import type{ PageContent } from "./parsing/pdf/types";
+import type { PageContent } from "./parsing/pdf/types";
 
 const MAX_WORDS_PER_CHUNK = 500;
 
@@ -86,7 +86,11 @@ export const splitTextIntoSectionsOrChunks = (
   };
 
   for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
+    if (!lines[i]) {
+      continue;
+    }
+    let line: string = lines[i] as string;
+
     const trimmed = line.trim();
 
     // Toggle code-fence state (```) when encountered

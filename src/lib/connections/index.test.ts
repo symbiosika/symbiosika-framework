@@ -158,9 +158,7 @@ describe("Connections Service", () => {
       } else if (url.includes("/user/tenants")) {
         return {
           ok: true,
-          json: async () => [
-            { id: TEST_REMOTE_ORG_ID, name: "Remote Org" },
-          ],
+          json: async () => [{ id: TEST_REMOTE_ORG_ID, name: "Remote Org" }],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
         return {
@@ -212,9 +210,7 @@ describe("Connections Service", () => {
       } else if (url.includes("/user/tenants")) {
         return {
           ok: true,
-          json: async () => [
-            { id: TEST_REMOTE_ORG_ID, name: "Remote Org" },
-          ],
+          json: async () => [{ id: TEST_REMOTE_ORG_ID, name: "Remote Org" }],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
         return {
@@ -514,6 +510,9 @@ describe("Connections Service", () => {
         remotePublicKey: keyPair.publicKey, // Remote matches our key
       })
       .returning();
+    if (!connResult[0]) {
+      throw new Error("Failed to create auth connection");
+    }
     const connectionId = connResult[0].id;
 
     // Sign data
@@ -551,6 +550,9 @@ describe("Connections Service", () => {
         lastConnectedAt: oldDate.toISOString(),
       })
       .returning();
+    if (!connResult[0]) {
+      throw new Error("Failed to create stale connection");
+    }
     const staleId = connResult[0].id;
 
     // Create active connection
@@ -564,6 +566,9 @@ describe("Connections Service", () => {
         lastConnectedAt: new Date().toISOString(),
       })
       .returning();
+    if (!activeResult[0]) {
+      throw new Error("Failed to create active connection");
+    }
     const activeId = activeResult[0].id;
 
     // Cleanup older than 30 days

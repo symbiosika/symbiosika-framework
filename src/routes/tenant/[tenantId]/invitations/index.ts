@@ -10,13 +10,13 @@ import {
   checkUserPermission,
 } from "../../../../lib/utils/hono-middlewares";
 import {
-  getAllOrganisationInvitations,
-  acceptOrganisationInvitation,
-  declineOrganisationInvitation,
-  createOrganisationInvitation,
-  acceptAllPendingInvitationsForUser,
-  dropOrganisationInvitation,
-  declineAllPendingInvitationsForUser,
+  getAllTenantInvitations,
+  acceptTenantInvitation,
+  declineTenantInvitation,
+  createTenantInvitation,
+  acceptAllPendingInvitationsForTenantMember,
+  dropTenantInvitation,
+  declineAllPendingInvitationsForTenantMember,
 } from "../../../../lib/usermanagement/invitations";
 import * as v from "valibot";
 import { describeRoute } from "hono-openapi";
@@ -77,7 +77,7 @@ export default function defineInvitationsRoutes(
         const sendMail = c.req.valid("query").sendMail
           ? c.req.valid("query").sendMail === "true"
           : true;
-        const invitation = await createOrganisationInvitation(data, sendMail);
+        const invitation = await createTenantInvitation(data, sendMail);
         return c.json(invitation);
       } catch (err) {
         throw new HTTPException(500, {
@@ -116,7 +116,7 @@ export default function defineInvitationsRoutes(
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
-        const invitations = await getAllOrganisationInvitations(tenantId);
+        const invitations = await getAllTenantInvitations(tenantId);
         return c.json(invitations);
       } catch (err) {
         throw new HTTPException(500, {
@@ -144,15 +144,12 @@ export default function defineInvitationsRoutes(
       },
     }),
     validateScope("tenants:write"),
-    validator(
-      "param",
-      v.object({ tenantId: v.string(), id: v.string() })
-    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     isOrganisationAdmin,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");
-        await dropOrganisationInvitation(id);
+        await dropTenantInvitation(id);
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
         throw new HTTPException(500, {
@@ -179,19 +176,16 @@ export default function defineInvitationsRoutes(
       },
     }),
     validateScope("tenants:write"),
-    validator(
-      "param",
-      v.object({ tenantId: v.string(), id: v.string() })
-    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");
         const userId = c.get("usersId");
 
         if (id.toLowerCase() === "all") {
-          await acceptAllPendingInvitationsForUser(userId, tenantId);
+          await acceptAllPendingInvitationsForTenantMember(userId, tenantId);
         } else {
-          await acceptOrganisationInvitation(id, userId, tenantId);
+          await acceptTenantInvitation(id, userId, tenantId);
         }
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
@@ -219,20 +213,17 @@ export default function defineInvitationsRoutes(
       },
     }),
     validateScope("tenants:write"),
-    validator(
-      "param",
-      v.object({ tenantId: v.string(), id: v.string() })
-    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");
         if (id.toLowerCase() === "all") {
-          await declineAllPendingInvitationsForUser(
+          await declineAllPendingInvitationsForTenantMember(
             c.get("usersId"),
             tenantId
           );
         } else {
-          await declineOrganisationInvitation(id);
+          await declineTenantInvitation(id);
         }
 
         return c.json(RESPONSES.SUCCESS);

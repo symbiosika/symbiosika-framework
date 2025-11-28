@@ -8,7 +8,6 @@ import {
   teams,
   type UsersInsert,
 } from "../db/schema/users";
-import { sendValidationPin } from "../auth/phone";
 
 /**
  * Get a user by its external id
@@ -37,7 +36,7 @@ export const getUserById = async (userId: string) => {
       firstname: users.firstname,
       surname: users.surname,
       meta: users.meta,
-      lastOrganisationId: users.lastOrganisationId,
+      lastTenantId: users.lastTenantId,
       phoneNumber: users.phoneNumber,
       phoneNumberAsNumber: users.phoneNumberAsNumber,
       phoneNumberVerified: users.phoneNumberVerified,
@@ -51,10 +50,7 @@ export const getUserById = async (userId: string) => {
 /**
  * Get a user by its email
  */
-export const getUserByEmail = async (
-  email: string,
-  tenantId?: string
-) => {
+export const getUserByEmail = async (email: string, tenantId?: string) => {
   const q = getDb()
     .select({
       id: users.id,
@@ -102,6 +98,9 @@ export const updateUser = async (
 
   // get actual user
   const user = await getUserById(userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
 
   // check if phone number has changed
   let phoneNumberChanged = false;
@@ -124,7 +123,7 @@ export const updateUser = async (
 /**
  * Get the tenants of a user
  */
-export const getUserOrganisations = async (userId: string) => {
+export const getUserTenants = async (userId: string) => {
   return await getDb()
     .select({
       tenantId: tenants.id,
@@ -133,17 +132,14 @@ export const getUserOrganisations = async (userId: string) => {
       joinedAt: tenantMembers.joinedAt,
     })
     .from(tenantMembers)
-    .innerJoin(
-      tenants,
-      eq(tenants.id, tenantMembers.tenantId)
-    )
+    .innerJoin(tenants, eq(tenants.id, tenantMembers.tenantId))
     .where(eq(tenantMembers.userId, userId));
 };
 
 /**
  * Add a user to an tenant
  */
-export const addUserToOrganisation = async (
+export const addUserToTenant = async (
   userId: string,
   tenantId: string,
   role: "admin" | "member" | "owner" = "member"
@@ -158,7 +154,7 @@ export const addUserToOrganisation = async (
 /**
  * Remove a user from an tenant
  */
-export const removeUserFromOrganisation = async (
+export const removeUserFromTenant = async (
   userId: string,
   tenantId: string
 ) => {
@@ -216,30 +212,24 @@ export const removeUserFromTeam = async (userId: string, teamId: string) => {
 /**
  * Set the last selected tenant of a user
  */
-export const setUsersLastOrganisation = async (
-  userId: string,
-  tenantId?: string
-) => {
-  const usersOrganisations = await getUserOrganisations(userId);
+export const setUsersLastTenant = async (userId: string, tenantId?: string) => {
+  const usersTenants = await getUserTenants(userId);
 
-  if (
-    tenantId &&
-    usersOrganisations.some((org) => org.tenantId === tenantId)
-  ) {
+  if (tenantId && usersTenants.some((tenant) => tenant.tenantId === tenantId)) {
     await getDb()
       .update(users)
-      .set({ lastOrganisationId: tenantId })
+      .set({ lastTenantId: tenantId })
       .where(eq(users.id, userId));
   } else {
-    if (usersOrganisations.length > 0) {
+    if (usersTenants[0]) {
       await getDb()
         .update(users)
-        .set({ lastOrganisationId: usersOrganisations[0].tenantId })
+        .set({ lastTenantId: usersTenants[0].tenantId })
         .where(eq(users.id, userId));
     } else {
       await getDb()
         .update(users)
-        .set({ lastOrganisationId: null })
+        .set({ lastTenantId: null })
         .where(eq(users.id, userId));
     }
   }
@@ -248,22 +238,19 @@ export const setUsersLastOrganisation = async (
 /**
  * Set another tenant as the last selected tenant
  */
-export const setAnotherOrganisationAsLast = async (
+export const setAnotherTenantAsLast = async (
   userId: string,
   tenantIdThatCannotBeLast: string
 ) => {
-  const usersLastOrganisation = await getDb()
+  const usersLastTenant = await getDb()
     .select({
-      lastOrganisationId: users.lastOrganisationId,
+      lastTenantId: users.lastTenantId,
     })
     .from(users)
     .where(eq(users.id, userId));
 
-  if (
-    usersLastOrganisation[0]?.lastOrganisationId ===
-    tenantIdThatCannotBeLast
-  ) {
-    await setUsersLastOrganisation(userId);
+  if (usersLastTenant[0]?.lastTenantId === tenantIdThatCannotBeLast) {
+    await setUsersLastTenant(userId);
   }
 };
 
@@ -272,20 +259,24 @@ export const setAnotherOrganisationAsLast = async (
  * Will set the last selected tenant to the first tenant
  * if the user has no last selected tenant
  */
-export const getUsersLastSelectedOrganisation = async (
+export const getUsersLastSelectedTenant = async (
   userId: string
 ): Promise<string> => {
   const user = await getUserById(userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
 
-  if (!user.lastOrganisationId) {
-    const tenants = await getUserOrganisations(userId);
-    if (tenants.length > 0) {
-      await setUsersLastOrganisation(userId);
-      return tenants[0].tenantId;
+  if (!user.lastTenantId) {
+    const tenants = await getUserTenants(userId);
+    const firstTenant = tenants[0];
+    if (firstTenant) {
+      await setUsersLastTenant(userId);
+      return firstTenant.tenantId;
     } else {
       throw new Error("User has no tenants");
     }
   }
 
-  return user.lastOrganisationId;
+  return user.lastTenantId;
 };

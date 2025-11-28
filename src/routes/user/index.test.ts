@@ -42,7 +42,7 @@ describe("User API Endpoints", () => {
     });
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data.token).toBeDefined();
   });
 
@@ -57,7 +57,7 @@ describe("User API Endpoints", () => {
     });
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data.id).toBeDefined();
     expect(data.email).toBeDefined();
   });
@@ -80,7 +80,7 @@ describe("User API Endpoints", () => {
     });
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data.firstname).toBe("John");
     expect(data.surname).toBe("Doe");
   });
@@ -99,7 +99,7 @@ describe("User API Endpoints", () => {
     );
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data.id).toBeDefined();
     expect(data.email).toBe(TEST_ADMIN_USER.email);
   });
@@ -121,7 +121,7 @@ describe("User API Endpoints", () => {
     });
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data.id).toBeDefined();
   });
 
@@ -178,7 +178,7 @@ describe("User API Endpoints", () => {
     );
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data).toHaveProperty("all");
     expect(Array.isArray(data.all)).toBe(true);
     expect(data.all.length).toBeGreaterThan(0);

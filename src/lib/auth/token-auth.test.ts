@@ -75,6 +75,7 @@ describe("Token Authentication", () => {
 
       const result = await searchForToken(token);
       expect(result).toBeDefined();
+      if (!result) return; // end test if result is undefined
       expect(result.name).toBe("Search Test Token");
     });
 
@@ -141,6 +142,9 @@ describe("Token Authentication", () => {
       });
 
       const tokenRecord = await searchForToken(token);
+      if (!tokenRecord) {
+        throw new Error("Token record is undefined");
+      }
       await revokeApiToken(tokenRecord.id, TEST_ORG1_USER_1.id);
 
       try {
@@ -171,6 +175,7 @@ describe("Token Authentication", () => {
 
       const tokens = await listApiTokensForUser(TEST_ORG1_USER_1.id);
       expect(tokens.length).toBeGreaterThanOrEqual(2);
+      if (!tokens[0]) return; // end test if tokens is undefined
       expect(tokens[0].name).toBeDefined();
       expect(tokens[0].scopes).toBeDefined();
     });

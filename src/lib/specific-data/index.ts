@@ -166,6 +166,9 @@ export const createTeamSpecificData = async (data: TeamSpecificDataInsert) => {
     .insert(teamSpecificData)
     .values(data)
     .returning();
+  if (!result[0]) {
+    throw new Error("Failed to create team specific data");
+  }
   return result[0];
 };
 
@@ -194,6 +197,9 @@ export const updateTeamSpecificData = async (
       and(eq(teamSpecificData.teamId, teamId), eq(teamSpecificData.key, key))
     )
     .returning();
+  if (!result[0]) {
+    throw new Error("Failed to update team specific data");
+  }
   return result[0];
 };
 

@@ -15,8 +15,8 @@ interface License {
 }
 
 class LicenseManager {
-  private publicKey: string;
-  private isEnabled: boolean;
+  private publicKey: string = "";
+  private isEnabled: boolean = false;
 
   constructor() {}
 

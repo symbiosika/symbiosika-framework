@@ -14,7 +14,7 @@ import {
   appSpecificData,
 } from "../lib/db/db-schema";
 import { and, eq, inArray, or } from "drizzle-orm";
-import { addOrganisationMember } from "../lib/usermanagement/oganisations";
+import { addTenantMember } from "../lib/usermanagement/tenants";
 
 /**
  * FIXED TESTING DATA
@@ -249,49 +249,17 @@ export const initTestOrganisationMembers = async () => {
     );
 
   // all the users to their own tenants
-  await addOrganisationMember(
-    TEST_ORGANISATION_1.id,
-    TEST_ORG1_USER_1.id,
-    "owner"
-  );
-  await addOrganisationMember(
-    TEST_ORGANISATION_1.id,
-    TEST_ORG1_USER_2.id,
-    "member"
-  );
-  await addOrganisationMember(
-    TEST_ORGANISATION_1.id,
-    TEST_ORG1_USER_3.id,
-    "member"
-  );
+  await addTenantMember(TEST_ORGANISATION_1.id, TEST_ORG1_USER_1.id, "owner");
+  await addTenantMember(TEST_ORGANISATION_1.id, TEST_ORG1_USER_2.id, "member");
+  await addTenantMember(TEST_ORGANISATION_1.id, TEST_ORG1_USER_3.id, "member");
 
-  await addOrganisationMember(
-    TEST_ORGANISATION_2.id,
-    TEST_ORG2_USER_1.id,
-    "owner"
-  );
-  await addOrganisationMember(
-    TEST_ORGANISATION_3.id,
-    TEST_ORG3_USER_1.id,
-    "owner"
-  );
+  await addTenantMember(TEST_ORGANISATION_2.id, TEST_ORG2_USER_1.id, "owner");
+  await addTenantMember(TEST_ORGANISATION_3.id, TEST_ORG3_USER_1.id, "owner");
 
   // add admin to all tenants
-  await addOrganisationMember(
-    TEST_ORGANISATION_1.id,
-    TEST_ADMIN_USER.id,
-    "owner"
-  );
-  await addOrganisationMember(
-    TEST_ORGANISATION_2.id,
-    TEST_ADMIN_USER.id,
-    "owner"
-  );
-  await addOrganisationMember(
-    TEST_ORGANISATION_3.id,
-    TEST_ADMIN_USER.id,
-    "owner"
-  );
+  await addTenantMember(TEST_ORGANISATION_1.id, TEST_ADMIN_USER.id, "owner");
+  await addTenantMember(TEST_ORGANISATION_2.id, TEST_ADMIN_USER.id, "owner");
+  await addTenantMember(TEST_ORGANISATION_3.id, TEST_ADMIN_USER.id, "owner");
 };
 
 /**

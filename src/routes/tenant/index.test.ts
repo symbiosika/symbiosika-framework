@@ -1,11 +1,15 @@
 import { describe, it, expect, beforeAll } from "bun:test";
 import type { FastAppHono } from "../../types";
 import defineOrganisationRoutes from "./index";
-import { addOrganisationMember } from "../../lib/usermanagement/oganisations";
+import { addTenantMember } from "../../lib/usermanagement/tenants";
 import { Hono } from "hono";
-import { deleteTestOrganisations, initTests, TEST_USERS } from "../../test/init.test";
+import {
+  deleteTestOrganisations,
+  initTests,
+  TEST_USERS,
+} from "../../test/init.test";
 import { testFetcher } from "../../test/fetcher.test";
-import { type OrganisationsSelect } from "../../lib/db/db-schema";
+import { type TenantsSelect } from "../../lib/db/db-schema";
 
 let app: FastAppHono;
 let TEST_USER_1_TOKEN: string;
@@ -21,7 +25,7 @@ beforeAll(async () => {
   defineOrganisationRoutes(app, "/api");
 });
 
-let org: OrganisationsSelect;
+let org: TenantsSelect;
 
 describe("Organisation Routes", () => {
   it("should execute tests sequentially", async () => {
@@ -46,14 +50,9 @@ describe("Organisation Routes", () => {
     console.log(
       "Starting test: Attempt to create another tenant with the same name"
     );
-    response = await testFetcher.post(
-      app,
-      "/api/tenant",
-      TEST_USER_3_TOKEN,
-      {
-        name: "Another Organisation",
-      }
-    );
+    response = await testFetcher.post(app, "/api/tenant", TEST_USER_3_TOKEN, {
+      name: "Another Organisation",
+    });
     let errorText: string | null = response.textResponse;
     expect(errorText).toBe(
       "Error creating tenant: Error: User already has an tenant"
@@ -64,16 +63,16 @@ describe("Organisation Routes", () => {
       app,
       `/api/tenant/${org.id}/members`,
       TEST_USER_3_TOKEN,
-      { userId: TEST_USERS[1].id, role: "member" }
+      { userId: TEST_USERS[1]!.id, role: "member" }
     );
     expect(response.status).toBe(200);
     data = response.jsonResponse;
-    expect(data.userId).toBe(TEST_USERS[1].id);
+    expect(data.userId).toBe(TEST_USERS[1]!.id);
 
     console.log("Starting test: Remove a member from the tenant");
     response = await testFetcher.delete(
       app,
-      `/api/tenant/${org.id}/members/${TEST_USERS[1].id}`,
+      `/api/tenant/${org.id}/members/${TEST_USERS[1]!.id}`,
       TEST_USER_3_TOKEN
     );
     expect(response.status).toBe(200);
@@ -89,7 +88,7 @@ describe("Organisation Routes", () => {
     expect(data.name).toBe("User3 Organisation");
 
     console.log("Starting test: Get all members of an tenant");
-    await addOrganisationMember(org.id, TEST_USERS[1].id, "member");
+    await addTenantMember(org.id, TEST_USERS[1]!.id, "member");
     response = await testFetcher.get(
       app,
       `/api/tenant/${org.id}/members`,
@@ -99,7 +98,7 @@ describe("Organisation Routes", () => {
     data = response.jsonResponse;
 
     expect.arrayContaining([
-      { userEmail: TEST_USERS[1].email, role: "member" },
+      { userEmail: TEST_USERS[1]!.email, role: "member" },
     ]);
 
     console.log("Starting test: Update an tenant");
@@ -129,25 +128,23 @@ describe("Organisation Routes", () => {
       app,
       `/api/tenant/${org.id}/members`,
       TEST_USER_3_TOKEN,
-      { userId: TEST_USERS[0].id, role: "member" }
+      { userId: TEST_USERS[0]!.id, role: "member" }
     );
     expect(response.status).toBe(200);
     data = response.jsonResponse;
-    expect(data.userId).toBe(TEST_USERS[0].id);
+    expect(data.userId).toBe(TEST_USERS[0]!.id);
 
     console.log("Starting test: Remove a member from an tenant");
     response = await testFetcher.delete(
       app,
-      `/api/tenant/${org.id}/members/${TEST_USERS[0].id}`,
+      `/api/tenant/${org.id}/members/${TEST_USERS[0]!.id}`,
       TEST_USER_3_TOKEN
     );
     errorText = response.textResponse;
     expect(response.status).toBe(200);
 
     // Permission tests
-    console.log(
-      "Starting test: Non-members should not get tenant details"
-    );
+    console.log("Starting test: Non-members should not get tenant details");
     response = await testFetcher.get(
       app,
       `/api/tenant/${org.id}`,
@@ -188,14 +185,14 @@ describe("Organisation Routes", () => {
       app,
       `/api/tenant/${org.id}/members`,
       TEST_USER_2_TOKEN,
-      { userId: TEST_USERS[2].id, role: "member" }
+      { userId: TEST_USERS[2]!.id, role: "member" }
     );
     expect(response.status).toBe(403);
 
     console.log("Starting test: Non-admins should not remove members");
     response = await testFetcher.delete(
       app,
-      `/api/tenant/${org.id}/members/${TEST_USERS[2].id}`,
+      `/api/tenant/${org.id}/members/${TEST_USERS[2]!.id}`,
       TEST_USER_2_TOKEN
     );
     expect(response.status).toBe(403);

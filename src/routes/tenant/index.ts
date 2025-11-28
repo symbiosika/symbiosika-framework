@@ -9,17 +9,17 @@ import {
   checkUserPermission,
 } from "../../lib/utils/hono-middlewares";
 import {
-  createOrganisation,
-  getOrganisation,
-  updateOrganisation,
-  deleteOrganisation,
-  getOrganisationMembers,
-  addOrganisationMember,
-  dropUserFromOrganisation,
-  getUserOrganisations,
-  getOrganisationMemberRole,
-  updateOrganisationMemberRole,
-} from "../../lib/usermanagement/oganisations";
+  createTenant,
+  getTenant,
+  updateTenant,
+  deleteTenant,
+  getTenantMembers,
+  addTenantMember,
+  dropUserFromTenant,
+  getUserTenants,
+  getTenantMemberRole,
+  updateTenantMemberRole,
+} from "../../lib/usermanagement/tenants";
 import { RESPONSES } from "../../lib/responses";
 import { describeRoute } from "hono-openapi";
 import { resolver, validator } from "hono-openapi";
@@ -31,7 +31,7 @@ import {
   tenantsSelectSchema,
   tenantsUpdateSchema,
 } from "../../lib/db/db-schema";
-import { createOrganisationInvitation } from "../../lib/usermanagement/invitations";
+import { createTenantInvitation } from "../../lib/usermanagement/invitations";
 import type { MiddlewareHandler } from "hono";
 import { validateScope } from "../../lib/utils/validate-scope";
 
@@ -43,7 +43,7 @@ export const isOrganisationMember: MiddlewareHandler = async (c, next) => {
   const tenantId = c.req.param("tenantId")!;
 
   try {
-    await getOrganisationMemberRole(tenantId, userId);
+    await getTenantMemberRole(tenantId, userId);
     await next();
   } catch (err) {
     throw new HTTPException(403, {
@@ -60,7 +60,7 @@ export const isOrganisationAdmin: MiddlewareHandler = async (c, next) => {
   const tenantId = c.req.param("tenantId")!;
 
   try {
-    const role = await getOrganisationMemberRole(tenantId, userId);
+    const role = await getTenantMemberRole(tenantId, userId);
     if (role !== "admin" && role !== "owner") {
       throw new HTTPException(403, {
         message: "User is not an admin or owner of this tenant",
@@ -83,11 +83,7 @@ export const checkOrganisationIdInBody: MiddlewareHandler = async (c, next) => {
   // @ts-ignore
   const json: { tenantId: string } = c.req.valid("json");
 
-  if (
-    !json.tenantId ||
-    !tenantId ||
-    json.tenantId !== tenantId
-  ) {
+  if (!json.tenantId || !tenantId || json.tenantId !== tenantId) {
     throw new HTTPException(403, {
       message:
         "The tenantId in the body does not match the tenantId in the path",
@@ -127,18 +123,18 @@ export default function defineOrganisationRoutes(
         const data = c.req.valid("json");
         const userId = c.get("usersId");
         // check if the user has already an tenant
-        const userOrganisations = await getUserOrganisations(userId);
-        if (userOrganisations.length > 0) {
+        const userTenants = await getUserTenants(userId);
+        if (userTenants.length > 0) {
           throw new HTTPException(400, {
             message: "User already has an tenant",
           });
         }
 
         // create the tenant
-        const org = await createOrganisation(data);
+        const tenant = await createTenant(data);
         // put the user in the tenant
-        await addOrganisationMember(org.id, userId, "owner");
-        return c.json(org);
+        await addTenantMember(tenant.id, userId, "owner");
+        return c.json(tenant);
       } catch (err) {
         throw new HTTPException(500, {
           message: "Error creating tenant: " + err,
@@ -174,8 +170,8 @@ export default function defineOrganisationRoutes(
       try {
         const userId = c.get("usersId");
         const { tenantId } = c.req.valid("param");
-        const org = await getOrganisation(tenantId);
-        return c.json(org);
+        const tenant = await getTenant(tenantId);
+        return c.json(tenant);
       } catch (err) {
         throw new HTTPException(500, {
           message: "Error getting tenant: " + err,
@@ -222,7 +218,7 @@ export default function defineOrganisationRoutes(
     async (c) => {
       const userId = c.get("usersId");
       const { tenantId } = c.req.valid("param");
-      const members = await getOrganisationMembers(userId, tenantId);
+      const members = await getTenantMembers(userId, tenantId);
       return c.json(members);
     }
   );
@@ -254,11 +250,8 @@ export default function defineOrganisationRoutes(
     async (c) => {
       try {
         const data = c.req.valid("json");
-        const org = await updateOrganisation(
-          c.req.valid("param").tenantId,
-          data
-        );
-        return c.json(org);
+        const tenant = await updateTenant(c.req.valid("param").tenantId, data);
+        return c.json(tenant);
       } catch (err) {
         throw new HTTPException(500, {
           message: "Error updating tenant: " + err,
@@ -286,7 +279,7 @@ export default function defineOrganisationRoutes(
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
-        await deleteOrganisation(tenantId);
+        await deleteTenant(tenantId);
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
         throw new HTTPException(500, {
@@ -333,7 +326,7 @@ export default function defineOrganisationRoutes(
       try {
         const { tenantId } = c.req.valid("param");
         const { email, role = "member", sendMail = true } = c.req.valid("json");
-        const invitation = await createOrganisationInvitation(
+        const invitation = await createTenantInvitation(
           {
             tenantId,
             email,
@@ -388,11 +381,7 @@ export default function defineOrganisationRoutes(
         const { tenantId } = c.req.valid("param");
         const { userId, role = "member" } = c.req.valid("json");
 
-        const member = await addOrganisationMember(
-          tenantId,
-          userId,
-          role
-        );
+        const member = await addTenantMember(tenantId, userId, role);
         return c.json(member);
       } catch (err) {
         throw new HTTPException(500, {
@@ -442,11 +431,7 @@ export default function defineOrganisationRoutes(
       try {
         const { tenantId, memberId } = c.req.valid("param");
         const { role } = c.req.valid("json");
-        const member = await updateOrganisationMemberRole(
-          tenantId,
-          memberId,
-          role
-        );
+        const member = await updateTenantMemberRole(tenantId, memberId, role);
         return c.json(member);
       } catch (err) {
         throw new HTTPException(500, {
@@ -478,7 +463,7 @@ export default function defineOrganisationRoutes(
     async (c) => {
       try {
         const { tenantId, memberId } = c.req.valid("param");
-        await dropUserFromOrganisation(memberId, tenantId);
+        await dropUserFromTenant(memberId, tenantId);
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
         throw new HTTPException(500, {

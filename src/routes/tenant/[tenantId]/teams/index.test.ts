@@ -12,7 +12,7 @@ import { getDb } from "../../../../lib/db/db-connection";
 import { teams } from "../../../../lib/db/db-schema";
 import { eq } from "drizzle-orm";
 import type { FastAppHono } from "../../../../types";
-import { addOrganisationMember } from "../../../../lib/usermanagement/oganisations";
+import { addTenantMember } from "../../../../lib/usermanagement/tenants";
 
 let app: FastAppHono;
 let adminToken: string;
@@ -32,9 +32,7 @@ beforeAll(async () => {
   //
   // delete all teams in the test tenant
   //
-  await getDb()
-    .delete(teams)
-    .where(eq(teams.tenantId, TEST_ORGANISATION_1.id));
+  await getDb().delete(teams).where(eq(teams.tenantId, TEST_ORGANISATION_1.id));
 });
 
 describe("Teams API Endpoints", () => {
@@ -148,14 +146,12 @@ describe("Teams API Endpoints", () => {
     );
     // console.log(response.textResponse);
     expect(response.status).toBe(500);
-    expect(response.textResponse).toContain(
-      "User is not part of the tenant"
-    );
+    expect(response.textResponse).toContain("User is not part of the tenant");
 
     // ------------------------------------------------------------
     // add the member to the tenant
     // ------------------------------------------------------------
-    await addOrganisationMember(
+    await addTenantMember(
       TEST_ORGANISATION_1.id,
       TEST_ORG2_USER_1.id,
       "member"

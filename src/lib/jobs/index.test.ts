@@ -24,6 +24,9 @@ describe("Job Queue System", () => {
       { test: true },
       TEST_ORGANISATION_1.id
     );
+    if (!job) {
+      throw new Error("Job is undefined");
+    }
 
     // Wait for job to complete (slightly longer than CHECK_CYCLE_MS)
     await new Promise((resolve) => setTimeout(resolve, 6000));
@@ -31,6 +34,8 @@ describe("Job Queue System", () => {
     // Check the job status
     const completedJob = await getJob(job.id);
 
+    expect(completedJob).toBeDefined();
+    if (!completedJob) return;
     expect(completedJob.status).toBe("completed");
     expect(completedJob.result).toEqual({ testValue: "completed" });
   }, 10000); // Increase timeout to allow for job processing

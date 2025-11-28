@@ -117,6 +117,7 @@ describe("Crypt Module Tests", () => {
         TEST_ORGANISATION_1.id
       );
       expect(result.length).toBeGreaterThan(0);
+      if (!result[0]) return; // end test if result is undefined
       expect(result[0].name).toBe("DELETE_SECRET");
 
       // Verify it's deleted

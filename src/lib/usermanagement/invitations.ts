@@ -7,13 +7,13 @@ import { eq, and } from "drizzle-orm";
 import {
   invitationCodes,
   tenantInvitations,
-  type OrganisationInvitationsInsert,
+  type TenantInvitationsInsert,
   tenantMembers,
   tenants,
   users,
 } from "../db/schema/users";
 import { getDb } from "../db/db-connection";
-import { getUserByEmail, getUserById, setUsersLastOrganisation } from "./user";
+import { getUserByEmail, getUserById, setUsersLastTenant } from "./user";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { smtpService } from "../email";
 import log from "../log";
@@ -21,7 +21,7 @@ import log from "../log";
 /**
  * Get all tenant invitations
  */
-export const getAllOrganisationInvitations = async (tenantId: string) => {
+export const getAllTenantInvitations = async (tenantId: string) => {
   return await getDb()
     .select()
     .from(tenantInvitations)
@@ -31,8 +31,11 @@ export const getAllOrganisationInvitations = async (tenantId: string) => {
 /**
  * Get all tenant invitations
  */
-export const getUsersOrganisationInvitations = async (userId: string) => {
+export const getUsersTenantInvitations = async (userId: string) => {
   const user = await getUserById(userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
   return await getDb()
     .select({
       id: tenantInvitations.id,
@@ -43,10 +46,7 @@ export const getUsersOrganisationInvitations = async (userId: string) => {
       role: tenantInvitations.role,
     })
     .from(tenantInvitations)
-    .leftJoin(
-      tenants,
-      eq(tenantInvitations.tenantId, tenants.id)
-    )
+    .leftJoin(tenants, eq(tenantInvitations.tenantId, tenants.id))
     .where(
       and(
         eq(tenantInvitations.email, user.email),
@@ -58,7 +58,7 @@ export const getUsersOrganisationInvitations = async (userId: string) => {
 /**
  * Drop an invitation by its ID
  */
-export const dropOrganisationInvitation = async (invitationId: string) => {
+export const dropTenantInvitation = async (invitationId: string) => {
   await getDb()
     .delete(tenantInvitations)
     .where(eq(tenantInvitations.id, invitationId));
@@ -67,7 +67,7 @@ export const dropOrganisationInvitation = async (invitationId: string) => {
 /**
  * Accept an invitation with its ID and for one user
  */
-export const acceptOrganisationInvitation = async (
+export const acceptTenantInvitation = async (
   invitationId: string,
   userId: string,
   tenantId: string
@@ -116,18 +116,18 @@ export const acceptOrganisationInvitation = async (
       .update(users)
       .set({
         emailVerified: true,
-        lastOrganisationId: invitation.tenantId,
+        lastTenantId: invitation.tenantId,
       })
       .where(eq(users.id, userId));
   });
 
-  await setUsersLastOrganisation(userId, invitation.tenantId);
+  await setUsersLastTenant(userId, invitation.tenantId);
 };
 
 /**
  * Accept all pending invitations for a user independent of a specific invitation
  */
-export const acceptAllPendingInvitationsForUser = async (
+export const acceptAllPendingInvitationsForTenantMember = async (
   userId: string,
   tenantId: string
 ) => {
@@ -174,13 +174,13 @@ export const acceptAllPendingInvitationsForUser = async (
     }
   });
 
-  await setUsersLastOrganisation(userId);
+  await setUsersLastTenant(userId, tenantId);
 };
 
 /**
  * Decline an invitation by its ID
  */
-export const declineOrganisationInvitation = async (invitationId: string) => {
+export const declineTenantInvitation = async (invitationId: string) => {
   await getDb()
     .update(tenantInvitations)
     .set({ status: "declined" })
@@ -190,7 +190,7 @@ export const declineOrganisationInvitation = async (invitationId: string) => {
 /**
  * Decline all pending invitations for a user independent of a specific invitation
  */
-export const declineAllPendingInvitationsForUser = async (
+export const declineAllPendingInvitationsForTenantMember = async (
   userId: string,
   tenantId: string
 ) => {
@@ -221,8 +221,8 @@ export const declineAllPendingInvitationsForUser = async (
 /**
  * Create a new invitation in the database
  */
-export const createOrganisationInvitation = async (
-  data: OrganisationInvitationsInsert,
+export const createTenantInvitation = async (
+  data: TenantInvitationsInsert,
   sendMail = false
 ) => {
   log.info("Creating tenant invitation. Send Mail? " + sendMail);
@@ -233,7 +233,7 @@ export const createOrganisationInvitation = async (
     status: data.status || "pending",
   };
 
-  const [org] = await getDb()
+  const [tenantRes] = await getDb()
     .select({
       name: tenants.name,
     })
@@ -241,14 +241,15 @@ export const createOrganisationInvitation = async (
     .where(eq(tenants.id, dataWithStatus.tenantId))
     .limit(1);
 
+  if (!tenantRes) {
+    throw new Error("Tenant not found");
+  }
+
   const [result] = await getDb()
     .insert(tenantInvitations)
     .values(dataWithStatus)
     .onConflictDoUpdate({
-      target: [
-        tenantInvitations.tenantId,
-        tenantInvitations.email,
-      ],
+      target: [tenantInvitations.tenantId, tenantInvitations.email],
       set: {
         status: dataWithStatus.status,
         // Also update role if it's provided
@@ -278,7 +279,7 @@ export const createOrganisationInvitation = async (
             },
             tenant: {
               id: dataWithStatus.tenantId,
-              name: org.name,
+              name: tenantRes.name,
             },
           }
         );
@@ -299,7 +300,7 @@ export const createOrganisationInvitation = async (
           link: `${_GLOBAL_SERVER_CONFIG.baseUrl || "http://localhost:3000"}/manage/#/login?register=true&email=${encodeURIComponent(dataWithStatus.email)}&hideInvitationCode=true`,
           tenant: {
             id: dataWithStatus.tenantId,
-            name: org.name,
+            name: tenantRes.name,
           },
         });
       await smtpService.sendMail({
@@ -332,7 +333,7 @@ export const checkIfInvitationCodeIsNeededToRegister = async () => {
 export const getPendingInvitationsForEmail = async (
   email: string
 ): Promise<{
-  invitedInOrganisationIds: string[];
+  invitedInTenantIds: string[];
 }> => {
   const invitations = await getDb()
     .select()
@@ -345,8 +346,6 @@ export const getPendingInvitationsForEmail = async (
     );
 
   return {
-    invitedInOrganisationIds: invitations.map(
-      (invitation) => invitation.tenantId
-    ),
+    invitedInTenantIds: invitations.map((invitation) => invitation.tenantId),
   };
 };

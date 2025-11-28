@@ -8,6 +8,7 @@ describe("splitTextIntoSectionsOrChunks", () => {
     const chunks = splitTextIntoSectionsOrChunks(words);
 
     expect(chunks).toHaveLength(3);
+    if (!chunks[0] || !chunks[1]) return; // end test if chunk is undefined
     expect(chunks[0].order).toBe(0);
     expect(chunks[1].order).toBe(1);
     expect(chunks[0].text.split(" ").length).toBeLessThanOrEqual(500);
@@ -19,6 +20,7 @@ describe("splitTextIntoSectionsOrChunks", () => {
     const chunks = splitTextIntoSectionsOrChunks(text);
 
     expect(chunks).toHaveLength(1);
+    if (!chunks[0]) return; // end test if chunk is undefined
     expect(chunks[0].text).toBe(text);
     expect(chunks[0].order).toBe(0);
     expect(chunks[0].header).toBeUndefined();
@@ -29,6 +31,7 @@ describe("splitTextIntoSectionsOrChunks", () => {
     const chunks = splitTextIntoSectionsOrChunks(text);
 
     expect(chunks).toHaveLength(1);
+    if (!chunks[0]) return; // end test if chunk is undefined
     expect(chunks[0].text).toBe(text);
   });
 });

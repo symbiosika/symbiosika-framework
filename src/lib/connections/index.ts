@@ -8,7 +8,7 @@ import {
   connections,
   type ConnectionsInsert,
   type ConnectionsSelect,
-  TenantsSelect,
+  type TenantsSelect,
 } from "../db/db-schema";
 import { eq, and, lt } from "drizzle-orm";
 import log from "../log";
@@ -161,7 +161,7 @@ export async function initializeConnection(
 
     let connectionId: string;
 
-    if (existingConnection.length > 0) {
+    if (existingConnection[0]) {
       // Update existing connection
       connectionId = existingConnection[0].id;
       await db
@@ -194,6 +194,10 @@ export async function initializeConnection(
         .insert(connections)
         .values(newConnection)
         .returning();
+
+      if (!result[0]) {
+        throw new Error("Failed to create connection");
+      }
 
       connectionId = result[0].id;
       log.info(`Connection created: ${connectionId}`);
@@ -276,7 +280,7 @@ export async function acceptConnection(
       );
 
     // Delete existing connection if found
-    if (existingConnection.length > 0) {
+    if (existingConnection[0]) {
       await db
         .delete(connections)
         .where(eq(connections.id, existingConnection[0].id));
@@ -303,6 +307,10 @@ export async function acceptConnection(
       .insert(connections)
       .values(newConnection)
       .returning();
+
+    if (!result[0]) {
+      throw new Error("Failed to create connection");
+    }
 
     const connectionId = result[0].id;
     log.info(`Connection accepted and created: ${connectionId}`);
@@ -384,7 +392,7 @@ export async function getConnection(
       .from(connections)
       .where(eq(connections.id, connectionId));
 
-    return result.length > 0 ? result[0] : null;
+    return result[0] ? result[0] : null;
   } catch (error) {
     log.error("Error getting connection:", error as object);
     throw error;
@@ -411,7 +419,7 @@ export async function getConnectionByTenants(
         )
       );
 
-    return result.length > 0 ? result[0] : null;
+    return result[0] ? result[0] : null;
   } catch (error) {
     log.error("Error getting connection:", error as object);
     throw error;

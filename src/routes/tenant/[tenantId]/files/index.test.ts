@@ -37,7 +37,7 @@ describe("Files API Endpoints", () => {
       }
     );
     expect(dbResponse.status).toBe(200);
-    const dbData = await dbResponse.json();
+    const dbData: any = await dbResponse.json();
     expect(dbData.id).toBeDefined();
     dbFileId = dbData.id;
 
@@ -56,7 +56,7 @@ describe("Files API Endpoints", () => {
       }
     );
     expect(localResponse.status).toBe(200);
-    const localData = await localResponse.json();
+    const localData: any = await localResponse.json();
     expect(localData.id).toBeDefined();
     localFileId = localData.id;
   });

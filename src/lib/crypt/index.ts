@@ -46,6 +46,9 @@ export async function setSecret(data: {
     })
     .returning();
 
+  if (!entries[0]) {
+    throw new Error("Failed to set secret");
+  }
   return { ...entries[0], value: "" };
 }
 
@@ -68,7 +71,7 @@ export async function getSecret(
     )
     .limit(1);
 
-  if (result.length === 0) {
+  if (!result[0]) {
     return null;
   }
   const secret = result[0];
@@ -105,9 +108,6 @@ export async function getSecrets(tenantId: string) {
     })
     .from(secrets)
     .where(
-      and(
-        eq(secrets.reference, "VARIABLES"),
-        eq(secrets.tenantId, tenantId)
-      )
+      and(eq(secrets.reference, "VARIABLES"), eq(secrets.tenantId, tenantId))
     );
 }

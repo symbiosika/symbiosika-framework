@@ -47,7 +47,7 @@ export async function sendValidationPin(userId: string): Promise<{
       .select()
       .from(users)
       .where(eq(users.id, userId));
-    if (usersReq.length === 0) {
+    if (!usersReq[0]) {
       throw new Error("User not found");
     }
     const user = usersReq[0];
@@ -99,7 +99,7 @@ export async function validatePhoneNumber(
       .from(users)
       .where(eq(users.id, userId));
 
-    if (result.length === 0) {
+    if (!result[0]) {
       log.debug("User to validate phone number not found", {
         userId,
         pin,
@@ -152,7 +152,7 @@ export async function getUserIdByPhoneNumber(
       .from(users)
       .where(eq(users.phoneNumberAsNumber, phoneNumberAsNumber));
 
-    if (result.length === 0) {
+    if (!result[0]) {
       return null;
     }
 
@@ -168,8 +168,7 @@ export async function getUserIdByPhoneNumber(
  */
 export async function hasValidPhoneNumber(userId: string): Promise<boolean> {
   const user = await getDb().select().from(users).where(eq(users.id, userId));
-
-  if (user.length === 0) {
+  if (!user[0]) {
     return false;
   }
 

@@ -30,7 +30,7 @@ export const createMagicLinkToken = async (
     .from(users)
     .where(eq(users.email, email));
 
-  if (userResult.length === 0) {
+  if (!userResult[0]) {
     throw new Error("User not found");
   }
   const user = userResult[0];
@@ -134,7 +134,7 @@ export const verifyEmailToken = async (token: string) => {
       )
     );
 
-  if (magicLinkResult.length === 0) {
+  if (!magicLinkResult[0]) {
     throw new Error("Invalid or expired magic link");
   }
   const userId = magicLinkResult[0].userId;
@@ -149,7 +149,7 @@ export const verifyEmailToken = async (token: string) => {
     })
     .from(users)
     .where(eq(users.id, userId));
-  if (user.length === 0) {
+  if (!user[0]) {
     throw new Error("User not found");
   }
 
@@ -291,7 +291,7 @@ export const verifyPasswordResetToken = async (
       )
     );
 
-  if (magicLinkResult.length === 0) {
+  if (!magicLinkResult[0]) {
     throw new Error("Invalid or expired password reset token");
   }
 

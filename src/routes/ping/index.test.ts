@@ -12,7 +12,7 @@ describe("Ping API Endpoint", () => {
 
   it("should return online status and internet connectivity", async () => {
     const response = await app.request("/api/ping");
-    const data = await response.json();
+    const data: any = await response.json();
 
     expect(response.status).toBe(200);
     expect(data).toHaveProperty("online", true);

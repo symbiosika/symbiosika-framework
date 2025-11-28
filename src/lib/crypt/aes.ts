@@ -45,6 +45,9 @@ class AESCipher {
   decrypt(encryptedData: string, algorithm = "aes-256-cbc") {
     const parts = encryptedData.split(":");
     const [ivHex, encryptedText, authTag] = parts;
+    if (!ivHex || !encryptedText) {
+      throw new Error("Invalid encrypted data");
+    }
     const iv = Buffer.from(ivHex, "hex");
     const decipher = createDecipheriv(algorithm, this.key, iv) as any;
     if (algorithm.includes("gcm") && authTag) {

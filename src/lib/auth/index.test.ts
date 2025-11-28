@@ -48,6 +48,9 @@ describe("LocalAuth", async () => {
         invitationCode: TEST_INVITATION_CODE,
       });
       expect(user).toBeDefined();
+      if (!user) {
+        throw new Error("User is undefined");
+      }
       expect(user.email).toBe(email);
 
       // set mail verified to true

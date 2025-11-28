@@ -47,7 +47,7 @@ describe("Scope Validation Tests", () => {
     });
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data.id).toBeDefined();
     expect(data.email).toBeDefined();
   });

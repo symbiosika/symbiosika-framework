@@ -67,6 +67,10 @@ export const importTestKnowledge = async () => {
     })
     .returning();
 
+  if (!knowledge[0]) {
+    throw new Error("Error creating knowledge entry");
+  }
+
   // Create a corresponding knowledge chunk with the same embedding
   await getDb().insert(knowledgeChunks).values({
     knowledgeEntryId: knowledge[0].id,

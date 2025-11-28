@@ -5,7 +5,7 @@ import {
   knowledgeEntry,
   type KnowledgeEntrySelect,
   type KnowledgeChunksSelect,
-  KnowledgeGroupSelect,
+  type KnowledgeGroupSelect,
 } from "../db/schema/knowledge";
 import log from "../log";
 import {

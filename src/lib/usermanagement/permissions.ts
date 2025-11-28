@@ -33,6 +33,9 @@ export const createPermissionGroup = async (
     .insert(userPermissionGroups)
     .values(data)
     .returning();
+  if (!result[0]) {
+    throw new Error("Failed to create permission group");
+  }
   return result[0];
 };
 
@@ -89,6 +92,9 @@ export const deletePermissionGroup = async (groupId: string) => {
  */
 export const createPathPermission = async (data: PathPermissionsInsert) => {
   const result = await getDb().insert(pathPermissions).values(data).returning();
+  if (!result[0]) {
+    throw new Error("Failed to create path permission");
+  }
   return result[0];
 };
 

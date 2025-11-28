@@ -46,7 +46,7 @@ export const saveFileToDb: SaveFileFunction = async (
       })
       .returning();
 
-    if (e.length === 0) {
+    if (!e[0]) {
       throw new Error("no row created");
     }
     return {
@@ -80,7 +80,7 @@ export const getFileFromDb: GetFileFunction = async (
         )
       );
 
-    if (fileRecord.length === 0) {
+    if (!fileRecord[0]) {
       throw new Error("File not found");
     }
     const file = fileRecord[0];

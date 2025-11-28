@@ -49,6 +49,7 @@ describe("User Specific Data", () => {
   test("should create and retrieve user specific data", async () => {
     const created = await createUserSpecificData(testData);
     expect(created).toBeDefined();
+    if (!created) return; // end test if created is undefined
     expect(created.userId).toBe(TEST_ORG1_USER_1.id);
     expect(created.key).toBe(testData.key);
     expect(created.data).toEqual(testData.data);
@@ -65,6 +66,8 @@ describe("User Specific Data", () => {
       ...testData,
       key: "update-key",
     });
+    if (!created)
+      throw new Error("should update user specific data: created is undefined");
     const updated = await updateUserSpecificData(
       created.id,
       TEST_ORG1_USER_1.id,
@@ -73,6 +76,8 @@ describe("User Specific Data", () => {
         data: { value: "updated-value" },
       }
     );
+    expect(updated).toBeDefined();
+    if (!updated) return; // end test if updated is undefined
     expect(updated.data).toEqual({ value: "updated-value" });
   });
 
@@ -81,6 +86,8 @@ describe("User Specific Data", () => {
       ...testData,
       key: "delete-key",
     });
+    if (!created)
+      throw new Error("should delete user specific data: created is undefined");
     await deleteUserSpecificData(created.id, TEST_ORG1_USER_1.id);
 
     try {
@@ -101,6 +108,7 @@ describe("App Specific Data", () => {
   test("should create and retrieve app specific data", async () => {
     const created = await createAppSpecificData(testData);
     expect(created).toBeDefined();
+    if (!created) return; // end test if created is undefined
     expect(created.key).toBe(testData.key);
     expect(created.data).toEqual(testData.data);
 
@@ -113,9 +121,13 @@ describe("App Specific Data", () => {
       ...testData,
       key: "update-key",
     });
+    if (!created)
+      throw new Error("should update app specific data: created is undefined");
     const updated = await updateAppSpecificData("update-key", {
       data: { value: "updated-value" },
     });
+    if (!updated)
+      throw new Error("should update app specific data: updated is undefined");
     expect(updated.data).toEqual({ value: "updated-value" });
   });
 
@@ -124,6 +136,8 @@ describe("App Specific Data", () => {
       ...testData,
       key: "delete-key",
     });
+    if (!created)
+      throw new Error("should delete app specific data: created is undefined");
     await deleteAppSpecificData("delete-key");
 
     try {
@@ -145,6 +159,7 @@ describe("Organisation Specific Data", () => {
   test("should create and retrieve tenant specific data", async () => {
     const created = await createOrganisationSpecificData(testData);
     expect(created).toBeDefined();
+    if (!created) return; // end test if created is undefined
     expect(created.tenantId).toBe(TEST_ORGANISATION_1.id);
     expect(created.key).toBe(testData.key);
     expect(created.data).toEqual(testData.data);
@@ -161,6 +176,10 @@ describe("Organisation Specific Data", () => {
       ...testData,
       key: "update-key",
     });
+    if (!created)
+      throw new Error(
+        "should update organisation specific data: created is undefined"
+      );
     const updated = await updateOrganisationSpecificData(
       TEST_ORGANISATION_1.id,
       "update-key",
@@ -168,6 +187,10 @@ describe("Organisation Specific Data", () => {
         data: { value: "updated-value" },
       }
     );
+    if (!updated)
+      throw new Error(
+        "should update organisation specific data: updated is undefined"
+      );
     expect(updated.data).toEqual({ value: "updated-value" });
   });
 

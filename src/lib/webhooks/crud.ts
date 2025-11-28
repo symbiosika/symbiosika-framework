@@ -24,6 +24,9 @@ export const createWebhook = async (userId: string, input: WebhookInsert) => {
       updatedAt: new Date().toISOString(),
     })
     .returning();
+  if (!webhook) {
+    throw new Error("Failed to create webhook");
+  }
   return webhook;
 };
 

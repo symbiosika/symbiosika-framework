@@ -12,6 +12,7 @@ import type {
 import { HTTPException } from "hono/http-exception";
 import {
   tenantInvitationsSelectSchema,
+  tenants,
   tenantsSelectSchema,
   usersRestrictedSelectSchema,
 } from "../../lib/db/db-schema";
@@ -21,16 +22,14 @@ import {
 } from "../../lib/utils/hono-middlewares";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import {
-  addOrganisationMember,
-  createOrganisation,
-  dropUserFromOrganisation,
-  getOrganisationMemberRole,
-  getUserOrganisations,
-} from "../../lib/usermanagement/oganisations";
-import {
-  getLastOrganisation,
-  setLastOrganisation,
-} from "../../lib/usermanagement/oganisations";
+  addTenantMember,
+  createTenant,
+  dropUserFromTenant,
+  getLastTenant,
+  getTenantMemberRole,
+  getUserTenants,
+  setLastTenant,
+} from "../../lib/usermanagement/tenants";
 import {
   dropUserFromTeam,
   getTeamsByUser,
@@ -44,7 +43,7 @@ import {
   getUserById,
   updateUser,
 } from "../../lib/usermanagement/user";
-import { getUsersOrganisationInvitations } from "../../lib/usermanagement/invitations";
+import { getUsersTenantInvitations } from "../../lib/usermanagement/invitations";
 import { RESPONSES } from "../../lib/responses";
 import {
   createApiToken,
@@ -154,20 +153,20 @@ export function defineSecuredUserRoutes(
         firstname: v.optional(v.string()),
         surname: v.optional(v.string()),
         image: v.optional(v.nullable(v.string())),
-        lastOrganisationId: v.optional(v.nullable(v.string())),
+        lastTenantId: v.optional(v.nullable(v.string())),
         phoneNumber: v.optional(v.nullable(v.string())),
       })
     ),
     async (c) => {
       try {
         // ensure to get only the allowed fields
-        const { firstname, surname, image, lastOrganisationId, phoneNumber } =
+        const { firstname, surname, image, lastTenantId, phoneNumber } =
           c.req.valid("json");
         await updateUser(c.get("usersId"), {
           firstname,
           surname,
           image,
-          lastOrganisationId,
+          lastTenantId,
           phoneNumber,
         });
         const user = await getUserById(c.get("usersId"));
@@ -302,18 +301,18 @@ export function defineSecuredUserRoutes(
         const userId = c.get("usersId");
         // check if user has an tenant
         // with the setup-endpoint a user can only register his first tenant if he has no tenant yet
-        const orgs = await getUserOrganisations(userId);
-        if (orgs.length > 0) {
+        const tenants = await getUserTenants(userId);
+        if (tenants.length > 0) {
           return c.json({ state: "already-setup" });
         }
         const parsed = c.req.valid("json");
-        const org = await createOrganisation({
+        const tenant = await createTenant({
           name: parsed.tenantName,
         });
-        await addOrganisationMember(org.id, userId, "admin");
-        await setLastOrganisation(userId, org.id);
+        await addTenantMember(tenant.id, userId, "admin");
+        await setLastTenant(userId, tenant.id);
 
-        return c.json(org);
+        return c.json(tenant);
       } catch (err) {
         throw new HTTPException(500, {
           message: "Error creating tenant: " + err,
@@ -348,9 +347,12 @@ export function defineSecuredUserRoutes(
     async (c) => {
       try {
         const userId = c.get("usersId");
-        const { email } = await getUserById(userId);
+        const user = await getUserById(userId);
+        if (!user) {
+          throw new HTTPException(404, { message: "User not found" });
+        }
         const { oldPassword, newPassword } = c.req.valid("json");
-        await LocalAuth.changePassword(email, oldPassword, newPassword);
+        await LocalAuth.changePassword(user.email, oldPassword, newPassword);
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
         throw new HTTPException(500, {
@@ -392,8 +394,8 @@ export function defineSecuredUserRoutes(
     async (c) => {
       try {
         const userId = c.get("usersId");
-        const orgs = await getUserOrganisations(userId);
-        return c.json(orgs);
+        const tenants = await getUserTenants(userId);
+        return c.json(tenants);
       } catch (err) {
         throw new HTTPException(500, {
           message: "Error getting user tenants: " + err,
@@ -426,7 +428,7 @@ export function defineSecuredUserRoutes(
     async (c) => {
       try {
         const userId = c.get("usersId");
-        const invitations = await getUsersOrganisationInvitations(userId);
+        const invitations = await getUsersTenantInvitations(userId);
         return c.json(invitations);
       } catch (err) {
         throw new HTTPException(500, {
@@ -460,7 +462,7 @@ export function defineSecuredUserRoutes(
       const userId = c.get("usersId");
       const { tenantId } = c.req.valid("param");
       try {
-        await dropUserFromOrganisation(userId, tenantId);
+        await dropUserFromTenant(userId, tenantId);
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
         throw new HTTPException(500, {
@@ -523,8 +525,7 @@ export function defineSecuredUserRoutes(
    * Drop the membership of the user itself from a team
    */
   app.delete(
-    API_BASE_PATH +
-      "/user/tenant/:tenantId/teams/:teamId/membership",
+    API_BASE_PATH + "/user/tenant/:tenantId/teams/:teamId/membership",
     authAndSetUsersInfo,
     describeRoute({
       tags: ["user", "teams"],
@@ -586,8 +587,8 @@ export function defineSecuredUserRoutes(
     async (c) => {
       try {
         const userId = c.get("usersId");
-        const org = await getLastOrganisation(userId);
-        return c.json(org);
+        const tenant = await getLastTenant(userId);
+        return c.json(tenant);
       } catch (err) {
         throw new HTTPException(500, {
           message: "Error getting last tenant: " + err,
@@ -613,7 +614,7 @@ export function defineSecuredUserRoutes(
               schema: resolver(
                 v.object({
                   userId: v.string(),
-                  lastOrganisationId: v.string(),
+                  lastTenantId: v.string(),
                 })
               ),
             },
@@ -631,8 +632,8 @@ export function defineSecuredUserRoutes(
     async (c) => {
       try {
         const userId = c.get("usersId");
-        const orgId = c.req.valid("json").tenantId;
-        const result = await setLastOrganisation(userId, orgId);
+        const tenantId = c.req.valid("json").tenantId;
+        const result = await setLastTenant(userId, tenantId);
         return c.json(result);
       } catch (err) {
         throw new HTTPException(500, {
@@ -805,7 +806,7 @@ export function defineSecuredUserRoutes(
         const { name, scopes, expiresIn, tenantId } = c.req.valid("json");
 
         // check if user is part of that tenant. would throw an error if not
-        await getOrganisationMemberRole(tenantId, userId);
+        await getTenantMemberRole(tenantId, userId);
 
         const result = await createApiToken({
           name,

@@ -1,3 +1,4 @@
+import type { HeadersInit } from "bun";
 import type { FastAppHono } from "../types";
 
 export const testFetcher = {

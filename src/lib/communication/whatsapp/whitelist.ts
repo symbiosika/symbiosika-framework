@@ -20,7 +20,7 @@ export async function getMetaIpAddresses(): Promise<string[]> {
       throw new Error(`HTTP error: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
 
     // Extract IP addresses from the JSON response
     const ipAddresses = data.data.prefixes

@@ -56,7 +56,7 @@ export const parsePdfFileAsMarkdownMistral = async (
       );
     }
 
-    const uploadResult = await uploadResponse.json();
+    const uploadResult: any = await uploadResponse.json();
     log.debug("File uploaded successfully");
 
     // Get signed URL for the uploaded file
@@ -75,7 +75,10 @@ export const parsePdfFileAsMarkdownMistral = async (
       );
     }
 
-    const { url: signedUrl } = await signedUrlResponse.json();
+    const { url: signedUrl } = (await signedUrlResponse.json()) as {
+      url: string;
+    };
+
     log.debug("Got signed URL for file");
 
     // Process OCR
@@ -103,7 +106,8 @@ export const parsePdfFileAsMarkdownMistral = async (
       );
     }
 
-    const ocrResult: MistralOcrResult = await ocrResponse.json();
+    const ocrResult: MistralOcrResult =
+      (await ocrResponse.json()) as MistralOcrResult;
     log.debug("OCR result retrieved successfully.");
 
     // Process images from all pages
@@ -113,6 +117,9 @@ export const parsePdfFileAsMarkdownMistral = async (
         for (const image of page.images) {
           // Convert base64 to blob
           const base64Data = image.image_base64.split(",")[1];
+          if (!base64Data) {
+            continue;
+          }
           const binaryData = atob(base64Data);
           const bytes = new Uint8Array(binaryData.length);
           for (let i = 0; i < binaryData.length; i++) {
