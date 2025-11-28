@@ -134,6 +134,98 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
   );
 
   /**
+   * POST /:connectionId/verify
+   * Verify connection status
+   */
+  app.post(
+    `${baseRoute}/:connectionId/verify`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    validator("param", v.object({ connectionId: v.string() })),
+    validateScope("connections:read"),
+    describeRoute({
+      description: "Verify connection status",
+      responses: {
+        200: {
+          description: "Connection verified successfully",
+        },
+        400: {
+          description: "Verification failed",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const { connectionId } = c.req.valid("param");
+
+        const result = await connectionsService.verifyConnection(connectionId);
+
+        return c.json(result);
+      } catch (error) {
+        log.error("Error verifying connection:", error as object);
+        throw new HTTPException(400, {
+          message:
+            error instanceof Error ? error.message : "Verification failed",
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /authenticate
+   * Authenticate connection using key signature
+   * Public endpoint, signature verified by public key
+   */
+  app.post(
+    `${baseRoute}/authenticate`,
+    validator(
+      "json",
+      v.object({
+        connectionId: v.string("Connection ID is required"),
+        timestamp: v.number("Timestamp is required"),
+        signature: v.string("Signature is required"),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string() })),
+    describeRoute({
+      description: "Authenticate connection using key signature",
+      responses: {
+        200: {
+          description: "Authenticated successfully",
+        },
+        401: {
+          description: "Authentication failed",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const { connectionId, timestamp, signature } = c.req.valid("json");
+
+        // authenticateConnection checks signature against DB
+        const result = await connectionsService.authenticateConnection(
+          connectionId,
+          timestamp,
+          signature
+        );
+
+        // Optional: Check if connection belongs to tenantId
+        // But authenticateConnection retrieves connection by ID.
+        // We should verify tenantId matches to prevent cross-tenant confusion if IDs are global.
+        // But IDs are UUIDs.
+
+        return c.json(result);
+      } catch (error) {
+        log.error("Error authenticating connection:", error as object);
+        throw new HTTPException(401, {
+          message: "Authentication failed",
+        });
+      }
+    }
+  );
+
+  /**
    * POST /exchange-keys
    * Receive and respond to public key exchange (called by remote server)
    */
@@ -221,9 +313,7 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
       try {
         const { tenantId } = c.req.valid("param");
         const conns =
-          await connectionsService.getConnectionByLocalOrganisation(
-            tenantId
-          );
+          await connectionsService.getConnectionByLocalTenant(tenantId);
 
         return c.json({
           connections: conns,

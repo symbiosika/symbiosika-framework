@@ -63,7 +63,7 @@ describe("Connections Service", () => {
    */
   test("validateRemoteCredentials should fetch and return tenants", async () => {
     const mockOrgData = [
-      { tenantId: TEST_REMOTE_ORG_ID, name: "Remote Organisation" },
+      { id: TEST_REMOTE_ORG_ID, name: "Remote Organisation" },
     ];
 
     // Mock fetch for login endpoint
@@ -92,7 +92,7 @@ describe("Connections Service", () => {
 
       expect(result.token).toBe("test-token");
       expect(result.tenants).toHaveLength(1);
-      expect((result.tenants[0] as any)?.tenantId).toBe(TEST_REMOTE_ORG_ID);
+      expect((result.tenants[0] as any)?.id).toBe(TEST_REMOTE_ORG_ID);
     } finally {
       (global as any).fetch = originalFetch;
     }
@@ -159,7 +159,7 @@ describe("Connections Service", () => {
         return {
           ok: true,
           json: async () => [
-            { tenantId: TEST_REMOTE_ORG_ID, name: "Remote Org" },
+            { id: TEST_REMOTE_ORG_ID, name: "Remote Org" },
           ],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
@@ -213,7 +213,7 @@ describe("Connections Service", () => {
         return {
           ok: true,
           json: async () => [
-            { tenantId: TEST_REMOTE_ORG_ID, name: "Remote Org" },
+            { id: TEST_REMOTE_ORG_ID, name: "Remote Org" },
           ],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
@@ -475,6 +475,109 @@ describe("Connections Service", () => {
       .where(eq(connections.id, connectionId as any));
 
     expect(connDeleted).toHaveLength(0);
+  });
+
+  /**
+   * Test: authenticateConnection and signatures
+   */
+  test("signData and verifySignature should work correctly", () => {
+    const keyPair = generateKeyPair();
+    const data = "test-data";
+    const signature = connectionsService.signData(data, keyPair.privateKey);
+
+    const isValid = connectionsService.verifySignature(
+      data,
+      signature,
+      keyPair.publicKey
+    );
+    expect(isValid).toBe(true);
+
+    const isInvalid = connectionsService.verifySignature(
+      "tampered-data",
+      signature,
+      keyPair.publicKey
+    );
+    expect(isInvalid).toBe(false);
+  });
+
+  test("authenticateConnection should verify signature and return token", async () => {
+    const db = getDb();
+    const keyPair = generateKeyPair();
+    // Mock a connection in DB with remote public key matching our keyPair
+    const connResult = await db
+      .insert(connections)
+      .values({
+        tenantId: TEST_ORG_ID as any,
+        name: "Auth Connection Test",
+        localPublicKey: "local-pub",
+        localPrivateKey: "local-priv",
+        remotePublicKey: keyPair.publicKey, // Remote matches our key
+      })
+      .returning();
+    const connectionId = connResult[0].id;
+
+    // Sign data
+    const timestamp = Date.now();
+    const data = `${connectionId}:${timestamp}`;
+    const signature = connectionsService.signData(data, keyPair.privateKey);
+
+    const result = await connectionsService.authenticateConnection(
+      connectionId,
+      timestamp,
+      signature
+    );
+
+    expect(result.token).toBeDefined();
+
+    // Clean up
+    await dropConnection(connectionId);
+  });
+
+  test("cleanupStaleConnections should remove old connections", async () => {
+    const db = getDb();
+    const keyPair = generateKeyPair();
+
+    // Create stale connection
+    const oldDate = new Date();
+    oldDate.setDate(oldDate.getDate() - 100); // 100 days ago
+
+    const connResult = await db
+      .insert(connections)
+      .values({
+        tenantId: TEST_ORG_ID as any,
+        name: "Stale Connection",
+        localPublicKey: keyPair.publicKey,
+        localPrivateKey: keyPair.privateKey,
+        lastConnectedAt: oldDate.toISOString(),
+      })
+      .returning();
+    const staleId = connResult[0].id;
+
+    // Create active connection
+    const activeResult = await db
+      .insert(connections)
+      .values({
+        tenantId: TEST_ORG_ID as any,
+        name: "Active Connection",
+        localPublicKey: keyPair.publicKey,
+        localPrivateKey: keyPair.privateKey,
+        lastConnectedAt: new Date().toISOString(),
+      })
+      .returning();
+    const activeId = activeResult[0].id;
+
+    // Cleanup older than 30 days
+    const cleanedCount = await connectionsService.cleanupStaleConnections(30);
+    expect(cleanedCount).toBeGreaterThanOrEqual(1);
+
+    const staleConn = await getConnection(staleId);
+    expect(staleConn).toBeNull();
+
+    const activeConn = await getConnection(activeId);
+    expect(activeConn).toBeDefined();
+
+    // Clean up
+    await dropConnection(activeId);
   });
 
   /**
