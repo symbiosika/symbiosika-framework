@@ -65,6 +65,7 @@ import { _GLOBAL_SERVER_CONFIG, setGlobalServerConfig } from "./store";
 import { smtpService } from "./lib/email";
 import { getMetaIpAddresses } from "./lib/communication/whatsapp/whitelist";
 import { defineLicenseRoutes, licenseManager } from "./license-service";
+//import { logApiRoutes } from "./lib/utils/log-api-routes";
 
 /**
  * MAIN FUNCTION
@@ -321,13 +322,13 @@ export const defineServer = (config: ServerSpecificConfig) => {
        * Register job routes
        */
       defineJobRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+
+      // Log all registered endpoints
+      // logApiRoutes(app);
     } else {
       console.log("License check was invalid! Please check your license key.");
     }
   });
-
-  // Log all registered endpoints
-  // logApiRoutes(app);
 
   return {
     idleTimeout: 255,
