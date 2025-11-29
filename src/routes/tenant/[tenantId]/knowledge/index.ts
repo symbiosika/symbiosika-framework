@@ -252,7 +252,8 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
           userId: usersId,
           teamId,
           workspaceId,
-          knowledgeGroupId,
+          knowledgeGroupId:
+            knowledgeGroupId === "null" ? null : knowledgeGroupId,
           ...(userOwned === "true" ? { userOwned: true } : {}),
         });
         return c.json(r);
@@ -284,10 +285,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
       },
     }),
     validateScope("knowledge:read"),
-    validator(
-      "param",
-      v.object({ tenantId: v.string(), id: v.string() })
-    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     isOrganisationMember,
     async (c) => {
       try {
@@ -330,10 +328,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
       },
     }),
     validateScope("knowledge:write"),
-    validator(
-      "param",
-      v.object({ tenantId: v.string(), id: v.string() })
-    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     validator(
       "json",
       v.object({
@@ -386,10 +381,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
       },
     }),
     validateScope("knowledge:write"),
-    validator(
-      "param",
-      v.object({ tenantId: v.string(), id: v.string() })
-    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     validator(
       "json",
       v.object({
@@ -431,10 +423,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
       },
     }),
     validateScope("knowledge:write"),
-    validator(
-      "param",
-      v.object({ tenantId: v.string(), id: v.string() })
-    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     isOrganisationMember,
     async (c) => {
       try {
@@ -563,8 +552,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
    * This endpoint combines file upload and knowledge extraction in one step
    */
   app.post(
-    API_BASE_PATH +
-      "/tenant/:tenantId/knowledge/upload-and-extract",
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/upload-and-extract",
     authAndSetUsersInfo,
     checkUserPermission,
     describeRoute({

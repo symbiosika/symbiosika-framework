@@ -56,7 +56,7 @@ export const getKnowledgeEntries = async (query: {
   // Filters. At least one filter must be provided.
   teamId?: string;
   workspaceId?: string;
-  knowledgeGroupId?: string;
+  knowledgeGroupId?: string | null;
   userOwned?: boolean;
   ids?: string[];
   filterIds?: string[];
@@ -84,7 +84,8 @@ export const getKnowledgeEntries = async (query: {
   }
 
   if (
-    query.knowledgeGroupId &&
+    query.knowledgeGroupId != undefined &&
+    query.knowledgeGroupId != null &&
     !userKnowledgeGroupIds.includes(query.knowledgeGroupId)
   ) {
     throw new Error(
@@ -110,11 +111,16 @@ export const getKnowledgeEntries = async (query: {
   }
 
   // check for knowledge group
-  if (query.knowledgeGroupId) {
+  if (query.knowledgeGroupId == null) {
+    // Explicitly search for entries without a knowledge group
+    filterConditions.push(isNull(knowledgeEntry.knowledgeGroupId));
+  } else if (query.knowledgeGroupId !== undefined) {
+    // Search for a specific knowledge group ID
     filterConditions.push(
       eq(knowledgeEntry.knowledgeGroupId, query.knowledgeGroupId)
     );
   } else {
+    // No filter specified: show all accessible knowledge groups or null
     filterConditions.push(
       or(
         isNull(knowledgeEntry.knowledgeGroupId),
