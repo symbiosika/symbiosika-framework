@@ -102,7 +102,11 @@ export async function validateRemoteCredentials(
       throw new Error(`Failed to fetch tenants: ${tenantsResponse.statusText}`);
     }
 
-    const tenants = (await tenantsResponse.json()) as TenantsSelect[];
+    const tenants = (await tenantsResponse.json()) as {
+      tenantId: string;
+      name: string;
+      role: string;
+    }[];
 
     return {
       token: data.token,
@@ -142,7 +146,8 @@ export async function initializeConnection(
 
     // Verify remote tenant exists
     const remoteTenant = tenants.find(
-      (o: TenantsSelect) => o.id === remoteTenantId
+      (o: { tenantId: string; name: string; role: string }) =>
+        o.tenantId === remoteTenantId
     );
     if (!remoteTenant) {
       throw new Error(`Remote tenant ${remoteTenantId} not found`);
