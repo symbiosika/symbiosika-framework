@@ -153,60 +153,73 @@ export async function initializeConnection(
       throw new Error(`Remote tenant ${remoteTenantId} not found`);
     }
 
-    // Check if connection already exists
-    const existingConnection = await db
-      .select()
-      .from(connections)
-      .where(
-        and(
-          eq(connections.tenantId, localTenantId),
-          eq(connections.remoteTenantId, remoteTenantId)
-        )
+    // Create or update connection using upsert
+    // Ensure all values are properly set (no undefined values)
+    const newConnection: ConnectionsInsert = {
+      tenantId: localTenantId,
+      remoteUrl: remoteUrl || null,
+      remoteTenantId: remoteTenantId || null,
+      name: name || null,
+      initiatedBy: "client",
+      localPublicKey,
+      localPrivateKey,
+      localPrivateKeyType: "rsa-4096",
+    };
+
+    // Validate required fields
+    if (!newConnection.tenantId) {
+      throw new Error("tenantId is required");
+    }
+    if (!newConnection.localPublicKey) {
+      throw new Error("localPublicKey is required");
+    }
+    if (!newConnection.localPrivateKey) {
+      throw new Error("localPrivateKey is required");
+    }
+    if (!newConnection.remoteTenantId) {
+      throw new Error("remoteTenantId is required");
+    }
+
+    // Validate that tenantId and remoteTenantId are different
+    if (newConnection.tenantId === newConnection.remoteTenantId) {
+      throw new Error(
+        `Cannot create connection: tenantId (${newConnection.tenantId}) and remoteTenantId (${newConnection.remoteTenantId}) cannot be the same`
       );
+    }
 
-    let connectionId: string;
-
-    if (existingConnection[0]) {
-      // Update existing connection
-      connectionId = existingConnection[0].id;
-      await db
-        .update(connections)
-        .set({
-          remoteUrl,
-          name,
-          initiatedBy: "client",
-          localPublicKey,
-          localPrivateKey,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(connections.id, connectionId));
-
-      log.info(`Connection updated: ${connectionId}`);
-    } else {
-      // Create new connection
-      const newConnection: ConnectionsInsert = {
-        tenantId: localTenantId,
-        remoteUrl,
-        remoteTenantId: remoteTenantId,
-        name,
-        initiatedBy: "client",
-        localPublicKey,
-        localPrivateKey,
-        localPrivateKeyType: "rsa-4096",
-      };
-
-      const result = await db
+    let result;
+    try {
+      result = await db
         .insert(connections)
         .values(newConnection)
+        .onConflictDoUpdate({
+          target: [connections.tenantId, connections.remoteTenantId],
+          set: {
+            remotePublicKey: newConnection.remotePublicKey,
+            remoteConnectionId: newConnection.remoteConnectionId,
+            remoteUrl: newConnection.remoteUrl,
+            name: newConnection.name,
+            initiatedBy: newConnection.initiatedBy,
+            localPublicKey: newConnection.localPublicKey,
+            localPrivateKey: newConnection.localPrivateKey,
+            localPrivateKeyType: newConnection.localPrivateKeyType,
+          },
+        })
         .returning();
+    } catch (error: any) {
+      // Log full error details
 
-      if (!result[0]) {
-        throw new Error("Failed to create connection");
-      }
-
-      connectionId = result[0].id;
-      log.info(`Connection created: ${connectionId}`);
+      log.error("Database insert error:", error + "");
+      // Re-throw with more context
+      throw new Error(`Failed to insert connection: ${error?.message}`);
     }
+
+    if (!result[0]) {
+      throw new Error("Failed to create or update connection");
+    }
+
+    const connectionId = result[0].id;
+    log.info(`Connection upserted: ${connectionId}`);
 
     // Exchange public keys with remote server
     const localServerUrl = _GLOBAL_SERVER_CONFIG.baseUrl;
@@ -237,15 +250,9 @@ export async function initializeConnection(
         remotePublicKey,
         status: "active",
       };
-    } catch (exchangeError) {
-      // If key exchange fails and we just created a new connection, delete it
-      if (existingConnection.length === 0) {
-        await db.delete(connections).where(eq(connections.id, connectionId));
-        log.info(
-          `Connection rolled back due to key exchange failure: ${connectionId}`
-        );
-      }
-      throw exchangeError;
+    } catch (error) {
+      log.error("Error initializing connection:", error as object);
+      throw error;
     }
   } catch (error) {
     log.error("Error initializing connection:", error as object);
@@ -356,7 +363,7 @@ async function exchangePublicKeys(
           // Complete connection info for remote side to accept
           remotePublicKey: localPublicKey,
           remoteConnectionId: localConnectionId,
-          remoteTenantId: remoteTenantId,
+          remoteTenantId: remoteTenantId, // Remote tenant ID from dropdown
           remoteUrl: localServerUrl,
           connectionName: connectionName,
         }),
