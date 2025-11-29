@@ -111,7 +111,7 @@ export const getKnowledgeEntries = async (query: {
   }
 
   // check for knowledge group
-  if (query.knowledgeGroupId == null) {
+  if (query.knowledgeGroupId + "" === "null") {
     // Explicitly search for entries without a knowledge group
     filterConditions.push(isNull(knowledgeEntry.knowledgeGroupId));
   } else if (query.knowledgeGroupId !== undefined) {
