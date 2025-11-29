@@ -31,11 +31,11 @@ import { definePublicUserRoutes } from "./routes/user/public";
 import { defineSecuredUserRoutes } from "./routes/user/protected";
 import { defineFilesRoutes } from "./routes/tenant/[tenantId]/files";
 
-// import aiKnowledgeRoutes from "./routes/tenant/[tenantId]/knowledge";
-// import aiKnowledgeFiltersRoutes from "./routes/tenant/[tenantId]/knowledge/knowledge-filters";
-// import aiKnowledgeGroupRoutes from "./routes/tenant/[tenantId]/knowledge/knowledge-groups";
+import aiKnowledgeRoutes from "./routes/tenant/[tenantId]/knowledge";
+// import aiKnowledgeFiltersRoutes from "./routes/tenant/[tenantId]/knowledge/filters";
+import aiKnowledgeGroupRoutes from "./routes/tenant/[tenantId]/knowledge/groups";
 // import aiKnowledgeTextsRoutes from "./routes/tenant/[tenantId]/knowledge/knowledge-texts";
-// import aiKnowledgeChunksRoutes from "./routes/tenant/[tenantId]/knowledge/knowledge-chunks";
+import aiKnowledgeChunksRoutes from "./routes/tenant/[tenantId]/knowledge/chunks";
 
 import defineOrganisationRoutes from "./routes/tenant";
 import defineTeamRoutes from "./routes/tenant/[tenantId]/teams";
@@ -222,11 +222,11 @@ export const defineServer = (config: ServerSpecificConfig) => {
        * - chat
        */
 
-      // aiKnowledgeRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      aiKnowledgeRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       // aiKnowledgeFiltersRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
-      // aiKnowledgeGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      aiKnowledgeGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       // aiKnowledgeTextsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
-      // aiKnowledgeChunksRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      aiKnowledgeChunksRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
        * Add communication routes

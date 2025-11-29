@@ -24,7 +24,6 @@ import {
 } from "../db/schema/knowledge";
 import { parseDocument, parseFile } from "./parsing";
 import { nanoid } from "nanoid";
-import { eq } from "drizzle-orm";
 import type { PageContent } from "./parsing/pdf/types";
 import { generateEmbedding } from "./embedding";
 
