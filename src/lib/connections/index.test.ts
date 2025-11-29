@@ -326,7 +326,7 @@ describe("Connections Service", () => {
     expect(conn?.remoteTenantId).toBe(uniqueRemoteOrgId as any);
     expect(conn?.remoteConnectionId).toBe(id);
     expect(conn?.remotePublicKey).toBe(remotePublicKey);
-    expect(conn?.initiatedBy).toBe("server");
+    expect(conn?.initiatedBy).toBe("remote");
   });
 
   /**

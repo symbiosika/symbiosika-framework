@@ -24,7 +24,7 @@ import {
   knowledgeTextInsertSchema,
   knowledgeTextUpdateSchema,
 } from "../../../../../lib/db/db-schema";
-import { isOrganisationMember } from "../../..";
+import { isTenantMember } from "../../..";
 import { validateScope } from "../../../../../lib/utils/validate-scope";
 
 export default function defineRoutesForKnowledgeTexts(
@@ -50,7 +50,7 @@ export default function defineRoutesForKnowledgeTexts(
     validateScope("knowledge:write"),
     validator("json", knowledgeTextInsertSchema),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const body = c.req.valid("json");
@@ -101,7 +101,7 @@ export default function defineRoutesForKnowledgeTexts(
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const {
@@ -166,7 +166,7 @@ export default function defineRoutesForKnowledgeTexts(
       "param",
       v.object({ tenantId: v.string(), id: v.string() })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { teamId, workspaceId } = c.req.valid("query");
@@ -216,7 +216,7 @@ export default function defineRoutesForKnowledgeTexts(
       "param",
       v.object({ tenantId: v.string(), id: v.string() })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { teamId, workspaceId } = c.req.valid("query");

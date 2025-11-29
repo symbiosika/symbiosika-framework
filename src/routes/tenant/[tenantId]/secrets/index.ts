@@ -14,7 +14,7 @@ import { resolver, validator } from "hono-openapi";
 import * as v from "valibot";
 import { describeRoute } from "hono-openapi";
 import { RESPONSES } from "../../../../lib/responses";
-import { isOrganisationAdmin } from "../..";
+import { isTenantAdmin } from "../..";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 
 const setSecretValidation = v.object({
@@ -55,7 +55,7 @@ export default function defineManageSecretsRoutes(
     }),
     validateScope("secrets:read"),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
@@ -93,7 +93,7 @@ export default function defineManageSecretsRoutes(
     validateScope("secrets:write"),
     validator("json", setSecretValidation),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
@@ -133,7 +133,7 @@ export default function defineManageSecretsRoutes(
       "param",
       v.object({ tenantId: v.string(), name: v.string() })
     ),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       const { tenantId, name } = c.req.valid("param");
       try {

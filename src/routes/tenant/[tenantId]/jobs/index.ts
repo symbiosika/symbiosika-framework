@@ -24,7 +24,7 @@ import { RESPONSES } from "../../../../lib/responses";
 import { getDb } from "../../../../lib/db/db-connection";
 import { jobs } from "../../../../lib/db/schema/jobs";
 import { eq } from "drizzle-orm";
-import { isOrganisationMember } from "../..";
+import { isTenantMember } from "../..";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 
 /**
@@ -68,7 +68,7 @@ export default function defineJobRoutes(
         sortOrder: v.optional(v.string()),
       })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
@@ -122,7 +122,7 @@ export default function defineJobRoutes(
       "param",
       v.object({ tenantId: v.string(), jobId: v.string() })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, jobId } = c.req.valid("param");
@@ -181,7 +181,7 @@ export default function defineJobRoutes(
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
@@ -230,7 +230,7 @@ export default function defineJobRoutes(
       "param",
       v.object({ tenantId: v.string(), jobId: v.string() })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, jobId } = c.req.valid("param");
@@ -303,7 +303,7 @@ export default function defineJobRoutes(
         progress: v.number(),
       })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, jobId } = c.req.valid("param");
@@ -370,7 +370,7 @@ export default function defineJobRoutes(
       "param",
       v.object({ tenantId: v.string(), jobId: v.string() })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, jobId } = c.req.valid("param");

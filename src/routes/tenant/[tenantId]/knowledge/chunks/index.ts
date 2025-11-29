@@ -9,7 +9,7 @@ import {
 import { describeRoute } from "hono-openapi";
 import { resolver, validator } from "hono-openapi";
 import { knowledgeChunksSchema } from "../../../../../lib/db/db-schema";
-import { isOrganisationMember } from "../../..";
+import { isTenantMember } from "../../..";
 import { validateScope } from "../../../../../lib/utils/validate-scope";
 
 export default function defineRoutesForKnowledgeChunks(
@@ -42,7 +42,7 @@ export default function defineRoutesForKnowledgeChunks(
       "param",
       v.object({ tenantId: v.string(), id: v.string() })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");

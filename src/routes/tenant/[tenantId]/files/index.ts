@@ -25,8 +25,8 @@ import { files, filesSelectSchema } from "../../../../lib/db/db-schema";
 import { getDb } from "../../../../lib/db/db-connection";
 import { and, eq } from "drizzle-orm";
 import {
-  isOrganisationAdmin,
-  isOrganisationMember,
+  isTenantAdmin,
+  isTenantMember,
 } from "../../../tenant/index";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 
@@ -76,7 +76,7 @@ export function defineFilesRoutes(app: FastAppHono, API_BASE_PATH: string) {
         workspaceId: v.optional(v.string()),
       })
     ),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       try {
         const { tenantId, type, bucket } = c.req.valid("param");
@@ -134,7 +134,7 @@ export function defineFilesRoutes(app: FastAppHono, API_BASE_PATH: string) {
         filename: v.string(),
       })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, type, bucket, filename } = c.req.valid("param");
@@ -189,7 +189,7 @@ export function defineFilesRoutes(app: FastAppHono, API_BASE_PATH: string) {
         id: v.string(),
       })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, type, bucket, id } = c.req.valid("param");
@@ -251,7 +251,7 @@ export function defineFilesRoutes(app: FastAppHono, API_BASE_PATH: string) {
         id: v.string(),
       })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, type, bucket, id } = c.req.valid("param");

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "bun:test";
 import type { FastAppHono } from "../../types";
-import defineOrganisationRoutes from "./index";
+import defineTenantRoutes from "./index";
 import { addTenantMember } from "../../lib/usermanagement/tenants";
 import { Hono } from "hono";
 import {
@@ -22,7 +22,7 @@ beforeAll(async () => {
   TEST_USER_2_TOKEN = user2Token;
   TEST_USER_3_TOKEN = user3Token;
   app = new Hono();
-  defineOrganisationRoutes(app, "/api");
+  defineTenantRoutes(app, "/api");
 });
 
 let org: TenantsSelect;

@@ -37,7 +37,7 @@ import aiKnowledgeGroupRoutes from "./routes/tenant/[tenantId]/knowledge/groups"
 // import aiKnowledgeTextsRoutes from "./routes/tenant/[tenantId]/knowledge/knowledge-texts";
 import aiKnowledgeChunksRoutes from "./routes/tenant/[tenantId]/knowledge/chunks";
 
-import defineOrganisationRoutes from "./routes/tenant";
+import defineTenantRoutes from "./routes/tenant";
 import defineTeamRoutes from "./routes/tenant/[tenantId]/teams";
 import defineConnectionsRoutes from "./routes/tenant/[tenantId]/connections";
 import definePermissionGroupRoutes from "./routes/tenant/[tenantId]/permission-groups";
@@ -181,7 +181,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
       /**
        * Adds tenant routes
        */
-      defineOrganisationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      defineTenantRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineTeamRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       definePermissionGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineInvitationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);

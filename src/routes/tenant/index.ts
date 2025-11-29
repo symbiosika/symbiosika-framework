@@ -38,7 +38,7 @@ import { validateScope } from "../../lib/utils/validate-scope";
 /**
  * Middleware to check if user is a member of the tenant
  */
-export const isOrganisationMember: MiddlewareHandler = async (c, next) => {
+export const isTenantMember: MiddlewareHandler = async (c, next) => {
   const userId = c.get("usersId");
   const tenantId = c.req.param("tenantId")!;
 
@@ -55,7 +55,7 @@ export const isOrganisationMember: MiddlewareHandler = async (c, next) => {
 /**
  * Middleware to check if user is an admin or owner of the tenant
  */
-export const isOrganisationAdmin: MiddlewareHandler = async (c, next) => {
+export const isTenantAdmin: MiddlewareHandler = async (c, next) => {
   const userId = c.get("usersId");
   const tenantId = c.req.param("tenantId")!;
 
@@ -78,7 +78,7 @@ export const isOrganisationAdmin: MiddlewareHandler = async (c, next) => {
 /**
  * Helper to check that an key of an object is the same as the tenantId
  */
-export const checkOrganisationIdInBody: MiddlewareHandler = async (c, next) => {
+export const checkTenantIdInBody: MiddlewareHandler = async (c, next) => {
   const tenantId = c.req.param("tenantId");
   // @ts-ignore
   const json: { tenantId: string } = c.req.valid("json");
@@ -92,7 +92,7 @@ export const checkOrganisationIdInBody: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
-export default function defineOrganisationRoutes(
+export default function defineTenantRoutes(
   app: FastAppHono,
   API_BASE_PATH: string
 ) {
@@ -165,7 +165,7 @@ export default function defineOrganisationRoutes(
     }),
     validateScope("tenants:read"),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const userId = c.get("usersId");
@@ -214,7 +214,7 @@ export default function defineOrganisationRoutes(
     }),
     validateScope("tenants:read"),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember, // check if user is a member of the tenant
+    isTenantMember, // check if user is a member of the tenant
     async (c) => {
       const userId = c.get("usersId");
       const { tenantId } = c.req.valid("param");
@@ -246,7 +246,7 @@ export default function defineOrganisationRoutes(
     validateScope("tenants:write"),
     validator("json", tenantsUpdateSchema),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationAdmin, // check if user is admin or owner of the tenant
+    isTenantAdmin, // check if user is admin or owner of the tenant
     async (c) => {
       try {
         const data = c.req.valid("json");
@@ -275,7 +275,7 @@ export default function defineOrganisationRoutes(
     }),
     validateScope("tenants:write"),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationAdmin, // check if user is admin or owner of the tenant
+    isTenantAdmin, // check if user is admin or owner of the tenant
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
@@ -321,7 +321,7 @@ export default function defineOrganisationRoutes(
         sendMail: v.optional(v.boolean()),
       })
     ),
-    isOrganisationAdmin, // check if user is admin or owner of the tenant
+    isTenantAdmin, // check if user is admin or owner of the tenant
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
@@ -375,7 +375,7 @@ export default function defineOrganisationRoutes(
         ),
       })
     ),
-    isOrganisationAdmin, // check if user is admin or owner of the tenant
+    isTenantAdmin, // check if user is admin or owner of the tenant
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
@@ -426,7 +426,7 @@ export default function defineOrganisationRoutes(
       "param",
       v.object({ tenantId: v.string(), memberId: v.string() })
     ),
-    isOrganisationAdmin, // check if user is admin or owner of the tenant
+    isTenantAdmin, // check if user is admin or owner of the tenant
     async (c) => {
       try {
         const { tenantId, memberId } = c.req.valid("param");
@@ -459,7 +459,7 @@ export default function defineOrganisationRoutes(
       "param",
       v.object({ tenantId: v.string(), memberId: v.string() })
     ),
-    isOrganisationAdmin, // check if user is admin or owner of the tenant
+    isTenantAdmin, // check if user is admin or owner of the tenant
     async (c) => {
       try {
         const { tenantId, memberId } = c.req.valid("param");

@@ -26,7 +26,7 @@ import {
   tenantInvitationsSelectSchema,
 } from "../../../../lib/db/db-schema";
 import { RESPONSES } from "../../../../lib/responses";
-import { checkOrganisationIdInBody, isOrganisationAdmin } from "../..";
+import { checkTenantIdInBody, isTenantAdmin } from "../..";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 
 export default function defineInvitationsRoutes(
@@ -68,8 +68,8 @@ export default function defineInvitationsRoutes(
     validator("json", tenantInvitationsInsertSchema),
     validator("param", v.object({ tenantId: v.string() })),
     validator("query", v.object({ sendMail: v.optional(v.string()) })),
-    checkOrganisationIdInBody,
-    isOrganisationAdmin,
+    checkTenantIdInBody,
+    isTenantAdmin,
     async (c) => {
       try {
         const data = c.req.valid("json");
@@ -112,7 +112,7 @@ export default function defineInvitationsRoutes(
     }),
     validateScope("tenants:read"),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
@@ -145,7 +145,7 @@ export default function defineInvitationsRoutes(
     }),
     validateScope("tenants:write"),
     validator("param", v.object({ tenantId: v.string(), id: v.string() })),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");

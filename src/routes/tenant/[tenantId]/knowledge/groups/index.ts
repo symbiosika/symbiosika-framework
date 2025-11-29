@@ -13,7 +13,7 @@ import { validateOrganisationId } from "../../../../../lib/utils/doublecheck-ten
 import { describeRoute } from "hono-openapi";
 import { resolver, validator } from "hono-openapi";
 
-import { isOrganisationAdmin, isOrganisationMember } from "../../..";
+import { isTenantAdmin, isTenantMember } from "../../..";
 
 import {
   createKnowledgeGroup,
@@ -65,7 +65,7 @@ export default function defineKnowledgeGroupRoutes(
     validateScope("knowledge-manage:write"),
     validator("json", knowledgeGroupValidation),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const body = c.req.valid("json");
@@ -110,7 +110,7 @@ export default function defineKnowledgeGroupRoutes(
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { teamId, includeTeamAssignments } = c.req.valid("query");
@@ -157,7 +157,7 @@ export default function defineKnowledgeGroupRoutes(
       "param",
       v.object({ tenantId: v.string(), id: v.string() })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { includeTeamAssignments } = c.req.valid("query");
@@ -206,7 +206,7 @@ export default function defineKnowledgeGroupRoutes(
       "param",
       v.object({ tenantId: v.string(), id: v.string() })
     ),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       try {
         const body = c.req.valid("json");
@@ -245,7 +245,7 @@ export default function defineKnowledgeGroupRoutes(
       "param",
       v.object({ tenantId: v.string(), id: v.string() })
     ),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");
@@ -285,7 +285,7 @@ export default function defineKnowledgeGroupRoutes(
         teamId: v.string(),
       })
     ),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       try {
         const { tenantId, id, teamId } = c.req.valid("param");
@@ -328,7 +328,7 @@ export default function defineKnowledgeGroupRoutes(
         teamId: v.string(),
       })
     ),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       try {
         const { tenantId, id, teamId } = c.req.valid("param");
@@ -379,7 +379,7 @@ export default function defineKnowledgeGroupRoutes(
       "param",
       v.object({ tenantId: v.string(), id: v.string() })
     ),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");

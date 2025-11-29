@@ -9,7 +9,7 @@ import { resolver, validator } from "hono-openapi";
 import * as v from "valibot";
 import { describeRoute } from "hono-openapi";
 import { getUserByEmail } from "../../../../lib/usermanagement/user";
-import { isOrganisationMember } from "../..";
+import { isTenantMember } from "../..";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 
 /**
@@ -54,7 +54,7 @@ export default function defineSearchInOrganisationRoutes(
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const email = c.req.valid("query").email;

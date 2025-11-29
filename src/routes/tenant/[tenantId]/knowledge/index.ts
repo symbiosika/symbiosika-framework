@@ -33,7 +33,7 @@ import { validateOrganisationId } from "../../../../lib/utils/doublecheck-tenant
 import { describeRoute } from "hono-openapi";
 import { resolver, validator } from "hono-openapi";
 import { knowledgeEntrySchema } from "../../../../lib/db/db-schema";
-import { isOrganisationAdmin, isOrganisationMember } from "../..";
+import { isTenantAdmin, isTenantMember } from "../..";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 import {
   applyPostProcessors,
@@ -228,7 +228,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const {
@@ -286,7 +286,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
     }),
     validateScope("knowledge:read"),
     validator("param", v.object({ tenantId: v.string(), id: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");
@@ -341,7 +341,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
         abstract: v.optional(v.string()),
       })
     ),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");
@@ -388,7 +388,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
         text: v.string(),
       })
     ),
-    isOrganisationAdmin,
+    isTenantAdmin,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");
@@ -424,7 +424,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
     }),
     validateScope("knowledge:write"),
     validator("param", v.object({ tenantId: v.string(), id: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");
@@ -456,7 +456,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
     validateScope("knowledge:read"),
     validator("json", similaritySearchValidation),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const userId = c.get("usersId");
@@ -528,7 +528,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
     validateScope("knowledge:read"),
     validator("json", generateKnowledgeValidation),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const body = c.req.valid("json");
@@ -596,7 +596,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
     }),
     validateScope("knowledge:read"),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       const tenantId = c.req.param("tenantId");
       const contentType = c.req.header("content-type");
@@ -707,7 +707,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
     validateScope("knowledge:read"),
     validator("json", addFromTextValidation),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         const data = c.req.valid("json");
@@ -775,7 +775,7 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
     }),
     validateScope("knowledge:read"),
     validator("param", v.object({ tenantId: v.string() })),
-    isOrganisationMember,
+    isTenantMember,
     async (c) => {
       try {
         // No tenant-specific filtering for now
