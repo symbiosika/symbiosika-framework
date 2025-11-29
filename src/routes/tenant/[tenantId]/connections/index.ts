@@ -86,7 +86,7 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
         remoteUrl: v.string("Remote URL is required"),
         remoteEmail: v.string("Remote email is required"),
         remotePassword: v.string("Remote password is required"),
-        remoteOrganisationId: v.string("Remote tenant ID is required"),
+        remoteTenantId: v.string("Remote tenant ID is required"),
         name: v.string("Connection name is required"),
       })
     ),
@@ -106,20 +106,15 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
-        const {
-          remoteUrl,
-          remoteEmail,
-          remotePassword,
-          remoteOrganisationId,
-          name,
-        } = c.req.valid("json");
+        const { remoteUrl, remoteEmail, remotePassword, remoteTenantId, name } =
+          c.req.valid("json");
 
         const result = await connectionsService.initializeConnection(
           tenantId,
           remoteUrl,
           remoteEmail,
           remotePassword,
-          remoteOrganisationId,
+          remoteTenantId,
           name
         );
 
@@ -238,7 +233,7 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
       v.object({
         remotePublicKey: v.string("Remote public key is required"),
         remoteConnectionId: v.string("Remote connection ID is required"),
-        remoteOrganisationId: v.string("Remote tenant ID is required"),
+        remoteTenantId: v.string("Remote tenant ID is required"),
         remoteUrl: v.string("Remote URL is required"),
         connectionName: v.string("Connection name is required"),
       })
@@ -262,7 +257,7 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
         const {
           remotePublicKey,
           remoteConnectionId,
-          remoteOrganisationId,
+          remoteTenantId,
           remoteUrl,
           connectionName,
         } = c.req.valid("json");
@@ -271,7 +266,7 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
         const result = await connectionsService.acceptConnection(
           tenantId,
           remoteUrl,
-          remoteOrganisationId,
+          remoteTenantId,
           remoteConnectionId,
           remotePublicKey,
           connectionName
