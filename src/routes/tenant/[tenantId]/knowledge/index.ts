@@ -18,6 +18,7 @@ import {
 import {
   deleteKnowledgeEntry,
   updateKnowledgeEntry,
+  updateKnowledgeEntryText,
 } from "../../../../lib/knowledge/update-knowledge";
 import { RESPONSES } from "../../../../lib/responses";
 import {
@@ -353,6 +354,56 @@ export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
         const data = c.req.valid("json");
 
         const r = await updateKnowledgeEntry(id, tenantId, usersId, data);
+
+        return c.json(r);
+      } catch (e) {
+        throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Update the text content of a knowledge entry
+   * This will delete all existing chunks and recreate them with fresh embeddings
+   */
+  app.put(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/entries/:id/text",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Update the text content of a knowledge entry. This will delete all existing chunks and recreate them with fresh embeddings.",
+      responses: {
+        200: {
+          description: "Successful response",
+          content: {
+            "application/json": {
+              schema: resolver(knowledgeEntrySchema),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator(
+      "param",
+      v.object({ tenantId: v.string(), id: v.string() })
+    ),
+    validator(
+      "json",
+      v.object({
+        text: v.string(),
+      })
+    ),
+    isOrganisationAdmin,
+    async (c) => {
+      try {
+        const { tenantId, id } = c.req.valid("param");
+        const usersId = c.get("usersId");
+        const { text } = c.req.valid("json");
+
+        const r = await updateKnowledgeEntryText(id, tenantId, usersId, text);
 
         return c.json(r);
       } catch (e) {
