@@ -323,6 +323,49 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
   );
 
   /**
+   * GET /list
+   * List all connections for this tenant (only id, name, meta)
+   */
+  app.get(
+    `${baseRoute}/list`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    validator("param", v.object({ tenantId: v.string() })),
+    validateScope("connections:read"),
+    describeRoute({
+      description: "List all connections (id, name, meta only)",
+      responses: {
+        200: {
+          description: "Connections retrieved successfully",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const conns =
+          await connectionsService.getConnectionByLocalTenant(tenantId);
+
+        // Return only id, name, and meta fields
+        const simplifiedConnections = conns.map((conn) => ({
+          id: conn.id,
+          name: conn.name,
+          meta: conn.meta,
+        }));
+
+        return c.json({
+          connections: simplifiedConnections,
+        });
+      } catch (error) {
+        log.error("Error listing connections:", error as object);
+        throw new HTTPException(500, {
+          message: "Failed to list connections",
+        });
+      }
+    }
+  );
+
+  /**
    * GET /:connectionId
    * Get a specific connection
    */
