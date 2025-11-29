@@ -25,7 +25,7 @@ export const connectionStatusEnum = pgEnum("connection_status", [
   "revoked",
 ]);
 
-export const initiatedByEnum = pgEnum("initiated_by", ["client", "server"]);
+export const initiatedByEnum = pgEnum("initiated_by", ["local", "remote"]);
 
 export const connections = pgBaseTable(
   "connections",
@@ -38,7 +38,7 @@ export const connections = pgBaseTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 255 }),
     remoteUrl: text("remote_url"),
-    initiatedBy: initiatedByEnum("initiated_by").notNull().default("client"),
+    initiatedBy: initiatedByEnum("initiated_by").notNull().default("local"),
     localPublicKey: text("local_public_key").notNull(),
     localPrivateKey: text("local_private_key").notNull(),
     localPrivateKeyType: varchar("local_private_key_type", { length: 255 })

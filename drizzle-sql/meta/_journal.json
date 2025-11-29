@@ -36,6 +36,13 @@
       "when": 1764422666936,
       "tag": "0004_spotty_exodus",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1764436384044,
+      "tag": "0005_omniscient_valeria_richards",
+      "breakpoints": true
     }
   ]
 }
