@@ -52,7 +52,9 @@ describe("Knowledge Chunks CRUD Operations", () => {
         header: "Test header",
         order: 0,
         embeddingModel: "test-model",
-        textEmbedding: new Array(1536).fill(0),
+        dimensions: 1536,
+        textEmbedding1536: new Array(1536).fill(0),
+        textEmbedding1024: null,
       })
       .returning();
     if (!chunk[0]) {
@@ -166,7 +168,9 @@ describe("Knowledge Chunks CRUD Operations", () => {
           header: "Group header",
           order: 0,
           embeddingModel: "test-model",
-          textEmbedding: new Array(1536).fill(0),
+          dimensions: 1536,
+          textEmbedding1536: new Array(1536).fill(0),
+          textEmbedding1024: null,
         })
         .returning();
 
@@ -267,7 +271,9 @@ describe("Knowledge Chunks CRUD Operations", () => {
           header: "Org-wide header",
           order: 0,
           embeddingModel: "test-model",
-          textEmbedding: new Array(1536).fill(0),
+          dimensions: 1536,
+          textEmbedding1536: new Array(1536).fill(0),
+          textEmbedding1024: null,
         })
         .returning();
 
@@ -339,7 +345,9 @@ describe("Knowledge Chunks CRUD Operations", () => {
           header: "Restricted header",
           order: 0,
           embeddingModel: "test-model",
-          textEmbedding: new Array(1536).fill(0),
+          dimensions: 1536,
+          textEmbedding1536: new Array(1536).fill(0),
+          textEmbedding1024: null,
         })
         .returning();
 
@@ -437,7 +445,9 @@ describe("Knowledge Chunks CRUD Operations", () => {
           header: "Other header",
           order: 0,
           embeddingModel: "test-model",
-          textEmbedding: new Array(1536).fill(0),
+          dimensions: 1536,
+          textEmbedding1536: new Array(1536).fill(0),
+          textEmbedding1024: null,
         })
         .returning();
 

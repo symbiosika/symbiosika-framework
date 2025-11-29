@@ -50,7 +50,19 @@ export const storeKnowledgeEntry = async (
  * Helper to store a knowledge chunk in the database
  */
 const storeKnowledgeChunk = async (data: KnowledgeChunksInsert) => {
-  await getDb().insert(knowledgeChunks).values(data);
+  try {
+    const result = await getDb()
+      .insert(knowledgeChunks)
+      .values(data)
+      .returning();
+    log.debug(
+      `Stored knowledge chunk with id: ${result[0]?.id}, text length: ${data.text?.length || 0}`
+    );
+    return result[0];
+  } catch (error) {
+    log.error(`Error in storeKnowledgeChunk: ${error}`);
+    throw error;
+  }
 };
 
 /**
@@ -93,15 +105,11 @@ export const extractKnowledgeFromText = async (data: {
   const allEmbeddings: ChunkWithEmbedding[] = await Promise.all(
     chunks.map(async (chunk) => {
       try {
-        if (chunk.text?.length > 10) {
-          const embedding = await generateEmbedding(chunk.text, {
-            tenantId: data.tenantId,
-            userId: data.userId,
-          });
-          return { ...chunk, embedding };
-        } else {
-          return { ...chunk, embedding: { embedding: [], model: "" } };
-        }
+        const embedding = await generateEmbedding(chunk.text, {
+          tenantId: data.tenantId,
+          userId: data.userId,
+        });
+        return { ...chunk, embedding };
       } catch (e) {
         log.error(`Error generating embedding for chunk: ${chunk.text}`);
         log.debug(`Chunk length: ${chunk.text.length}`);
@@ -186,16 +194,14 @@ export const extractKnowledgeFromText = async (data: {
   await log.debug(`Store knowledge chunks: ${allEmbeddings.length}`);
   await Promise.all(
     allEmbeddings.map((e) => {
-      if (e.embedding.model === "") {
-        return;
-      }
       return storeKnowledgeChunk({
         knowledgeEntryId: knowledgeEntry.id,
         text: e.text,
         header: e.header,
         order: e.order,
         embeddingModel: e.embedding.model,
-        textEmbedding: e.embedding.embedding,
+        textEmbedding1536: e.embedding.dimensions === 1536 ? e.embedding.embedding : null,
+        textEmbedding1024: e.embedding.dimensions === 1024 ? e.embedding.embedding : null,
         meta: e.meta,
       });
     })

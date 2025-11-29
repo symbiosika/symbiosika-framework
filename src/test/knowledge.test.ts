@@ -76,7 +76,9 @@ export const importTestKnowledge = async () => {
     knowledgeEntryId: knowledge[0].id,
     text: TEST_KNOWLEDGE_TEXT,
     embeddingModel: TEST_KNOWLEDGE_TEXT_EMBEDDING.model,
-    textEmbedding: TEST_KNOWLEDGE_TEXT_EMBEDDING.embedding,
+    dimensions: 1536,
+    textEmbedding1536: TEST_KNOWLEDGE_TEXT_EMBEDDING.embedding,
+    textEmbedding1024: null,
     order: 0,
     createdAt: new Date().toISOString(),
   });

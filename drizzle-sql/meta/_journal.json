@@ -15,6 +15,27 @@
       "when": 1764179655000,
       "tag": "0001_flimsy_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1764422229732,
+      "tag": "0002_next_silk_fever",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1764422509586,
+      "tag": "0003_same_carnage",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1764422666936,
+      "tag": "0004_spotty_exodus",
+      "breakpoints": true
     }
   ]
 }

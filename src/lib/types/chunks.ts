@@ -6,5 +6,5 @@ export type Chunk = {
 };
 
 export type ChunkWithEmbedding = Chunk & {
-  embedding: { embedding: number[]; model: string };
+  embedding: { embedding: number[]; model: string; dimensions: number };
 };

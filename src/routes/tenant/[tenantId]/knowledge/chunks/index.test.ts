@@ -53,7 +53,9 @@ beforeAll(async () => {
     text: "Test chunk text",
     header: "Test header",
     order: 0,
-    textEmbedding: mockEmbedding,
+    dimensions: 1536,
+    textEmbedding1536: mockEmbedding,
+    textEmbedding1024: null,
     embeddingModel: "test-model",
   });
   testKnowledgeChunkId = chunkId;

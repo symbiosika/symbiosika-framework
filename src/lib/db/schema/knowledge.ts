@@ -68,9 +68,7 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_updated_at_idx").on(knowledgeText.updatedAt),
     index("knowledge_text_deleted_at_idx").on(knowledgeText.deletedAt),
     index("knowledge_text_title_idx").on(knowledgeText.title),
-    index("knowledge_text_tenant_id_idx").on(
-      knowledgeText.tenantId
-    ),
+    index("knowledge_text_tenant_id_idx").on(knowledgeText.tenantId),
     index("knowledge_text_team_id_idx").on(knowledgeText.teamId),
     index("knowledge_text_user_id_idx").on(knowledgeText.userId),
     check("knowledge_text_text_min_length", sql`length(text) > 3`),
@@ -100,9 +98,7 @@ export const knowledgeGroup = pgBaseTable(
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
-    tenantWideAccess: boolean("tenant_wide_access")
-      .notNull()
-      .default(false),
+    tenantWideAccess: boolean("tenant_wide_access").notNull().default(false),
     userId: uuid("user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
@@ -255,9 +251,7 @@ export const knowledgeEntry = pgBaseTable(
     index("knowledgeentry_created_at_idx").on(knowledgeEntry.createdAt),
     index("knowledgeentry_updated_at_idx").on(knowledgeEntry.updatedAt),
     index("knowledgeentry_deleted_at_idx").on(knowledgeEntry.deletedAt),
-    index("knowledgeentry_tenant_id_idx").on(
-      knowledgeEntry.tenantId
-    ),
+    index("knowledgeentry_tenant_id_idx").on(knowledgeEntry.tenantId),
     index("knowledge_entry_team_id_idx").on(knowledgeEntry.teamId),
     index("knowledge_entry_user_id_idx").on(knowledgeEntry.userId),
     check(
@@ -301,7 +295,13 @@ export const knowledgeChunks = pgBaseTable(
       .notNull()
       .default("")
       .notNull(),
-    textEmbedding: vector("text_embedding", { dimensions: 1536 }).notNull(),
+    dimensions: integer("dimensions").notNull().default(0),
+    textEmbedding1536: vector("text_embedding_1536", {
+      dimensions: 1536,
+    }),
+    textEmbedding1024: vector("text_embedding_1024", {
+      dimensions: 1024,
+    }),
     meta: jsonb("meta").$type<KnowledgeChunkMeta>().default({}),
   },
   (knowledgeChunks) => [
@@ -310,6 +310,10 @@ export const knowledgeChunks = pgBaseTable(
     ),
     index("knowledge_chunks_created_at_idx").on(knowledgeChunks.createdAt),
     index("knowledge_chunks_header_idx").on(knowledgeChunks.header),
+    check(
+      "knowledge_chunks_embedding_required",
+      sql`text_embedding_1536 IS NOT NULL OR text_embedding_1024 IS NOT NULL`
+    ),
   ]
 );
 
