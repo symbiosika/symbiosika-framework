@@ -52,6 +52,7 @@ import defineSearchInOrganisationRoutes from "./routes/tenant/[tenantId]/search"
 import defineJobRoutes from "./routes/tenant/[tenantId]/jobs";
 import defineDocsRoutes from "./routes/docs";
 import defineWhatsAppRoutes from "./routes/communiation/wa";
+import defineNotificationRoutes from "./routes/user/notifications";
 // Jobs
 import { defineJob, startJobQueue } from "./lib/jobs";
 // Cron
@@ -178,6 +179,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
        */
       definePublicUserRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineSecuredUserRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      defineNotificationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
        * Adds tenant routes

@@ -610,3 +610,49 @@ export type InvitationCodesInsert = typeof invitationCodes.$inferInsert;
 export const invitationCodesSelectSchema = createSelectSchema(invitationCodes);
 export const invitationCodesInsertSchema = createInsertSchema(invitationCodes);
 export const invitationCodesUpdateSchema = createUpdateSchema(invitationCodes);
+
+// Message type enum
+export const messageTypeEnum = pgEnum("message_type", [
+  "info",
+  "warning",
+  "error",
+]);
+
+// User messages table
+export const userMessages = pgBaseTable(
+  "user_messages",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    message: text("message").notNull(),
+    messageType: messageTypeEnum("message_type").notNull().default("info"),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+    confirmedAt: timestamp("confirmed_at", { mode: "string" }),
+  },
+  (table) => [
+    index("user_messages_user_id_idx").on(table.userId),
+    index("user_messages_confirmed_at_idx").on(table.confirmedAt),
+    index("user_messages_created_at_idx").on(table.createdAt),
+    index("user_messages_message_type_idx").on(table.messageType),
+  ]
+);
+
+export const userMessagesRelations = relations(userMessages, ({ one }) => ({
+  user: one(users, {
+    fields: [userMessages.userId],
+    references: [users.id],
+  }),
+}));
+
+export type UserMessagesSelect = typeof userMessages.$inferSelect;
+export type UserMessagesInsert = typeof userMessages.$inferInsert;
+
+export const userMessagesSelectSchema = createSelectSchema(userMessages);
+export const userMessagesInsertSchema = createInsertSchema(userMessages);
+export const userMessagesUpdateSchema = createUpdateSchema(userMessages);
