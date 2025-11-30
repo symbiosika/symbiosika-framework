@@ -63,7 +63,7 @@ describe("Connections Service", () => {
    */
   test("validateRemoteCredentials should fetch and return tenants", async () => {
     const mockOrgData = [
-      { id: TEST_REMOTE_ORG_ID, name: "Remote Organisation" },
+      { tenantId: TEST_REMOTE_ORG_ID, name: "Remote Organisation", role: "admin" },
     ];
 
     // Mock fetch for login endpoint
@@ -92,7 +92,7 @@ describe("Connections Service", () => {
 
       expect(result.token).toBe("test-token");
       expect(result.tenants).toHaveLength(1);
-      expect((result.tenants[0] as any)?.id).toBe(TEST_REMOTE_ORG_ID);
+      expect((result.tenants[0] as any)?.tenantId).toBe(TEST_REMOTE_ORG_ID);
     } finally {
       (global as any).fetch = originalFetch;
     }
@@ -158,7 +158,7 @@ describe("Connections Service", () => {
       } else if (url.includes("/user/tenants")) {
         return {
           ok: true,
-          json: async () => [{ id: TEST_REMOTE_ORG_ID, name: "Remote Org" }],
+          json: async () => [{ tenantId: TEST_REMOTE_ORG_ID, name: "Remote Org", role: "admin" }],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
         return {
@@ -210,7 +210,7 @@ describe("Connections Service", () => {
       } else if (url.includes("/user/tenants")) {
         return {
           ok: true,
-          json: async () => [{ id: TEST_REMOTE_ORG_ID, name: "Remote Org" }],
+          json: async () => [{ tenantId: TEST_REMOTE_ORG_ID, name: "Remote Org", role: "admin" }],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
         return {
