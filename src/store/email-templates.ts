@@ -1,5 +1,14 @@
 import type { EmailTemplateFunction } from "../types";
 
+// Helper function to truncate email subject to max 100 characters (as per email validation)
+function truncateSubject(subject: string, maxLength: number = 100): string {
+  if (subject.length <= maxLength) {
+    return subject;
+  }
+  // Truncate and add ellipsis, ensuring we don't exceed maxLength
+  return subject.substring(0, maxLength - 3) + "...";
+}
+
 // HTML email wrapper to unify style and structure for all emails
 function htmlEmailWrapper({
   appName,
@@ -284,7 +293,7 @@ export const stdTemplateInviteToOrganization: EmailTemplateFunction = async (
       buttonLink: data.link,
       buttonText: "Register Now / Jetzt registrieren",
     }),
-    subject,
+    subject: truncateSubject(subject),
   };
 };
 
@@ -345,6 +354,6 @@ export const stdTemplateInviteToOrganizationWhenUserExists: EmailTemplateFunctio
         buttonLink: data.link,
         buttonText: "Accept Invitation / Einladung annehmen",
       }),
-      subject,
+      subject: truncateSubject(subject),
     };
   };
