@@ -31,7 +31,7 @@ FastApp Framework is a TypeScript backend framework built on Hono and Bun runtim
 
 ### Key Services
 - **ai-service**: Comprehensive AI/ML capabilities (chat, knowledge, embeddings)
-- **usermanagement-service**: Authentication, organizations, teams, permissions
+- **usermanagement-service**: Authentication, tenants, teams, permissions
 - **files-service**: File storage and management (local/S3)
 - **plugin-service**: Extensible plugin system
 - **job-service**: Background job processing with queues
@@ -39,9 +39,9 @@ FastApp Framework is a TypeScript backend framework built on Hono and Bun runtim
 - **whatsapp-service**: WhatsApp Business API integration
 
 ### Route Structure
-Organization-centric multi-tenant API design:
+Tenant-centric multi-tenant API design:
 - `/user/*` - User management and authentication
-- `/tenant/{orgId}/*` - Organization-scoped resources
+- `/tenant/{tenantId}/*` - Tenant-scoped resources
   - `/ai/*` - AI features (chat, knowledge, models, templates)
   - `/files/*` - File management
   - `/teams/*` - Team management
@@ -59,6 +59,9 @@ Multi-tenant PostgreSQL schema with pgvector for AI features:
 Database schema is defined in `src/lib/db/db-schema.ts` and its sub-folders.
 The database ORM is Drizzle.
 
+### Validation
+Validation is done using Valibot!
+
 ### AI Integration Patterns
 - Multi-provider AI support (OpenAI, Anthropic, Google, Mistral, etc.)
 - RAG implementation with vector embeddings and semantic search
@@ -68,19 +71,19 @@ The database ORM is Drizzle.
 - Document parsing (PDF, URL) with OCR support
 - Model Context Protocol (MCP) for external tools
 
-### Key Library Organization
+### Key Library tenant management
 - `src/lib/ai/` - Comprehensive AI capabilities and integrations
 - `src/lib/auth/` - JWT authentication with multiple providers
 - `src/lib/db/` - Database abstraction with Drizzle ORM
 - `src/lib/plugins/` - Plugin architecture with encryption
-- `src/lib/usermanagement/` - Organizations, teams, permissions
+- `src/lib/usermanagement/` - tenants, teams, permissions
 
 ### Development Patterns
 - Configuration-driven setup via `defineServer()` function
 - Service-oriented architecture with clean separation
 - Full TypeScript coverage with exported type definitions
 - Plugin architecture for extensibility without core modification
-- Multi-tenant resource isolation at organization level
+- Multi-tenant resource isolation at tenant level
 
 ### Testing Guidelines
 - Use test data from `src/test/init.test.ts` and `/test/` folder
