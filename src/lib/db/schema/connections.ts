@@ -41,11 +41,9 @@ export const connections = pgBaseTable(
       .notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     remoteUrl: text("remote_url"),
-    initiatedBy: initiatedByEnum("initiated_by").notNull().default("local"),
-    clientId: uuid("client_id")
-      .references(() => serverKeys.id, { onDelete: "restrict" })
-      .notNull(),
+    remoteConnectionId: text("remote_connection_id"),
     remotePublicKey: text("remote_public_key"),
+    initiatedBy: initiatedByEnum("initiated_by").notNull().default("local"),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),
@@ -58,9 +56,12 @@ export const connections = pgBaseTable(
   (t) => [
     index("connections_tenant_idx").on(t.tenantId),
     index("connections_remote_url_idx").on(t.remoteUrl),
-    index("connections_client_id_idx").on(t.clientId),
-    // clientId + initiatedBy must be unique (for syncing)
-    uniqueIndex("connections_client_id_unique_idx").on(t.clientId),
+    uniqueIndex("connections_tenant_name_initiated_by_unique_idx").on(t.tenantId, t.name, t.initiatedBy),
+    uniqueIndex("connections_tenant_remote_connection_id_initiated_by_unique_idx").on(
+      t.tenantId,
+      t.remoteConnectionId,
+      t.initiatedBy
+    ),
   ]
 );
 
@@ -68,10 +69,6 @@ export const connectionsRelations = relations(connections, ({ one }) => ({
   tenant: one(tenants, {
     fields: [connections.tenantId],
     references: [tenants.id],
-  }),
-  clientServerKey: one(serverKeys, {
-    fields: [connections.clientId],
-    references: [serverKeys.id],
   }),
 }));
 

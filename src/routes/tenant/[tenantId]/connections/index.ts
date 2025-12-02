@@ -1,6 +1,19 @@
 /**
- * Routes to manage server-to-server connections
- * These routes are protected by JWT and CheckPermission middleware
+ * Connections API Routes
+ * 
+ * Manages server-to-server connections with cryptographic key exchange
+ * 
+ * Endpoints:
+ * - POST /validate-credentials - Validate remote server credentials
+ * - POST /init - Initialize a new connection to a remote server
+ * - POST /exchange-keys - Accept connection from remote server (called by remote)
+ * - POST /authenticate - Authenticate connection using signature (public endpoint)
+ * - POST /:connectionId/verify - Verify connection status
+ * - GET / - List all connections for tenant
+ * - GET /list - List connections (id, name, meta only)
+ * - GET /:connectionId - Get specific connection
+ * - POST /:connectionId/refresh - Refresh connection timestamp
+ * - DELETE /:connectionId - Drop a connection
  */
 
 import type { FastAppHono } from "../../../../types";
@@ -40,7 +53,7 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     ),
     validateScope("connections:write"),
     describeRoute({
-      description: "Validate remote server credentials",
+      description: "Validate remote server credentials and list available tenants",
       responses: {
         200: {
           description: "Credentials validated successfully",
@@ -66,7 +79,8 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
       } catch (error) {
         log.error("Error validating credentials:", error as object);
         throw new HTTPException(400, {
-          message: error instanceof Error ? error.message : "Validation failed",
+          message:
+            error instanceof Error ? error.message : "Validation failed",
         });
       }
     }
@@ -106,8 +120,13 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
-        const { remoteUrl, remoteEmail, remotePassword, remoteTenantId, name } =
-          c.req.valid("json");
+        const {
+          remoteUrl,
+          remoteEmail,
+          remotePassword,
+          remoteTenantId,
+          name,
+        } = c.req.valid("json");
 
         const result = await connectionsService.initializeConnection(
           tenantId,
@@ -122,7 +141,139 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
       } catch (error) {
         log.error("Error initializing connection:", error as object);
         throw new HTTPException(400, {
-          message: error instanceof Error ? error.message : "Connection failed",
+          message:
+            error instanceof Error ? error.message : "Connection failed",
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /exchange-keys
+   * Receive and respond to public key exchange (called by remote server)
+   */
+  app.post(
+    `${baseRoute}/exchange-keys`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    validator(
+      "json",
+      v.object({
+        remotePublicKey: v.string("Remote public key is required"),
+        remoteConnectionId: v.string("Remote connection ID is required"),
+        remoteTenantId: v.string("Remote tenant ID is required"),
+        remoteTenantName: v.string("Remote tenant name is required"),
+        remoteUrl: v.string("Remote URL is required"),
+        connectionName: v.string("Connection name is required"),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string() })),
+    validateScope("connections:write"),
+    describeRoute({
+      description: "Accept connection from remote server and exchange keys",
+      responses: {
+        200: {
+          description: "Connection accepted successfully",
+        },
+        400: {
+          description: "Invalid request or connection failed",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const {
+          remotePublicKey,
+          remoteConnectionId,
+          remoteTenantId,
+          remoteTenantName,
+          remoteUrl,
+          connectionName,
+        } = c.req.valid("json");
+
+        log.info(
+          `exchange-keys endpoint called: tenantId=${tenantId}, remoteTenantId=${remoteTenantId}, remoteConnectionId=${remoteConnectionId}, connectionName=${connectionName}`
+        );
+
+        // Accept the connection and get our public key
+        const result = await connectionsService.acceptConnection(
+          tenantId,
+          remoteUrl,
+          remoteTenantId,
+          remoteConnectionId,
+          remotePublicKey,
+          connectionName,
+          remoteTenantName
+        );
+
+        log.info(
+          `exchange-keys completed successfully: connectionId=${result.connectionId}`
+        );
+
+        return c.json({
+          connectionId: result.connectionId,
+          localPublicKey: result.localPublicKey,
+          serverId: result.remoteConnectionId, // For backward compatibility
+        });
+      } catch (error) {
+        log.error("Error exchanging keys:", error as object);
+        throw new HTTPException(400, {
+          message:
+            error instanceof Error ? error.message : "Key exchange failed",
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /authenticate
+   * Authenticate connection using key signature
+   * Public endpoint, signature verified by public key
+   */
+  app.post(
+    `${baseRoute}/authenticate`,
+    validator(
+      "json",
+      v.object({
+        remoteConnectionId: v.string("Remote connection ID is required"),
+        timestamp: v.number("Timestamp is required"),
+        signature: v.string("Signature is required"),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string() })),
+    describeRoute({
+      description: "Authenticate connection using key signature",
+      responses: {
+        200: {
+          description: "Authenticated successfully",
+        },
+        401: {
+          description: "Authentication failed",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const { remoteConnectionId, timestamp, signature } = c.req.valid("json");
+
+        // authenticateConnection checks signature against DB
+        const result = await connectionsService.authenticateConnection(
+          tenantId,
+          remoteConnectionId,
+          timestamp,
+          signature
+        );
+
+        return c.json(result);
+      } catch (error) {
+        log.error("Error authenticating connection:", error as object);
+        throw new HTTPException(401, {
+          message:
+            error instanceof Error
+              ? error.message
+              : "Authentication failed",
         });
       }
     }
@@ -161,126 +312,6 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
         throw new HTTPException(400, {
           message:
             error instanceof Error ? error.message : "Verification failed",
-        });
-      }
-    }
-  );
-
-  /**
-   * POST /authenticate
-   * Authenticate connection using key signature
-   * Public endpoint, signature verified by public key
-   */
-  app.post(
-    `${baseRoute}/authenticate`,
-    validator(
-      "json",
-      v.object({
-        clientId: v.string("Client ID is required"),
-        timestamp: v.number("Timestamp is required"),
-        signature: v.string("Signature is required"),
-      })
-    ),
-    validator("param", v.object({ tenantId: v.string() })),
-    describeRoute({
-      description: "Authenticate connection using key signature",
-      responses: {
-        200: {
-          description: "Authenticated successfully",
-        },
-        401: {
-          description: "Authentication failed",
-        },
-      },
-    }),
-    async (c) => {
-      try {
-        const { tenantId } = c.req.valid("param");
-        const { clientId, timestamp, signature } = c.req.valid("json");
-
-        // authenticateConnection checks signature against DB
-        const result = await connectionsService.authenticateConnection(
-          tenantId,
-          clientId,
-          timestamp,
-          signature
-        );
-
-        return c.json(result);
-      } catch (error) {
-        log.error("Error authenticating connection:", error as object);
-        throw new HTTPException(401, {
-          message: "Authentication failed",
-        });
-      }
-    }
-  );
-
-  /**
-   * POST /exchange-keys
-   * Receive and respond to public key exchange (called by remote server)
-   */
-  app.post(
-    `${baseRoute}/exchange-keys`,
-    authAndSetUsersInfo,
-    checkUserPermission,
-    validator(
-      "json",
-      v.object({
-        remotePublicKey: v.string("Remote public key is required"),
-        clientId: v.string("Client ID is required"),
-        remoteTenantId: v.string("Remote tenant ID is required"),
-        remoteTenantName: v.string("Remote tenant name is required"),
-        remoteUrl: v.string("Remote URL is required"),
-        connectionName: v.string("Connection name is required"),
-      })
-    ),
-    validator("param", v.object({ tenantId: v.string() })),
-    validateScope("connections:write"),
-    describeRoute({
-      description: "Accept connection from remote server and exchange keys",
-      responses: {
-        200: {
-          description: "Connection accepted successfully",
-        },
-        400: {
-          description: "Invalid request or connection failed",
-        },
-      },
-    }),
-    async (c) => {
-      try {
-        const { tenantId } = c.req.valid("param");
-        const {
-          remotePublicKey,
-          clientId,
-          remoteTenantId,
-          remoteTenantName,
-          remoteUrl,
-          connectionName,
-        } = c.req.valid("json");
-
-        // Accept the connection and get our public key
-        const result = await connectionsService.acceptConnection(
-          tenantId,
-          remoteUrl,
-          remoteTenantId,
-          clientId,
-          remotePublicKey,
-          connectionName,
-          remoteTenantName
-        );
-
-        return c.json({
-          connectionId: result.connectionId,
-          localPublicKey: result.localPublicKey,
-          serverId: result.serverId,
-        });
-      } catch (error) {
-        log.error("Error exchanging keys:", error as object);
-        throw new HTTPException(400, {
-          message:
-            error instanceof Error ? error.message : "Key exchange failed",
         });
       }
     }
@@ -375,6 +406,17 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     checkUserPermission,
     validator("param", v.object({ connectionId: v.string() })),
     validateScope("connections:read"),
+    describeRoute({
+      description: "Get a specific connection",
+      responses: {
+        200: {
+          description: "Connection retrieved successfully",
+        },
+        404: {
+          description: "Connection not found",
+        },
+      },
+    }),
     async (c) => {
       try {
         const { connectionId } = c.req.valid("param");
@@ -438,7 +480,7 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
 
   /**
    * DELETE /:connectionId
-   * Drop a connection and all its sessions
+   * Drop a connection
    */
   app.delete(
     `${baseRoute}/:connectionId`,
@@ -446,6 +488,17 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     checkUserPermission,
     validator("param", v.object({ connectionId: v.string() })),
     validateScope("connections:write"),
+    describeRoute({
+      description: "Drop a connection",
+      responses: {
+        200: {
+          description: "Connection dropped successfully",
+        },
+        400: {
+          description: "Failed to drop connection",
+        },
+      },
+    }),
     async (c) => {
       try {
         const { connectionId } = c.req.valid("param");
@@ -456,8 +509,9 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
         });
       } catch (error) {
         log.error("Error dropping connection:", error as object);
-        throw new HTTPException(500, {
-          message: "Failed to drop connection",
+        throw new HTTPException(400, {
+          message:
+            error instanceof Error ? error.message : "Failed to drop connection",
         });
       }
     }
