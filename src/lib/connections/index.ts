@@ -839,14 +839,21 @@ export async function getConnectionByRemoteConnectionId(
  * List all connections for a tenant
  */
 export async function getConnectionByLocalTenant(
-  tenantId: string
+  tenantId: string,
+  initiatedBy?: "local" | "remote"
 ): Promise<ConnectionsSelect[]> {
   try {
     const db = getDb();
+    const conditions = [eq(connections.tenantId, tenantId)];
+    
+    if (initiatedBy) {
+      conditions.push(eq(connections.initiatedBy, initiatedBy));
+    }
+    
     const result = await db
       .select()
       .from(connections)
-      .where(eq(connections.tenantId, tenantId));
+      .where(and(...conditions));
 
     return result;
   } catch (error) {

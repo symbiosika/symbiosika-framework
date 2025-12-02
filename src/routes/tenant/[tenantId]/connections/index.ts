@@ -356,12 +356,19 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
   /**
    * GET /list
    * List all connections for this tenant (only id, name, meta)
+   * Query params: initiatedBy (optional) - filter by "local" or "remote"
    */
   app.get(
     `${baseRoute}/list`,
     authAndSetUsersInfo,
     checkUserPermission,
     validator("param", v.object({ tenantId: v.string() })),
+    validator(
+      "query",
+      v.object({
+        initiatedBy: v.optional(v.picklist(["local", "remote"])),
+      })
+    ),
     validateScope("connections:read"),
     describeRoute({
       description: "List all connections (id, name, meta only)",
@@ -374,8 +381,9 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
+        const { initiatedBy } = c.req.valid("query");
         const conns =
-          await connectionsService.getConnectionByLocalTenant(tenantId);
+          await connectionsService.getConnectionByLocalTenant(tenantId, initiatedBy);
 
         // Return only id, name, and meta fields
         const simplifiedConnections = conns.map((conn) => ({
