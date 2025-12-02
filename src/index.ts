@@ -67,7 +67,7 @@ import { _GLOBAL_SERVER_CONFIG, setGlobalServerConfig } from "./store";
 import { smtpService } from "./lib/email";
 import { getMetaIpAddresses } from "./lib/communication/whatsapp/whitelist";
 import { defineLicenseRoutes, licenseManager } from "./license-service";
-import { initLocalConnectionIfNeeded } from "./lib/connections/init-local-connection";
+import { initServerKeysIfNeeded } from "./lib/connections/init-server-keys";
 //import { logApiRoutes } from "./lib/utils/log-api-routes";
 
 /**
@@ -166,12 +166,12 @@ export const defineServer = (config: ServerSpecificConfig) => {
   waitForDbConnection().then(async () => {
     licenseManager.init();
 
-    // Initialize local connection for all tenants
+    // Initialize server keys (must exist exactly once)
     try {
-      await initLocalConnectionIfNeeded();
+      await initServerKeysIfNeeded();
     } catch (error) {
-      console.error("Error initializing local connection:", error);
-      // Don't fail server startup if local connection init fails
+      console.error("Error initializing server keys:", error);
+      // Don't fail server startup if server keys init fails
     }
 
     const isLicenseValid = await licenseManager.isValid();

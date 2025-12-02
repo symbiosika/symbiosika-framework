@@ -176,7 +176,7 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     validator(
       "json",
       v.object({
-        connectionId: v.string("Connection ID is required"),
+        clientId: v.string("Client ID is required"),
         timestamp: v.number("Timestamp is required"),
         signature: v.string("Signature is required"),
       })
@@ -196,19 +196,15 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
-        const { connectionId, timestamp, signature } = c.req.valid("json");
+        const { clientId, timestamp, signature } = c.req.valid("json");
 
         // authenticateConnection checks signature against DB
         const result = await connectionsService.authenticateConnection(
-          connectionId,
+          tenantId,
+          clientId,
           timestamp,
           signature
         );
-
-        // Optional: Check if connection belongs to tenantId
-        // But authenticateConnection retrieves connection by ID.
-        // We should verify tenantId matches to prevent cross-tenant confusion if IDs are global.
-        // But IDs are UUIDs.
 
         return c.json(result);
       } catch (error) {
@@ -232,8 +228,9 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
       "json",
       v.object({
         remotePublicKey: v.string("Remote public key is required"),
-        remoteConnectionId: v.string("Remote connection ID is required"),
+        clientId: v.string("Client ID is required"),
         remoteTenantId: v.string("Remote tenant ID is required"),
+        remoteTenantName: v.string("Remote tenant name is required"),
         remoteUrl: v.string("Remote URL is required"),
         connectionName: v.string("Connection name is required"),
       })
@@ -256,8 +253,9 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
         const { tenantId } = c.req.valid("param");
         const {
           remotePublicKey,
-          remoteConnectionId,
+          clientId,
           remoteTenantId,
+          remoteTenantName,
           remoteUrl,
           connectionName,
         } = c.req.valid("json");
@@ -267,14 +265,16 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
           tenantId,
           remoteUrl,
           remoteTenantId,
-          remoteConnectionId,
+          clientId,
           remotePublicKey,
-          connectionName
+          connectionName,
+          remoteTenantName
         );
 
         return c.json({
           connectionId: result.connectionId,
           localPublicKey: result.localPublicKey,
+          serverId: result.serverId,
         });
       } catch (error) {
         log.error("Error exchanging keys:", error as object);
@@ -439,7 +439,6 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
   /**
    * DELETE /:connectionId
    * Drop a connection and all its sessions
-   * If connection name is "local", it will be reset instead of deleted
    */
   app.delete(
     `${baseRoute}/:connectionId`,

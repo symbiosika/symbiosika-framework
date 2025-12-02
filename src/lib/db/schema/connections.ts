@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { pgBaseTable } from ".";
 import { tenants, users } from "./users";
+import { serverKeys } from "./server";
 import { relations } from "drizzle-orm";
 import {
   createInsertSchema,
@@ -33,20 +34,18 @@ export const connections = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    tenantId: uuid("tenant_id").references(() => tenants.id, {
-      onDelete: "cascade",
-    }),
-    name: varchar("name", { length: 255 }).notNull().unique(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, {
+        onDelete: "cascade",
+      })
+      .notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
     remoteUrl: text("remote_url"),
     initiatedBy: initiatedByEnum("initiated_by").notNull().default("local"),
-    localPublicKey: text("local_public_key").notNull(),
-    localPrivateKey: text("local_private_key").notNull(),
-    localPrivateKeyType: varchar("local_private_key_type", { length: 255 })
-      .notNull()
-      .default("aes-256-cbc"),
+    clientId: uuid("client_id")
+      .references(() => serverKeys.id, { onDelete: "restrict" })
+      .notNull(),
     remotePublicKey: text("remote_public_key"),
-    remoteTenantId: uuid("remote_tenant_id"),
-    remoteConnectionId: uuid("remote_connection_id"),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),
@@ -59,11 +58,11 @@ export const connections = pgBaseTable(
   (t) => [
     index("connections_tenant_idx").on(t.tenantId),
     index("connections_remote_url_idx").on(t.remoteUrl),
-    // only one connection per tenant and remote tenant
-    uniqueIndex("connections_tenant_remote_tenant_idx").on(
-      t.tenantId,
-      t.remoteTenantId,
-      t.name
+    index("connections_client_id_idx").on(t.clientId),
+    // clientId + initiatedBy must be unique (for syncing)
+    uniqueIndex("connections_client_id_initiated_by_unique_idx").on(
+      t.clientId,
+      t.initiatedBy
     ),
   ]
 );
@@ -72,6 +71,10 @@ export const connectionsRelations = relations(connections, ({ one }) => ({
   tenant: one(tenants, {
     fields: [connections.tenantId],
     references: [tenants.id],
+  }),
+  clientServerKey: one(serverKeys, {
+    fields: [connections.clientId],
+    references: [serverKeys.id],
   }),
 }));
 
