@@ -6,7 +6,6 @@
 
 import { getDb } from "../db/db-connection";
 import { serverKeys, type ServerKeysInsert } from "../db/db-schema";
-import { eq } from "drizzle-orm";
 import log from "../log";
 import { generateKeyPair } from "./index";
 
@@ -93,4 +92,3 @@ export async function initServerKeysIfNeeded() {
     throw error;
   }
 }
-

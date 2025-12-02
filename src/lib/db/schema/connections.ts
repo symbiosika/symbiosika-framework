@@ -60,10 +60,7 @@ export const connections = pgBaseTable(
     index("connections_remote_url_idx").on(t.remoteUrl),
     index("connections_client_id_idx").on(t.clientId),
     // clientId + initiatedBy must be unique (for syncing)
-    uniqueIndex("connections_client_id_initiated_by_unique_idx").on(
-      t.clientId,
-      t.initiatedBy
-    ),
+    uniqueIndex("connections_client_id_unique_idx").on(t.clientId),
   ]
 );
 

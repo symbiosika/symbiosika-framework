@@ -3,11 +3,11 @@
  * Tests for server-to-server connection business logic
  */
 
-import { describe, test, expect, beforeAll } from "bun:test";
+import { describe, test, expect, beforeAll, afterEach } from "bun:test";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
 import { getDb } from "../db/db-connection";
-import { connections } from "../db/db-schema";
-import { eq } from "drizzle-orm";
+import { connections, tenants, serverKeys } from "../db/db-schema";
+import { eq, and, or, ne } from "drizzle-orm";
 import {
   connectionsService,
   generateKeyPair,
@@ -16,9 +16,11 @@ import {
   acceptConnection,
   getConnection,
   dropConnection,
-  getConnectionByTenants,
+  getConnectionByTenantAndName,
+  getConnectionByClientId,
   getConnectionByLocalTenant,
 } from "./index";
+import { initServerKeysIfNeeded, getServerKeys } from "./init-server-keys";
 
 const TEST_ORG_ID = TEST_ORGANISATION_1.id;
 const TEST_REMOTE_ORG_ID = "00000000-0000-0000-0000-000000000001";
@@ -27,13 +29,24 @@ const TEST_CONNECTION_NAME = "Test Connection";
 
 beforeAll(async () => {
   await initTests();
-  // delete all old connections
-  await getDb()
-    .delete(connections)
-    .where(eq(connections.tenantId, TEST_ORG_ID));
-  await getDb()
-    .delete(connections)
-    .where(eq(connections.remoteTenantId, TEST_ORG_ID));
+  // Initialize server keys if needed
+  await initServerKeysIfNeeded();
+  // delete all old connections (clean up before tests)
+  await getDb().delete(connections);
+  // Clean up test tenants
+  await getDb().delete(tenants).where(eq(tenants.id, TEST_REMOTE_ORG_ID));
+});
+
+afterEach(async () => {
+  // Clean up any additional server keys created during tests
+  // Keep only the main server key (the first one created)
+  const db = getDb();
+  const allKeys = await db.select().from(serverKeys);
+  if (allKeys.length > 1) {
+    // Delete all except the first one (main server key)
+    const mainKeyId = allKeys[0]!.id;
+    await db.delete(serverKeys).where(ne(serverKeys.id, mainKeyId));
+  }
 });
 
 describe("Connections Service", () => {
@@ -63,7 +76,11 @@ describe("Connections Service", () => {
    */
   test("validateRemoteCredentials should fetch and return tenants", async () => {
     const mockOrgData = [
-      { tenantId: TEST_REMOTE_ORG_ID, name: "Remote Organisation", role: "admin" },
+      {
+        tenantId: TEST_REMOTE_ORG_ID,
+        name: "Remote Organisation",
+        role: "admin",
+      },
     ];
 
     // Mock fetch for login endpoint
@@ -158,7 +175,9 @@ describe("Connections Service", () => {
       } else if (url.includes("/user/tenants")) {
         return {
           ok: true,
-          json: async () => [{ tenantId: TEST_REMOTE_ORG_ID, name: "Remote Org", role: "admin" }],
+          json: async () => [
+            { tenantId: TEST_REMOTE_ORG_ID, name: "Remote Org", role: "admin" },
+          ],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
         return {
@@ -166,6 +185,7 @@ describe("Connections Service", () => {
           json: async () => ({
             localPublicKey:
               "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----",
+            serverId: "test-server-id",
           }),
         } as Response;
       }
@@ -192,15 +212,30 @@ describe("Connections Service", () => {
       const conn = await getConnection(result.connectionId);
       expect(conn).toBeDefined();
       expect(conn?.name).toBe(TEST_CONNECTION_NAME);
-      expect(conn?.tenantId).toBe(TEST_ORG_ID as any);
-      expect(conn?.remoteTenantId).toBe(TEST_REMOTE_ORG_ID as any);
+      expect(conn?.tenantId).toBe(TEST_REMOTE_ORG_ID as any); // Remote tenant ID is now used as tenantId
+      expect(conn?.initiatedBy).toBe("local");
+      expect(conn?.clientId).toBeDefined();
+
+      // Verify tenant was created locally
+      const tenant = await getDb()
+        .select()
+        .from(tenants)
+        .where(eq(tenants.id, TEST_REMOTE_ORG_ID))
+        .limit(1);
+      expect(tenant[0]).toBeDefined();
+      expect(tenant[0]?.name).toBe("Remote Org");
     } finally {
       (global as any).fetch = originalFetch;
     }
   });
 
-  test("initializeConnection should re-initialize existing connection", async () => {
+  test("initializeConnection should update existing local connection", async () => {
     const originalFetch = global.fetch;
+    const serverKey = await getServerKeys();
+    if (!serverKey) {
+      throw new Error("Server keys not found");
+    }
+
     (global as any).fetch = async (url: string) => {
       if (url.includes("/user/login")) {
         return {
@@ -210,7 +245,9 @@ describe("Connections Service", () => {
       } else if (url.includes("/user/tenants")) {
         return {
           ok: true,
-          json: async () => [{ tenantId: TEST_REMOTE_ORG_ID, name: "Remote Org", role: "admin" }],
+          json: async () => [
+            { tenantId: TEST_REMOTE_ORG_ID, name: "Remote Org", role: "admin" },
+          ],
         } as Response;
       } else if (url.includes("/exchange-keys")) {
         return {
@@ -218,6 +255,7 @@ describe("Connections Service", () => {
           json: async () => ({
             localPublicKey:
               "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----",
+            serverId: "test-server-id",
           }),
         } as Response;
       }
@@ -237,7 +275,7 @@ describe("Connections Service", () => {
 
       const originalId = result1.connectionId;
 
-      // Initialize again with same orgs
+      // Initialize again - should update existing local connection
       const result2 = await initializeConnection(
         TEST_ORG_ID,
         TEST_REMOTE_URL,
@@ -247,12 +285,14 @@ describe("Connections Service", () => {
         "Updated Name"
       );
 
-      // Should return same connection ID
+      // Should return same connection ID (upsert based on clientId + initiatedBy)
       expect(result2.connectionId).toBe(originalId);
 
       // Verify updated name
       const conn = await getConnection(result2.connectionId);
       expect(conn?.name).toBe("Updated Name");
+      expect(conn?.clientId).toBe(serverKey.id);
+      expect(conn?.initiatedBy).toBe("local");
     } finally {
       (global as any).fetch = originalFetch;
     }
@@ -300,8 +340,27 @@ describe("Connections Service", () => {
    */
   test("acceptConnection should create connection from remote initiation", async () => {
     const db = getDb();
+    const serverKey = await getServerKeys();
+    if (!serverKey) {
+      throw new Error("Server keys not found");
+    }
+
+    // Create a new server key for the test client (must exist in server_keys)
+    const clientKeyPair = generateKeyPair();
+    const clientServerKey = await db
+      .insert(serverKeys)
+      .values({
+        privateKey: clientKeyPair.privateKey,
+        publicKey: clientKeyPair.publicKey,
+      })
+      .returning();
+
+    if (!clientServerKey[0]) {
+      throw new Error("Failed to create client server key");
+    }
+    const clientId = clientServerKey[0].id; // Use real server key ID
+
     const { publicKey: remotePublicKey } = generateKeyPair();
-    const id = crypto.randomUUID();
     // Use a unique remote org ID to avoid constraint violation
     const uniqueRemoteOrgId = "00000000-0000-0000-0000-000000000999";
 
@@ -309,9 +368,10 @@ describe("Connections Service", () => {
       TEST_ORG_ID,
       TEST_REMOTE_URL,
       uniqueRemoteOrgId,
-      id,
+      clientId, // Client's serverId (must exist in server_keys)
       remotePublicKey,
-      "Accepted Connection"
+      "Accepted Connection",
+      "Remote Tenant Name"
     );
 
     expect(result).toBeDefined();
@@ -322,11 +382,24 @@ describe("Connections Service", () => {
     const conn = await getConnection(result.connectionId);
     expect(conn).toBeDefined();
     expect(conn?.name).toBe("Accepted Connection");
-    expect(conn?.tenantId).toBe(TEST_ORG_ID as any);
-    expect(conn?.remoteTenantId).toBe(uniqueRemoteOrgId as any);
-    expect(conn?.remoteConnectionId).toBe(id);
+    expect(conn?.tenantId).toBe(uniqueRemoteOrgId as any); // Remote tenant ID is now used as tenantId
+    expect(conn?.clientId).toBe(clientId);
     expect(conn?.remotePublicKey).toBe(remotePublicKey);
     expect(conn?.initiatedBy).toBe("remote");
+
+    // Verify tenant was created locally
+    const tenant = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, uniqueRemoteOrgId))
+      .limit(1);
+    expect(tenant[0]).toBeDefined();
+    expect(tenant[0]?.name).toBe("Remote Tenant Name");
+
+    // Clean up
+    await db.delete(connections).where(eq(connections.id, result.connectionId));
+    await db.delete(tenants).where(eq(tenants.id, uniqueRemoteOrgId));
+    await db.delete(serverKeys).where(eq(serverKeys.id, clientId));
   });
 
   /**
@@ -334,16 +407,29 @@ describe("Connections Service", () => {
    */
   test("getConnection should retrieve connection by ID", async () => {
     const db = getDb();
+    const serverKey = await getServerKeys();
+    if (!serverKey) {
+      throw new Error("Server keys not found");
+    }
+
+    // Delete any existing connection with same clientId and initiatedBy
+    await db
+      .delete(connections)
+      .where(
+        and(
+          eq(connections.clientId, serverKey.id),
+          eq(connections.initiatedBy, "local")
+        )
+      );
 
     // Create connection
-    const keyPair = generateKeyPair();
     const connResult = await db
       .insert(connections)
       .values({
         tenantId: TEST_ORG_ID as any,
         name: "Get Test Connection",
-        localPublicKey: keyPair.publicKey,
-        localPrivateKey: keyPair.privateKey,
+        clientId: serverKey.id,
+        initiatedBy: "local",
       })
       .returning();
 
@@ -356,6 +442,10 @@ describe("Connections Service", () => {
     expect(conn).toBeDefined();
     expect(conn?.id).toBe(connectionId);
     expect(conn?.name).toBe("Get Test Connection");
+    expect(conn?.clientId).toBe(serverKey.id);
+
+    // Clean up
+    await db.delete(connections).where(eq(connections.id, connectionId!));
   });
 
   test("getConnection should return null for non-existent connection", async () => {
@@ -365,35 +455,53 @@ describe("Connections Service", () => {
   });
 
   /**
-   * Test: getConnectionByOrganisations
+   * Test: getConnectionByTenantAndName
    */
-  test("getConnectionByOrganisations should retrieve connection", async () => {
+  test("getConnectionByTenantAndName should retrieve connection", async () => {
     const db = getDb();
+    const serverKey = await getServerKeys();
+    if (!serverKey) {
+      throw new Error("Server keys not found");
+    }
+
+    // Delete any existing connection with same clientId and initiatedBy
+    await db
+      .delete(connections)
+      .where(
+        and(
+          eq(connections.clientId, serverKey.id),
+          eq(connections.initiatedBy, "local")
+        )
+      );
 
     // Create connection
-    const keyPair = generateKeyPair();
     const connResult = await db
       .insert(connections)
       .values({
         tenantId: TEST_ORG_ID,
-        remoteTenantId: TEST_ORG_ID,
         name: "Org Connection",
-        localPublicKey: keyPair.publicKey,
-        localPrivateKey: keyPair.privateKey,
+        clientId: serverKey.id,
+        initiatedBy: "local",
       })
       .returning();
 
-    // Retrieve by tenants
-    const conn = await getConnectionByTenants(TEST_ORG_ID, TEST_ORG_ID);
+    // Retrieve by tenant and name
+    const conn = await getConnectionByTenantAndName(
+      TEST_ORG_ID,
+      "Org Connection"
+    );
 
     expect(conn).toBeDefined();
     expect(conn?.id).toBe(connResult[0]?.id);
+
+    // Clean up
+    await db.delete(connections).where(eq(connections.id, connResult[0]!.id));
   });
 
-  test("getConnectionByOrganisations should return null for non-existent combination", async () => {
-    const conn = await getConnectionByTenants(
+  test("getConnectionByTenantAndName should return null for non-existent combination", async () => {
+    const conn = await getConnectionByTenantAndName(
       "00000000-0000-0000-0000-000000000888",
-      "00000000-0000-0000-0000-000000000999"
+      "Non-existent Connection"
     );
 
     expect(conn).toBeNull();
@@ -404,25 +512,45 @@ describe("Connections Service", () => {
    */
   test("getConnectionByLocalOrganisation should return all connections for tenant", async () => {
     const db = getDb();
+    const serverKey = await getServerKeys();
+    if (!serverKey) {
+      throw new Error("Server keys not found");
+    }
 
-    // Create multiple connections
-    const keyPair1 = generateKeyPair();
-    const keyPair2 = generateKeyPair();
+    // Create a second server key for remote connection
+    const remoteKeyPair = generateKeyPair();
+    const remoteServerKey = await db
+      .insert(serverKeys)
+      .values({
+        privateKey: remoteKeyPair.privateKey,
+        publicKey: remoteKeyPair.publicKey,
+      })
+      .returning();
 
-    await db.insert(connections).values([
+    if (!remoteServerKey[0]) {
+      throw new Error("Failed to create remote server key");
+    }
+
+    // Delete any existing connections
+    await db
+      .delete(connections)
+      .where(eq(connections.tenantId, TEST_ORG_ID));
+
+    // Create multiple connections with different clientIds
+    const connResults = await db.insert(connections).values([
       {
         tenantId: TEST_ORG_ID as any,
         name: "Connection 1",
-        localPublicKey: keyPair1.publicKey,
-        localPrivateKey: keyPair1.privateKey,
+        clientId: serverKey.id,
+        initiatedBy: "local",
       },
       {
         tenantId: TEST_ORG_ID as any,
         name: "Connection 2",
-        localPublicKey: keyPair2.publicKey,
-        localPrivateKey: keyPair2.privateKey,
+        clientId: remoteServerKey[0].id, // Different clientId
+        initiatedBy: "remote",
       },
-    ]);
+    ]).returning();
 
     // List connections
     const conns = await getConnectionByLocalTenant(TEST_ORG_ID);
@@ -430,6 +558,10 @@ describe("Connections Service", () => {
     expect(conns.length).toBeGreaterThanOrEqual(2);
     expect(conns.some((c: any) => c.name === "Connection 1")).toBe(true);
     expect(conns.some((c: any) => c.name === "Connection 2")).toBe(true);
+
+    // Clean up
+    await db.delete(connections).where(eq(connections.tenantId, TEST_ORG_ID));
+    await db.delete(serverKeys).where(eq(serverKeys.id, remoteServerKey[0].id));
   });
 
   test("getConnectionByLocalOrganisation should return empty for tenant with no connections", async () => {
@@ -445,16 +577,29 @@ describe("Connections Service", () => {
    */
   test("dropConnection should delete connection", async () => {
     const db = getDb();
+    const serverKey = await getServerKeys();
+    if (!serverKey) {
+      throw new Error("Server keys not found");
+    }
+
+    // Delete any existing connection with same clientId and initiatedBy
+    await db
+      .delete(connections)
+      .where(
+        and(
+          eq(connections.clientId, serverKey.id),
+          eq(connections.initiatedBy, "local")
+        )
+      );
 
     // Create connection
-    const keyPair = generateKeyPair();
     const connResult = await db
       .insert(connections)
       .values({
         tenantId: TEST_ORG_ID as any,
         name: "Drop Connection Test",
-        localPublicKey: keyPair.publicKey,
-        localPrivateKey: keyPair.privateKey,
+        clientId: serverKey.id,
+        initiatedBy: "local",
       })
       .returning();
 
@@ -498,30 +643,51 @@ describe("Connections Service", () => {
 
   test("authenticateConnection should verify signature and return token", async () => {
     const db = getDb();
+    const serverKey = await getServerKeys();
+    if (!serverKey) {
+      throw new Error("Server keys not found");
+    }
+
+    // Create a new server key for the test client (must exist in server_keys)
+    const clientKeyPair = generateKeyPair();
+    const clientServerKey = await db
+      .insert(serverKeys)
+      .values({
+        privateKey: clientKeyPair.privateKey,
+        publicKey: clientKeyPair.publicKey,
+      })
+      .returning();
+
+    if (!clientServerKey[0]) {
+      throw new Error("Failed to create client server key");
+    }
+    const clientId = clientServerKey[0].id; // Use real server key ID
+
     const keyPair = generateKeyPair();
+
     // Mock a connection in DB with remote public key matching our keyPair
     const connResult = await db
       .insert(connections)
       .values({
         tenantId: TEST_ORG_ID as any,
         name: "Auth Connection Test",
-        localPublicKey: "local-pub",
-        localPrivateKey: "local-priv",
+        clientId: clientId,
+        initiatedBy: "remote",
         remotePublicKey: keyPair.publicKey, // Remote matches our key
       })
       .returning();
     if (!connResult[0]) {
       throw new Error("Failed to create auth connection");
     }
-    const connectionId = connResult[0].id;
 
-    // Sign data
+    // Sign data with clientId (not connectionId)
     const timestamp = Date.now();
-    const data = `${connectionId}:${timestamp}`;
+    const data = `${clientId}:${timestamp}`;
     const signature = connectionsService.signData(data, keyPair.privateKey);
 
     const result = await connectionsService.authenticateConnection(
-      connectionId,
+      TEST_ORG_ID,
+      clientId,
       timestamp,
       signature
     );
@@ -529,12 +695,43 @@ describe("Connections Service", () => {
     expect(result.token).toBeDefined();
 
     // Clean up
-    await dropConnection(connectionId);
+    await dropConnection(connResult[0].id);
+    await db.delete(serverKeys).where(eq(serverKeys.id, clientId));
   });
 
   test("cleanupStaleConnections should remove old connections", async () => {
     const db = getDb();
-    const keyPair = generateKeyPair();
+    const serverKey = await getServerKeys();
+    if (!serverKey) {
+      throw new Error("Server keys not found");
+    }
+
+    // Create a second server key for remote connection
+    const remoteKeyPair = generateKeyPair();
+    const remoteServerKey = await db
+      .insert(serverKeys)
+      .values({
+        privateKey: remoteKeyPair.privateKey,
+        publicKey: remoteKeyPair.publicKey,
+      })
+      .returning();
+
+    if (!remoteServerKey[0]) {
+      throw new Error("Failed to create remote server key");
+    }
+
+    // Delete any existing connections
+    await db
+      .delete(connections)
+      .where(
+        and(
+          eq(connections.tenantId, TEST_ORG_ID),
+          or(
+            eq(connections.clientId, serverKey.id),
+            eq(connections.clientId, remoteServerKey[0].id)
+          )
+        )
+      );
 
     // Create stale connection
     const oldDate = new Date();
@@ -545,8 +742,8 @@ describe("Connections Service", () => {
       .values({
         tenantId: TEST_ORG_ID as any,
         name: "Stale Connection",
-        localPublicKey: keyPair.publicKey,
-        localPrivateKey: keyPair.privateKey,
+        clientId: serverKey.id,
+        initiatedBy: "local",
         lastConnectedAt: oldDate.toISOString(),
       })
       .returning();
@@ -555,14 +752,14 @@ describe("Connections Service", () => {
     }
     const staleId = connResult[0].id;
 
-    // Create active connection
+    // Create active connection with different clientId
     const activeResult = await db
       .insert(connections)
       .values({
         tenantId: TEST_ORG_ID as any,
         name: "Active Connection",
-        localPublicKey: keyPair.publicKey,
-        localPrivateKey: keyPair.privateKey,
+        clientId: remoteServerKey[0].id, // Different clientId
+        initiatedBy: "remote",
         lastConnectedAt: new Date().toISOString(),
       })
       .returning();
@@ -583,6 +780,7 @@ describe("Connections Service", () => {
 
     // Clean up
     await dropConnection(activeId);
+    await db.delete(serverKeys).where(eq(serverKeys.id, remoteServerKey[0].id));
   });
 
   /**
@@ -594,8 +792,12 @@ describe("Connections Service", () => {
     expect(connectionsService.initializeConnection).toBeDefined();
     expect(connectionsService.acceptConnection).toBeDefined();
     expect(connectionsService.getConnection).toBeDefined();
-    expect(connectionsService.getConnectionByTenants).toBeDefined();
+    expect(connectionsService.getConnectionByTenantAndName).toBeDefined();
+    expect(connectionsService.getConnectionByClientId).toBeDefined();
     expect(connectionsService.getConnectionByLocalTenant).toBeDefined();
     expect(connectionsService.dropConnection).toBeDefined();
+    expect(connectionsService.authenticateConnection).toBeDefined();
+    expect(connectionsService.verifyConnection).toBeDefined();
+    expect(connectionsService.refreshConnection).toBeDefined();
   });
 });

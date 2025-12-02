@@ -71,6 +71,13 @@
       "when": 1764670294199,
       "tag": "0009_exotic_snowbird",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1764686716611,
+      "tag": "0010_complete_marvel_boy",
+      "breakpoints": true
     }
   ]
 }
