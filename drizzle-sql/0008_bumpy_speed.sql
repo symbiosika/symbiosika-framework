@@ -1,0 +1,2 @@
+DROP INDEX "connections_tenant_remote_tenant_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "connections_tenant_remote_tenant_idx" ON "base_connections" USING btree ("tenant_id","remote_tenant_id","name");

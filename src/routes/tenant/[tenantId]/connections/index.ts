@@ -398,8 +398,48 @@ const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
   );
 
   /**
+   * POST /:connectionId/refresh
+   * Refresh connection - update lastConnectedAt timestamp
+   */
+  app.post(
+    `${baseRoute}/:connectionId/refresh`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    validator("param", v.object({ connectionId: v.string() })),
+    validateScope("connections:write"),
+    describeRoute({
+      description: "Refresh connection timestamp",
+      responses: {
+        200: {
+          description: "Connection refreshed successfully",
+        },
+        400: {
+          description: "Refresh failed",
+        },
+      },
+    }),
+    async (c) => {
+      try {
+        const { connectionId } = c.req.valid("param");
+        await connectionsService.refreshConnection(connectionId);
+
+        return c.json({
+          message: "Connection refreshed successfully",
+        });
+      } catch (error) {
+        log.error("Error refreshing connection:", error as object);
+        throw new HTTPException(400, {
+          message:
+            error instanceof Error ? error.message : "Refresh failed",
+        });
+      }
+    }
+  );
+
+  /**
    * DELETE /:connectionId
    * Drop a connection and all its sessions
+   * If connection name is "local", it will be reset instead of deleted
    */
   app.delete(
     `${baseRoute}/:connectionId`,

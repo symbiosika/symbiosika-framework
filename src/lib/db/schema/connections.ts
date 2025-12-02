@@ -33,10 +33,10 @@ export const connections = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    tenantId: uuid("tenant_id")
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
-    name: varchar("name", { length: 255 }),
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
+      onDelete: "cascade",
+    }),
+    name: varchar("name", { length: 255 }).notNull().unique(),
     remoteUrl: text("remote_url"),
     initiatedBy: initiatedByEnum("initiated_by").notNull().default("local"),
     localPublicKey: text("local_public_key").notNull(),
@@ -62,7 +62,8 @@ export const connections = pgBaseTable(
     // only one connection per tenant and remote tenant
     uniqueIndex("connections_tenant_remote_tenant_idx").on(
       t.tenantId,
-      t.remoteTenantId
+      t.remoteTenantId,
+      t.name
     ),
   ]
 );
