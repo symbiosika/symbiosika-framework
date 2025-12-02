@@ -206,7 +206,7 @@ export async function initializeConnection(
         .insert(connections)
         .values(newConnection)
         .onConflictDoUpdate({
-          target: [connections.clientId, connections.initiatedBy],
+          target: [connections.clientId],
           set: {
             tenantId: newConnection.tenantId,
             remoteUrl: newConnection.remoteUrl,
@@ -346,7 +346,7 @@ export async function acceptConnection(
         .insert(connections)
         .values(newConnection)
         .onConflictDoUpdate({
-          target: [connections.clientId, connections.initiatedBy],
+          target: [connections.clientId],
           set: {
             tenantId: newConnection.tenantId,
             remoteUrl: newConnection.remoteUrl,
