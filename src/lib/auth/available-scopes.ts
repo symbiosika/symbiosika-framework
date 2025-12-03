@@ -47,6 +47,10 @@ export const availableScopes = {
     "webhooks:write",
     "connections:read",
     "connections:write",
+    "robot-tasks:read",
+    "robot-tasks:write",
+    "robot-shifts:read",
+    "robot-shifts:write",
   ],
 };
 
