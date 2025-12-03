@@ -1,2 +1,0 @@
-ALTER TABLE "base_knowledge_chunks" RENAME COLUMN "text_embedding" TO "text_embedding_1536";--> statement-breakpoint
-ALTER TABLE "base_knowledge_chunks" ADD COLUMN "text_embedding_1024" vector(1024) NOT NULL;

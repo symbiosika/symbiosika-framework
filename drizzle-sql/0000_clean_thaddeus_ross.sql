@@ -1,6 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TYPE "public"."magic_link_purpose" AS ENUM('login', 'email_verification', 'password_reset');--> statement-breakpoint
+CREATE TYPE "public"."message_type" AS ENUM('info', 'warning', 'error');--> statement-breakpoint
 CREATE TYPE "public"."permission_type" AS ENUM('regex');--> statement-breakpoint
 CREATE TYPE "public"."team_member_role" AS ENUM('admin', 'member');--> statement-breakpoint
 CREATE TYPE "public"."tenant_invitation_status" AS ENUM('pending', 'accepted', 'declined');--> statement-breakpoint
@@ -13,7 +14,7 @@ CREATE TYPE "public"."webhook_event" AS ENUM('chat-output', 'tool');--> statemen
 CREATE TYPE "public"."webhook_method" AS ENUM('POST', 'GET');--> statement-breakpoint
 CREATE TYPE "public"."webhook_type" AS ENUM('n8n');--> statement-breakpoint
 CREATE TYPE "public"."connection_status" AS ENUM('pending', 'active', 'disconnected', 'revoked');--> statement-breakpoint
-CREATE TYPE "public"."initiated_by" AS ENUM('client', 'server');--> statement-breakpoint
+CREATE TYPE "public"."initiated_by" AS ENUM('local', 'remote');--> statement-breakpoint
 CREATE TABLE "base_group_permissions" (
 	"group_id" uuid NOT NULL,
 	"permission_id" uuid NOT NULL,
@@ -111,6 +112,15 @@ CREATE TABLE "base_user_group_members" (
 	"user_id" uuid NOT NULL,
 	"user_groups_id" uuid NOT NULL,
 	CONSTRAINT "base_user_group_members_user_id_user_groups_id_pk" PRIMARY KEY("user_id","user_groups_id")
+);
+--> statement-breakpoint
+CREATE TABLE "base_user_messages" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"message" text NOT NULL,
+	"message_type" "message_type" DEFAULT 'info' NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"confirmed_at" timestamp
 );
 --> statement-breakpoint
 CREATE TABLE "base_user_permission_groups" (
@@ -224,8 +234,11 @@ CREATE TABLE "base_knowledge_chunks" (
 	"order" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"embedding_model" varchar(255) DEFAULT '' NOT NULL,
-	"text_embedding" vector(1536) NOT NULL,
-	"meta" jsonb DEFAULT '{}'::jsonb
+	"dimensions" integer DEFAULT 0 NOT NULL,
+	"text_embedding_1536" vector(1536),
+	"text_embedding_1024" vector(1024),
+	"meta" jsonb DEFAULT '{}'::jsonb,
+	CONSTRAINT "knowledge_chunks_embedding_required" CHECK (text_embedding_1536 IS NOT NULL OR text_embedding_1024 IS NOT NULL)
 );
 --> statement-breakpoint
 CREATE TABLE "base_knowledge_entry" (
@@ -336,6 +349,14 @@ CREATE TABLE "base_webhooks" (
 	"last_used_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "base_server_keys" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"private_key" text NOT NULL,
+	"public_key" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "base_server_settings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"key" text NOT NULL,
@@ -362,15 +383,11 @@ CREATE TABLE "base_api_tokens" (
 CREATE TABLE "base_connections" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
-	"name" varchar(255),
+	"name" varchar(255) NOT NULL,
 	"remote_url" text,
-	"initiated_by" "initiated_by" DEFAULT 'client' NOT NULL,
-	"local_public_key" text NOT NULL,
-	"local_private_key" text NOT NULL,
-	"local_private_key_type" varchar(255) DEFAULT 'aes-256-cbc' NOT NULL,
+	"remote_connection_id" text,
 	"remote_public_key" text,
-	"remote_tenant_id" uuid,
-	"remote_connection_id" uuid,
+	"initiated_by" "initiated_by" DEFAULT 'local' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	"last_connected_at" timestamp,
@@ -391,6 +408,7 @@ ALTER TABLE "base_tenant_members" ADD CONSTRAINT "base_tenant_members_user_id_ba
 ALTER TABLE "base_tenant_members" ADD CONSTRAINT "base_tenant_members_tenant_id_base_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."base_tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_user_group_members" ADD CONSTRAINT "base_user_group_members_user_id_base_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."base_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_user_group_members" ADD CONSTRAINT "base_user_group_members_user_groups_id_base_user_permission_groups_id_fk" FOREIGN KEY ("user_groups_id") REFERENCES "public"."base_user_permission_groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_user_messages" ADD CONSTRAINT "base_user_messages_user_id_base_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."base_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_user_permission_groups" ADD CONSTRAINT "base_user_permission_groups_tenant_id_base_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."base_tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_users" ADD CONSTRAINT "base_users_last_tenant_id_base_tenants_id_fk" FOREIGN KEY ("last_tenant_id") REFERENCES "public"."base_tenants"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_secrets" ADD CONSTRAINT "base_secrets_tenant_id_base_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."base_tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -438,6 +456,10 @@ CREATE INDEX "invitations_created_at_idx" ON "base_tenant_invitations" USING btr
 CREATE INDEX "invitations_email_idx" ON "base_tenant_invitations" USING btree ("email");--> statement-breakpoint
 CREATE INDEX "tenant_members_user_id_idx" ON "base_tenant_members" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "tenant_members_tenant_id_idx" ON "base_tenant_members" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "user_messages_user_id_idx" ON "base_user_messages" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX "user_messages_confirmed_at_idx" ON "base_user_messages" USING btree ("confirmed_at");--> statement-breakpoint
+CREATE INDEX "user_messages_created_at_idx" ON "base_user_messages" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "user_messages_message_type_idx" ON "base_user_messages" USING btree ("message_type");--> statement-breakpoint
 CREATE INDEX "user_permission_groups_name_idx" ON "base_user_permission_groups" USING btree ("name");--> statement-breakpoint
 CREATE INDEX "user_permission_groups_created_at_idx" ON "base_user_permission_groups" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "users_email_idx" ON "base_users" USING btree ("email");--> statement-breakpoint
@@ -507,6 +529,7 @@ CREATE UNIQUE INDEX "unique_key" ON "base_server_settings" USING btree ("key");-
 CREATE INDEX "api_tokens_user_id_idx" ON "base_api_tokens" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "api_tokens_tenant_id_idx" ON "base_api_tokens" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "api_tokens_auto_delete_idx" ON "base_api_tokens" USING btree ("auto_delete");--> statement-breakpoint
-CREATE INDEX "connections_org_idx" ON "base_connections" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "connections_tenant_idx" ON "base_connections" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "connections_remote_url_idx" ON "base_connections" USING btree ("remote_url");--> statement-breakpoint
-CREATE UNIQUE INDEX "connections_org_remote_org_idx" ON "base_connections" USING btree ("tenant_id","remote_tenant_id");
+CREATE UNIQUE INDEX "connections_tenant_name_initiated_by_unique_idx" ON "base_connections" USING btree ("tenant_id","name","initiated_by");--> statement-breakpoint
+CREATE UNIQUE INDEX "connections_tenant_remote_connection_id_initiated_by_unique_idx" ON "base_connections" USING btree ("tenant_id","remote_connection_id","initiated_by");

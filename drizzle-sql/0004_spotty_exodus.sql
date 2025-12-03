@@ -1,1 +1,0 @@
-ALTER TABLE "base_knowledge_chunks" ADD COLUMN "dimensions" integer DEFAULT 0 NOT NULL;
