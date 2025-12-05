@@ -23,7 +23,6 @@ import {
   type KnowledgeEntryInsert,
 } from "../db/schema/knowledge";
 import { parseDocument, parseFile } from "./parsing";
-import { nanoid } from "nanoid";
 import type { PageContent } from "./parsing/pdf/types";
 import { generateEmbedding } from "./embedding";
 
@@ -90,7 +89,7 @@ export const extractKnowledgeFromText = async (data: {
   summaryCustomPrompt?: string;
   summaryModel?: string;
 }) => {
-  const title = data.title + "-" + nanoid(4);
+  const title = data.title;
 
   // Get full text for text-based operations
   let fullText = data.text || "";
