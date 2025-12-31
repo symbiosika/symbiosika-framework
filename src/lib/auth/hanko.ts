@@ -93,15 +93,18 @@ export async function verifyHankoToken(c: Context) {
       .insert(users)
       .values({
         email: userEmail,
-        emailVerified: emailVerified,
+        emailVerified: true,
         extUserId: userId,
         firstname: "",
         surname: "",
+        provider: "hanko",
       })
       .onConflictDoUpdate({
         target: [users.email],
         set: {
           extUserId: userId,
+          provider: "hanko",
+          emailVerified: true,
         },
       })
       .returning();

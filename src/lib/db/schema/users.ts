@@ -67,6 +67,8 @@ export const userProviderEnum = pgEnum("user_provider", [
   "local",
   "google",
   "microsoft",
+  "auth0",
+  "hanko",
 ]);
 
 export const users = pgBaseTable(
