@@ -23,6 +23,11 @@ export const _GLOBAL_SERVER_CONFIG = {
   logoUrl: undefined as string | undefined,
   allowedOrigins: <string[]>[],
   authType: <"local" | "auth0" | "hanko">"local",
+  loginUrl: "/manage/#/login",
+  magicLoginVerifyUrl: "/manage/#/magic-login",
+  verifyEmailUrl: "/manage/#/verify-email",
+  resetPasswordUrl: "/manage/#/reset-password",
+  oauthCallbackUrl: "/manage/#/oauth-callback",
   jwtExpiresAfter: 60 * 60 * 24 * 30, // 30 days
   useConsoleLogger: true,
   useLicenseSystem: false,
@@ -99,6 +104,23 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
   if (config.emailTemplates?.resetPasswordWelcome) {
     _GLOBAL_SERVER_CONFIG.emailTemplates.resetPasswordWelcome =
       config.emailTemplates.resetPasswordWelcome;
+  }
+
+  // URLS
+  if (config.loginUrl) {
+    _GLOBAL_SERVER_CONFIG.loginUrl = config.loginUrl;
+  }
+  if (config.magicLoginVerifyUrl) {
+    _GLOBAL_SERVER_CONFIG.magicLoginVerifyUrl = config.magicLoginVerifyUrl;
+  }
+  if (config.verifyEmailUrl) {
+    _GLOBAL_SERVER_CONFIG.verifyEmailUrl = config.verifyEmailUrl;
+  }
+  if (config.resetPasswordUrl) {
+    _GLOBAL_SERVER_CONFIG.resetPasswordUrl = config.resetPasswordUrl;
+  }
+  if (config.oauthCallbackUrl) {
+    _GLOBAL_SERVER_CONFIG.oauthCallbackUrl = config.oauthCallbackUrl;
   }
 
   // WhatsApp

@@ -50,6 +50,12 @@ export interface ServerSpecificConfig {
   baseUrl?: string;
   logoUrl?: string;
 
+  loginUrl?: string;
+  magicLoginVerifyUrl?: string;
+  verifyEmailUrl?: string;
+  resetPasswordUrl?: string;
+  oauthCallbackUrl?: string;
+
   authType?: "local" | "auth0" | "hanko";
   jwtExpiresAfter?: number;
 

@@ -9,7 +9,7 @@ import {
 import { getDb } from "../db/db-connection";
 import jwt from "jsonwebtoken";
 import {
-  sendMagicLink,
+  sendMagicLink as sendMagicLinkImpl,
   sendVerificationEmail,
   verifyEmail,
   verifyMagicLink,
@@ -349,8 +349,8 @@ export const LocalAuth = {
     return await verifyMagicLink(token);
   },
 
-  async sendMagicLink(email: string) {
-    return await sendMagicLink(email);
+  async sendMagicLink(email: string, redirectUrl?: string, createUserIfMissing: boolean = false) {
+    return await sendMagicLinkImpl(email, redirectUrl, createUserIfMissing);
   },
 
   async sendVerificationEmail(email: string) {

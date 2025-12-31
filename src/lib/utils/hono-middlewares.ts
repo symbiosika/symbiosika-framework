@@ -112,7 +112,9 @@ export const authOrRedirectToLogin = async (c: Context, next: Function) => {
     await checkToken(c);
     addScopesToContext(c, ["all"]);
   } catch (error) {
-    return c.redirect("/manage/#/login?redirect=" + c.req.url);
+    return c.redirect(
+      _GLOBAL_SERVER_CONFIG.loginUrl + "?redirect=" + c.req.url
+    );
   }
   await next();
 };
@@ -131,7 +133,9 @@ export const authAndSetUsersInfoOrRedirectToLogin = async (
     c.set("usersId", usersId);
     addScopesToContext(c, ["all"]);
   } catch (error) {
-    return c.redirect("/manage/#/login?redirect=" + c.req.url);
+    return c.redirect(
+      _GLOBAL_SERVER_CONFIG.loginUrl + "?redirect=" + c.req.url
+    );
   }
   await next();
 };

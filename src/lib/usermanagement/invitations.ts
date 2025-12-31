@@ -297,7 +297,7 @@ export const createTenantInvitation = async (
           appName: _GLOBAL_SERVER_CONFIG.appName,
           baseUrl: _GLOBAL_SERVER_CONFIG.baseUrl,
           logoUrl: _GLOBAL_SERVER_CONFIG.logoUrl,
-          link: `${_GLOBAL_SERVER_CONFIG.baseUrl || "http://localhost:3000"}/manage/#/login?register=true&email=${encodeURIComponent(dataWithStatus.email)}&hideInvitationCode=true`,
+          link: `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.loginUrl}?register=true&email=${encodeURIComponent(dataWithStatus.email)}&hideInvitationCode=true`,
           tenant: {
             id: dataWithStatus.tenantId,
             name: tenantRes.name,

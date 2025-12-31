@@ -17,10 +17,11 @@ const EXPIRE_TIME = 15 * 60 * 1000; // 15 minutes
  */
 export const createMagicLinkToken = async (
   email: string,
-  purpose: "login" | "email_verification" | "password_reset"
+  purpose: "login" | "email_verification" | "password_reset",
+  createUserIfMissing: boolean = false
 ): Promise<string> => {
   // Check if user exists
-  const userResult = await getDb()
+  let userResult = await getDb()
     .select({
       id: users.id,
       email: users.email,
@@ -29,6 +30,33 @@ export const createMagicLinkToken = async (
     })
     .from(users)
     .where(eq(users.email, email));
+
+  // Create user if missing and createUserIfMissing is true
+  if (!userResult[0] && createUserIfMissing) {
+    const newUser = await getDb()
+      .insert(users)
+      .values({
+        email: email,
+        firstname: "",
+        surname: "",
+        extUserId: "",
+        salt: "",
+        password: null,
+        emailVerified: false,
+      })
+      .onConflictDoNothing()
+      .returning({
+        id: users.id,
+        email: users.email,
+        firstname: users.firstname,
+        surname: users.surname,
+      });
+
+    if (!newUser[0]) {
+      throw new Error("Failed to create user");
+    }
+    userResult = newUser;
+  }
 
   if (!userResult[0]) {
     throw new Error("User not found");
@@ -54,14 +82,15 @@ export const createMagicLinkToken = async (
  * Create a Magic Login Link
  * @param email
  * @param redirectUrl
+ * @param createUserIfMissing
  */
 export const createMagicLoginLink = async (
   email: string,
-  redirectUrl?: string
+  redirectUrl?: string,
+  createUserIfMissing: boolean = false
 ): Promise<string> => {
-  const token = await createMagicLinkToken(email, "login");
-  const frontendUrl = _GLOBAL_SERVER_CONFIG.baseUrl || "http://localhost:3000";
-  const magicLink = `${frontendUrl}/manage/#/magic-login?token=${encodeURIComponent(token)}&redirectUrl=${encodeURIComponent(redirectUrl || "")}`;
+  const token = await createMagicLinkToken(email, "login", createUserIfMissing);
+  const magicLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.magicLoginVerifyUrl}?token=${encodeURIComponent(token)}&redirectUrl=${encodeURIComponent(redirectUrl || "")}`;
 
   return magicLink;
 };
@@ -71,9 +100,14 @@ export const createMagicLoginLink = async (
  */
 export const sendMagicLink = async (
   email: string,
-  redirectUrl?: string
+  redirectUrl?: string,
+  createUserIfMissing: boolean = false
 ): Promise<void> => {
-  const magicLink = await createMagicLoginLink(email, redirectUrl);
+  const magicLink = await createMagicLoginLink(
+    email,
+    redirectUrl,
+    createUserIfMissing
+  );
 
   const { html, subject } =
     await _GLOBAL_SERVER_CONFIG.emailTemplates.magicLink({
@@ -99,8 +133,7 @@ export const sendVerificationEmail = async (email: string) => {
   const token = await createMagicLinkToken(email, "email_verification");
 
   // Construct the magic link URL
-  const frontendUrl = _GLOBAL_SERVER_CONFIG.baseUrl || "http://localhost:3000";
-  const magicLink = `${frontendUrl}/manage/#/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  const magicLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.verifyEmailUrl}?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
 
   const { html, subject } =
     await _GLOBAL_SERVER_CONFIG.emailTemplates.verifyEmail({
@@ -226,9 +259,7 @@ export const createResetPasswordLink = async (
   email: string
 ): Promise<string> => {
   const token = await createMagicLinkToken(email, "password_reset");
-  const frontendUrl = _GLOBAL_SERVER_CONFIG.baseUrl || "http://localhost:3000";
-  // Example path /manage/#/reset-password?token=...
-  const resetLink = `${frontendUrl}/manage/#/reset-password?token=${encodeURIComponent(token)}`;
+  const resetLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.resetPasswordUrl}?token=${encodeURIComponent(token)}`;
   return resetLink;
 };
 

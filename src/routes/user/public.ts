@@ -17,12 +17,6 @@ import { checkIfInvitationCodeIsNeededToRegister } from "../../lib/usermanagemen
 import { verifyApiTokenAndGetJwt } from "../../lib/auth/token-auth";
 import { OAuthAuth } from "../../lib/auth/oauth2";
 
-let OAUTH_REDIRECT_URI =
-  process.env.OAUTH_REDIRECT_URI || "/manage/#/oauth-callback";
-if (OAUTH_REDIRECT_URI.endsWith("/")) {
-  OAUTH_REDIRECT_URI = OAUTH_REDIRECT_URI.slice(0, -1);
-}
-
 /**
  * Define the payment routes
  */
@@ -149,15 +143,19 @@ export function definePublicUserRoutes(
       "query",
       v.object({
         email: v.string(),
+        createUserIfMissing: v.optional(v.string()),
       })
     ),
     async (c) => {
-      const email = c.req.query("email");
+      const query = c.req.valid("query");
+      const email = query.email;
+      const createUserIfMissing = query.createUserIfMissing === "true";
       if (!email) {
         throw new HTTPException(400, { message: "?email=... is required" });
       }
       try {
-        await LocalAuth.sendMagicLink(email);
+        console.log("createUserIfMissing", createUserIfMissing);
+        await LocalAuth.sendMagicLink(email, undefined, createUserIfMissing);
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
         throw new HTTPException(500, {
@@ -516,7 +514,7 @@ export function definePublicUserRoutes(
         }
 
         return c.redirect(
-          `${OAUTH_REDIRECT_URI}/${provider}?token=${result.token}`
+          `${_GLOBAL_SERVER_CONFIG.oauthCallbackUrl}/${provider}?token=${result.token}`
         );
       } catch (err) {
         throw new HTTPException(401, {
