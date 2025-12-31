@@ -5,7 +5,7 @@ import log from "../log";
 const emailSchema = v.object({
   sender: v.optional(v.string()),
   recipients: v.array(v.pipe(v.string(), v.email())),
-  subject: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
+  subject: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   text: v.optional(v.string()),
   html: v.optional(v.string()),
 });
