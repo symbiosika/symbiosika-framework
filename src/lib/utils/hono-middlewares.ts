@@ -2,8 +2,8 @@ import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
 import jwtlib from "jsonwebtoken";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
-import { hasPermission } from "../auth/permissions";
 import { generateTemporaryJwtFromToken } from "../auth/token-auth";
+import { verifyHankoToken } from "../auth/hanko";
 
 const JWT_PUBLIC_KEY = process.env.JWT_PUBLIC_KEY || "";
 
@@ -21,25 +21,10 @@ const getTokenFromJwt = (token: string) => {
 };
 
 /**
- * HONO Middleware to add the user to the context
- */
-export function addUserToContext(
-  c: Context<any, any, {}>,
-  decodedAndVerifiedToken: jwtlib.JwtPayload
-) {
-  c.set("usersEmail", decodedAndVerifiedToken.email ?? "");
-  c.set("usersId", decodedAndVerifiedToken.sub ?? "");
-  // c.set("usersRoles", decodedAndVerifiedToken["symbiosika/roles"] ?? []);
-}
-
-/**
  * HONO Middleware to add scopes to the context
  */
-export function addScopesToContext(
-  c: Context,
-  decodedAndVerifiedToken: jwtlib.JwtPayload
-) {
-  c.set("scopes", decodedAndVerifiedToken.scopes ?? ["all"]);
+export function addScopesToContext(c: Context, scopes?: string[]) {
+  c.set("scopes", scopes ?? ["all"]);
 }
 
 /**
@@ -62,31 +47,46 @@ export async function checkUserPermission(c: Context, next: Function) {
  * HONO Middleware to check the JWT token
  */
 export const checkToken = async (c: Context) => {
-  // get existing params
-  const token = c.req.query("token");
-  const authHeader = c.req.header("Authorization");
-  const xApiKey = c.req.header("X-API-KEY");
-
-  let jwtToken = "";
-
-  // check if there is a "token=xxx" set in the URL request
-  if (token || xApiKey) {
-    const tokenToUse: string = token || xApiKey || "";
-    // try to generate a JWT token from the token string
-    const temporaryJwt = await generateTemporaryJwtFromToken(tokenToUse);
-    jwtToken = temporaryJwt.token;
-  } else if (authHeader && authHeader.startsWith("Bearer ")) {
-    jwtToken = authHeader.substring(7);
+  if (_GLOBAL_SERVER_CONFIG.authType === "hanko") {
+    const { usersEmail, usersId } = await verifyHankoToken(c);
+    return {
+      usersEmail: usersEmail,
+      usersId: usersId,
+    };
   } else {
-    jwtToken = getCookie(c, "jwt") || "";
-  }
+    // get existing params
+    const token = c.req.query("token");
+    const authHeader = c.req.header("Authorization");
+    const xApiKey = c.req.header("X-API-KEY");
 
-  if (!jwtToken || jwtToken === "") {
-    throw new Error("Invalid token");
-  }
+    let jwtToken = "";
 
-  const decoded = getTokenFromJwt(jwtToken);
-  return decoded;
+    // check if there is a "token=xxx" set in the URL request
+    if (token || xApiKey) {
+      const tokenToUse: string = token || xApiKey || "";
+      // try to generate a JWT token from the token string
+      const temporaryJwt = await generateTemporaryJwtFromToken(tokenToUse);
+      jwtToken = temporaryJwt.token;
+    } else if (authHeader && authHeader.startsWith("Bearer ")) {
+      jwtToken = authHeader.substring(7);
+    } else {
+      jwtToken = getCookie(c, "jwt") || "";
+    }
+
+    if (!jwtToken || jwtToken === "") {
+      throw new Error("Invalid token");
+    }
+
+    const decoded = getTokenFromJwt(jwtToken);
+    if (typeof decoded === "object") {
+      return {
+        usersEmail: decoded.email ?? "",
+        usersId: decoded.sub ?? "",
+      };
+    } else {
+      throw new Error("Invalid token");
+    }
+  }
 };
 
 /**
@@ -94,15 +94,12 @@ export const checkToken = async (c: Context) => {
  */
 export const authAndSetUsersInfo = async (c: Context, next: Function) => {
   try {
-    const decodedAndVerifiedToken = await checkToken(c);
-    if (typeof decodedAndVerifiedToken === "object") {
-      addUserToContext(c, decodedAndVerifiedToken);
-      addScopesToContext(c, decodedAndVerifiedToken);
-    } else {
-      return c.text("Invalid token", 401);
-    }
-  } catch (err) {
-    return c.text("Unauthorized", 401);
+    const { usersEmail, usersId } = await checkToken(c);
+    c.set("usersEmail", usersEmail);
+    c.set("usersId", usersId);
+    addScopesToContext(c, ["all"]);
+  } catch (error) {
+    throw new Error("Unauthorized");
   }
   await next();
 };
@@ -113,6 +110,7 @@ export const authAndSetUsersInfo = async (c: Context, next: Function) => {
 export const authOrRedirectToLogin = async (c: Context, next: Function) => {
   try {
     await checkToken(c);
+    addScopesToContext(c, ["all"]);
   } catch (error) {
     return c.redirect("/manage/#/login?redirect=" + c.req.url);
   }
@@ -128,15 +126,11 @@ export const authAndSetUsersInfoOrRedirectToLogin = async (
   next: Function
 ) => {
   try {
-    const decodedAndVerifiedToken = await checkToken(c);
-
-    if (typeof decodedAndVerifiedToken === "object") {
-      addUserToContext(c, decodedAndVerifiedToken);
-      addScopesToContext(c, decodedAndVerifiedToken);
-    } else {
-      return c.redirect("/manage/#/login?redirect=" + c.req.url);
-    }
-  } catch (err) {
+    const { usersEmail, usersId } = await checkToken(c);
+    c.set("usersEmail", usersEmail);
+    c.set("usersId", usersId);
+    addScopesToContext(c, ["all"]);
+  } catch (error) {
     return c.redirect("/manage/#/login?redirect=" + c.req.url);
   }
   await next();

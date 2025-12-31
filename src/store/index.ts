@@ -22,7 +22,7 @@ export const _GLOBAL_SERVER_CONFIG = {
   baseUrl: "http://localhost:3000",
   logoUrl: undefined as string | undefined,
   allowedOrigins: <string[]>[],
-  authType: <"local" | "auth0">"local",
+  authType: <"local" | "auth0" | "hanko">"local",
   jwtExpiresAfter: 60 * 60 * 24 * 30, // 30 days
   useConsoleLogger: true,
   useLicenseSystem: false,

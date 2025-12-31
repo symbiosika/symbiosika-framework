@@ -50,7 +50,7 @@ export interface ServerSpecificConfig {
   baseUrl?: string;
   logoUrl?: string;
 
-  authType?: "local" | "auth0";
+  authType?: "local" | "auth0" | "hanko";
   jwtExpiresAfter?: number;
 
   jobHandlers?: JobHandlerRegister[];
