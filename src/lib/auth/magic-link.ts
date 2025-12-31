@@ -9,6 +9,7 @@ import { nanoid } from "nanoid";
 import { smtpService } from "../email";
 import { generateJwt } from ".";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
+import { postRegisterActions } from "./actions";
 
 const EXPIRE_TIME = 15 * 60 * 1000; // 15 minutes
 
@@ -56,6 +57,11 @@ export const createMagicLinkToken = async (
       throw new Error("Failed to create user");
     }
     userResult = newUser;
+
+    // Execute post-register actions for newly created user
+    for (const action of postRegisterActions) {
+      await action(newUser[0].id, newUser[0].email);
+    }
   }
 
   if (!userResult[0]) {

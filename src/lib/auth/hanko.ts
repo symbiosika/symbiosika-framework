@@ -1,9 +1,11 @@
 import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
+import { eq } from "drizzle-orm";
 import { getDb } from "../db/db-connection";
 import { users } from "../db/db-schema";
 import log from "../log";
 import { getCachedToken, setCachedToken } from "../utils/redis-cache";
+import { postRegisterActions } from "./actions";
 
 const HANKO_API_URL = process.env.HANKO_API_URL ?? "";
 
@@ -90,6 +92,15 @@ export async function verifyHankoToken(c: Context) {
 
   log.info("Upserting user", { email: userEmail, extUserId: userId });
 
+  // Check if user already exists before upsert
+  const existingUser = await getDb()
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, userEmail))
+    .limit(1);
+
+  const isNewUser = !existingUser[0];
+
   // upsert user in db
   const [user] = await getDb()
     .insert(users)
@@ -113,6 +124,14 @@ export async function verifyHankoToken(c: Context) {
 
   if (!user) {
     throw new Error("Failed to upsert user in database");
+  }
+
+  // Execute post-register actions only for newly created users
+  if (isNewUser) {
+    log.info(`New user registered via hanko: ${user.id}`);
+    for (const action of postRegisterActions) {
+      await action(user.id, user.email);
+    }
   }
 
   const result = {
