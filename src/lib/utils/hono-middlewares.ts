@@ -4,6 +4,7 @@ import jwtlib from "jsonwebtoken";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { generateTemporaryJwtFromToken } from "../auth/token-auth";
 import { verifyHankoToken } from "../auth/hanko";
+import { getCachedToken, setCachedToken } from "./redis-cache";
 
 const JWT_PUBLIC_KEY = process.env.JWT_PUBLIC_KEY || "";
 
@@ -11,13 +12,33 @@ const JWT_PUBLIC_KEY = process.env.JWT_PUBLIC_KEY || "";
 // https://github.com/honojs/hono/issues/672
 
 /**
- * Helper function to get the JWT token from the request
+ * Helper function to verify JWT token with caching
  */
-const getTokenFromJwt = (token: string) => {
-  return jwtlib.verify(token, JWT_PUBLIC_KEY, {
+const getTokenFromJwt = async (token: string) => {
+  // Check cache first
+  const cached = await getCachedToken(token);
+  if (cached) {
+    return {
+      email: cached.usersEmail,
+      sub: cached.usersId,
+    };
+  }
+
+  // Verify token
+  const decoded = jwtlib.verify(token, JWT_PUBLIC_KEY, {
     algorithms:
       _GLOBAL_SERVER_CONFIG.authType === "auth0" ? ["RS256"] : undefined,
   });
+
+  // Cache the validated token
+  if (typeof decoded === "object" && decoded.email && decoded.sub) {
+    await setCachedToken(token, {
+      usersEmail: decoded.email ?? "",
+      usersId: decoded.sub ?? "",
+    });
+  }
+
+  return decoded;
 };
 
 /**
@@ -77,7 +98,7 @@ export const checkToken = async (c: Context) => {
       throw new Error("Invalid token");
     }
 
-    const decoded = getTokenFromJwt(jwtToken);
+    const decoded = await getTokenFromJwt(jwtToken);
     if (typeof decoded === "object") {
       return {
         usersEmail: decoded.email ?? "",

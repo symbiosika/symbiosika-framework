@@ -68,6 +68,7 @@ import { smtpService } from "./lib/email";
 import { getMetaIpAddresses } from "./lib/communication/whatsapp/whitelist";
 import { defineLicenseRoutes, licenseManager } from "./license-service";
 import { initServerKeysIfNeeded } from "./lib/connections/init-server-keys";
+import { initRedisCache } from "./lib/utils/redis-cache";
 //import { logApiRoutes } from "./lib/utils/log-api-routes";
 
 /**
@@ -165,6 +166,9 @@ export const defineServer = (config: ServerSpecificConfig) => {
    */
   waitForDbConnection().then(async () => {
     licenseManager.init();
+
+    // Initialize Redis cache for JWT token validation
+    initRedisCache();
 
     // Initialize server keys (must exist exactly once)
     try {
