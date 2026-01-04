@@ -8,7 +8,7 @@ const CACHE_TTL_SECONDS = 3600;
 // Fallback in-memory cache if Redis is not available
 const FALLBACK_CACHE = new Map<
   string,
-  { usersEmail: string; usersId: string; expiresAt: number }
+  { usersEmail: string; usersId: string; scopes?: string[]; expiresAt: number }
 >();
 
 let redisClient: RedisClient | null = null;
@@ -68,7 +68,7 @@ function getCacheKey(token: string): string {
  */
 export async function getCachedToken(
   token: string
-): Promise<{ usersEmail: string; usersId: string } | null> {
+): Promise<{ usersEmail: string; usersId: string; scopes?: string[] } | null> {
   const cacheKey = getCacheKey(token);
 
   // Try Redis first
@@ -79,6 +79,7 @@ export async function getCachedToken(
         const parsed = JSON.parse(cached) as {
           usersEmail: string;
           usersId: string;
+          scopes?: string[];
         };
         log.debug("Token found in Redis cache");
         return parsed;
@@ -96,6 +97,7 @@ export async function getCachedToken(
     return {
       usersEmail: cached.usersEmail,
       usersId: cached.usersId,
+      scopes: cached.scopes,
     };
   }
 
@@ -112,7 +114,7 @@ export async function getCachedToken(
  */
 export async function setCachedToken(
   token: string,
-  data: { usersEmail: string; usersId: string }
+  data: { usersEmail: string; usersId: string; scopes?: string[] }
 ): Promise<void> {
   const cacheKey = getCacheKey(token);
   const cacheValue = JSON.stringify(data);

@@ -22,6 +22,7 @@ const getTokenFromJwt = async (token: string) => {
     return {
       email: cached.usersEmail,
       sub: cached.usersId,
+      scopes: cached.scopes,
     };
   }
 
@@ -36,6 +37,7 @@ const getTokenFromJwt = async (token: string) => {
     await setCachedToken(token, {
       usersEmail: decoded.email ?? "",
       usersId: decoded.sub ?? "",
+      scopes: (decoded as any).scopes,
     });
   }
 
@@ -74,6 +76,7 @@ export const checkToken = async (c: Context) => {
     return {
       usersEmail: usersEmail,
       usersId: usersId,
+      scopes: ["all"], // Hanko tokens always have full access
     };
   } else {
     // get existing params
@@ -101,9 +104,12 @@ export const checkToken = async (c: Context) => {
 
     const decoded = await getTokenFromJwt(jwtToken);
     if (typeof decoded === "object") {
+      // Extract scopes from JWT, default to ["all"] if not present (normal session)
+      const scopes = (decoded as any).scopes || ["all"];
       return {
         usersEmail: decoded.email ?? "",
         usersId: decoded.sub ?? "",
+        scopes: Array.isArray(scopes) ? scopes : ["all"],
       };
     } else {
       throw new Error("Invalid token");
@@ -116,10 +122,10 @@ export const checkToken = async (c: Context) => {
  */
 export const authAndSetUsersInfo = async (c: Context, next: Function) => {
   try {
-    const { usersEmail, usersId } = await checkToken(c);
+    const { usersEmail, usersId, scopes } = await checkToken(c);
     c.set("usersEmail", usersEmail);
     c.set("usersId", usersId);
-    addScopesToContext(c, ["all"]);
+    addScopesToContext(c, scopes);
   } catch (error) {
     throw new HTTPException(401, { message: "Unauthorized" });
   }
@@ -150,10 +156,10 @@ export const authAndSetUsersInfoOrRedirectToLogin = async (
   next: Function
 ) => {
   try {
-    const { usersEmail, usersId } = await checkToken(c);
+    const { usersEmail, usersId, scopes } = await checkToken(c);
     c.set("usersEmail", usersEmail);
     c.set("usersId", usersId);
-    addScopesToContext(c, ["all"]);
+    addScopesToContext(c, scopes);
   } catch (error) {
     return c.redirect(
       _GLOBAL_SERVER_CONFIG.loginUrl + "?redirect=" + c.req.url
