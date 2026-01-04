@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
+import { HTTPException } from "hono/http-exception";
 import jwtlib from "jsonwebtoken";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { generateTemporaryJwtFromToken } from "../auth/token-auth";
@@ -120,7 +121,7 @@ export const authAndSetUsersInfo = async (c: Context, next: Function) => {
     c.set("usersId", usersId);
     addScopesToContext(c, ["all"]);
   } catch (error) {
-    throw new Error("Unauthorized");
+    throw new HTTPException(401, { message: "Unauthorized" });
   }
   await next();
 };
