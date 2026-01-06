@@ -232,7 +232,7 @@ const changePassword = async (
  * This will check if there are any general invitation codes and if the provided code is valid
  * If the code is valid, it will return the tenantId to set if a tenant is provided
  */
-const checkGeneralInvitationCode = async (
+export const checkGeneralInvitationCode = async (
   code: string | undefined
 ): Promise<{
   usedInvitationCode: boolean;
@@ -349,8 +349,8 @@ export const LocalAuth = {
     return await verifyMagicLink(token);
   },
 
-  async sendMagicLink(email: string, redirectUrl?: string, createUserIfMissing: boolean = false) {
-    return await sendMagicLinkImpl(email, redirectUrl, createUserIfMissing);
+  async sendMagicLink(email: string, redirectUrl?: string, createUserIfMissing: boolean = false, invitationCode?: string) {
+    return await sendMagicLinkImpl(email, redirectUrl, createUserIfMissing, invitationCode);
   },
 
   async sendVerificationEmail(email: string) {

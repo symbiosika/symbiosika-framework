@@ -144,20 +144,29 @@ export function definePublicUserRoutes(
       v.object({
         email: v.string(),
         createUserIfMissing: v.optional(v.string()),
+        invitationCode: v.optional(v.string()),
       })
     ),
     async (c) => {
       const query = c.req.valid("query");
       const email = query.email;
       const createUserIfMissing = query.createUserIfMissing === "true";
+      const invitationCode = query.invitationCode;
       if (!email) {
         throw new HTTPException(400, { message: "?email=... is required" });
       }
       try {
         console.log("createUserIfMissing", createUserIfMissing);
-        await LocalAuth.sendMagicLink(email, undefined, createUserIfMissing);
+        await LocalAuth.sendMagicLink(email, undefined, createUserIfMissing, invitationCode);
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
+        const errorMessage = err + "";
+        // Return specific error code for invitation code needed
+        if (errorMessage.includes("Invitation code needed")) {
+          throw new HTTPException(400, {
+            message: "Invitation code needed",
+          });
+        }
         throw new HTTPException(500, {
           message: "Error sending magic link: " + err,
         });

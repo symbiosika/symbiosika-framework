@@ -10,6 +10,8 @@ import { smtpService } from "../email";
 import { generateJwt } from ".";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { postRegisterActions } from "./actions";
+import { checkIfInvitationCodeIsNeededToRegister, getPendingInvitationsForEmail } from "../usermanagement/invitations";
+import { checkGeneralInvitationCode } from "./index";
 
 const EXPIRE_TIME = 15 * 60 * 1000; // 15 minutes
 
@@ -19,7 +21,8 @@ const EXPIRE_TIME = 15 * 60 * 1000; // 15 minutes
 export const createMagicLinkToken = async (
   email: string,
   purpose: "login" | "email_verification" | "password_reset",
-  createUserIfMissing: boolean = false
+  createUserIfMissing: boolean = false,
+  invitationCode?: string
 ): Promise<string> => {
   // Check if user exists
   let userResult = await getDb()
@@ -32,8 +35,33 @@ export const createMagicLinkToken = async (
     .from(users)
     .where(eq(users.email, email));
 
-  // Create user if missing and createUserIfMissing is true
-  if (!userResult[0] && createUserIfMissing) {
+  const isNewUser = !userResult[0];
+
+  // If creating a new user, check invitation code requirements
+  if (isNewUser && createUserIfMissing) {
+    // Check if invitation codes are required
+    const invitationCodeNeeded = await checkIfInvitationCodeIsNeededToRegister();
+    
+    if (invitationCodeNeeded) {
+      // Check if user has pending invitations
+      const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);
+      
+      // If no pending invitations, require invitation code
+      if (invitedInTenantIds.length < 1) {
+        if (!invitationCode) {
+          throw new Error("Invitation code needed");
+        }
+        
+        // Validate the invitation code
+        try {
+          await checkGeneralInvitationCode(invitationCode);
+        } catch (error) {
+          throw new Error("Invitation code not found");
+        }
+      }
+    }
+
+    // Create the user
     const newUser = await getDb()
       .insert(users)
       .values({
@@ -89,13 +117,15 @@ export const createMagicLinkToken = async (
  * @param email
  * @param redirectUrl
  * @param createUserIfMissing
+ * @param invitationCode
  */
 export const createMagicLoginLink = async (
   email: string,
   redirectUrl?: string,
-  createUserIfMissing: boolean = false
+  createUserIfMissing: boolean = false,
+  invitationCode?: string
 ): Promise<string> => {
-  const token = await createMagicLinkToken(email, "login", createUserIfMissing);
+  const token = await createMagicLinkToken(email, "login", createUserIfMissing, invitationCode);
   const magicLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.magicLoginVerifyUrl}?token=${encodeURIComponent(token)}&redirectUrl=${encodeURIComponent(redirectUrl || "")}`;
 
   return magicLink;
@@ -107,12 +137,14 @@ export const createMagicLoginLink = async (
 export const sendMagicLink = async (
   email: string,
   redirectUrl?: string,
-  createUserIfMissing: boolean = false
+  createUserIfMissing: boolean = false,
+  invitationCode?: string
 ): Promise<void> => {
   const magicLink = await createMagicLoginLink(
     email,
     redirectUrl,
-    createUserIfMissing
+    createUserIfMissing,
+    invitationCode
   );
 
   const { html, subject } =
