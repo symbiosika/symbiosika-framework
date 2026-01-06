@@ -81,7 +81,7 @@ export async function getCachedToken(
           usersId: string;
           scopes?: string[];
         };
-        log.debug("Token found in Redis cache");
+        // log.debug("Token found in Redis cache");
         return parsed;
       }
     } catch (error) {
@@ -93,7 +93,7 @@ export async function getCachedToken(
   // Fallback to in-memory cache
   const cached = FALLBACK_CACHE.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
-    log.debug("Token found in fallback cache");
+    //log.debug("Token found in fallback cache");
     return {
       usersEmail: cached.usersEmail,
       usersId: cached.usersId,
