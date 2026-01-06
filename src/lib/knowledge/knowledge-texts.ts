@@ -1,4 +1,4 @@
-import { and, asc, eq, or, isNull, type SQLWrapper, exists } from "drizzle-orm";
+import { and, asc, desc, eq, or, isNull, type SQLWrapper, exists, sql } from "drizzle-orm";
 import { getDb } from "../db/db-connection";
 import {
   knowledgeText,
@@ -28,7 +28,8 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
 };
 
 /**
- * Read all knowledgeText entries or a specific entry by ID
+ * Read all knowledgeText entries - returns only the latest version of each entry
+ * If id is provided, returns only that specific entry (not the history)
  */
 export const getKnowledgeText = async (filters: {
   id?: string;
@@ -39,16 +40,54 @@ export const getKnowledgeText = async (filters: {
   limit?: number;
   page?: number;
 }) => {
+  // If specific ID is requested, return only that entry
+  if (filters.id) {
+    const permissionConditions: SQLWrapper[] = [
+      eq(knowledgeText.tenantId, filters.tenantId),
+      eq(knowledgeText.id, filters.id),
+    ];
+
+    if (filters.userId) {
+      permissionConditions.push(
+        or(
+          eq(knowledgeText.userId, filters.userId),
+          and(isNull(knowledgeText.teamId), eq(knowledgeText.tenantWide, true)),
+          exists(
+            getDb()
+              .select()
+              .from(teamMembers)
+              .where(
+                and(
+                  eq(teamMembers.userId, filters.userId),
+                  eq(teamMembers.teamId, knowledgeText.teamId)
+                )
+              )
+          )
+        )!
+      );
+    }
+
+    if (filters.teamId) {
+      permissionConditions.push(eq(knowledgeText.teamId, filters.teamId));
+    }
+
+    return await getDb()
+      .select()
+      .from(knowledgeText)
+      .where(and(...permissionConditions));
+  }
+
+  // For list queries: Get all entries with hidden=false (latest versions)
+  // After versioning, only the latest version has hidden=false
   const permissionConditions: SQLWrapper[] = [
     eq(knowledgeText.tenantId, filters.tenantId),
+    eq(knowledgeText.hidden, false), // Only show non-hidden (latest) versions
   ];
 
   if (filters.userId) {
     permissionConditions.push(
       or(
-        // User specific entries
         eq(knowledgeText.userId, filters.userId),
-        // Team specific entries (only if user is a member of the team)
         and(isNull(knowledgeText.teamId), eq(knowledgeText.tenantWide, true)),
         exists(
           getDb()
@@ -69,15 +108,11 @@ export const getKnowledgeText = async (filters: {
     permissionConditions.push(eq(knowledgeText.teamId, filters.teamId));
   }
 
-  if (filters.id) {
-    permissionConditions.push(eq(knowledgeText.id, filters.id));
-  }
-
   const query = getDb()
     .select()
     .from(knowledgeText)
-    .orderBy(asc(knowledgeText.createdAt))
     .where(and(...permissionConditions))
+    .orderBy(desc(knowledgeText.createdAt))
     .$dynamic();
 
   if (filters.limit) {
@@ -86,7 +121,81 @@ export const getKnowledgeText = async (filters: {
   if (filters.page && filters.limit) {
     query.offset((filters.page - 1) * filters.limit);
   }
+
   return await query;
+};
+
+/**
+ * Get complete version history for a knowledge text entry
+ * Returns all versions chronologically (oldest to newest)
+ */
+export const getKnowledgeTextHistory = async (
+  id: string,
+  context: {
+    tenantId: string;
+    userId?: string;
+    teamId?: string;
+    workspaceId?: string;
+  }
+) => {
+  // First check if user has permission to access this entry
+  const entry = await getKnowledgeText({
+    id,
+    tenantId: context.tenantId,
+    userId: context.userId,
+    teamId: context.teamId,
+    workspaceId: context.workspaceId,
+  });
+
+  if (!entry[0]) {
+    throw new Error("Knowledge text not found or access denied");
+  }
+
+  const currentEntry = entry[0];
+  
+  // Find the root entry (the one without parentId or the entry itself)
+  const rootId = currentEntry.parentId ?? id;
+
+  // Get all versions that belong to this entry chain
+  // This includes the root and all entries that have this root as parentId
+  const permissionConditions: SQLWrapper[] = [
+    eq(knowledgeText.tenantId, context.tenantId),
+    or(
+      eq(knowledgeText.id, rootId), // The root entry
+      eq(knowledgeText.parentId, rootId) // All versions pointing to root
+    )!,
+  ];
+
+  if (context.userId) {
+    permissionConditions.push(
+      or(
+        eq(knowledgeText.userId, context.userId),
+        and(isNull(knowledgeText.teamId), eq(knowledgeText.tenantWide, true)),
+        exists(
+          getDb()
+            .select()
+            .from(teamMembers)
+            .where(
+              and(
+                eq(teamMembers.userId, context.userId),
+                eq(teamMembers.teamId, knowledgeText.teamId)
+              )
+            )
+        )
+      )!
+    );
+  }
+
+  if (context.teamId) {
+    permissionConditions.push(eq(knowledgeText.teamId, context.teamId));
+  }
+
+  // Return all versions ordered chronologically (oldest first)
+  return await getDb()
+    .select()
+    .from(knowledgeText)
+    .where(and(...permissionConditions))
+    .orderBy(asc(knowledgeText.version), asc(knowledgeText.createdAt));
 };
 
 /**

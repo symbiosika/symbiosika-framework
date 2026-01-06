@@ -318,4 +318,202 @@ describe("Knowledge API Endpoints", () => {
       TEST_USER_1_TOKEN
     );
   });
+
+  test("GET list should return only latest versions (hidden=false)", async () => {
+    const v1Response = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 1",
+        title: "API List Test",
+      }
+    );
+
+    const v2Response = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 2",
+      }
+    );
+
+    const v3Response = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 3",
+      }
+    );
+
+    // Get list - should only return latest version
+    const listResponse = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN
+    );
+
+    expect(listResponse.status).toBe(200);
+    const apiListTestEntries = listResponse.jsonResponse.filter(
+      (entry: any) => entry.title === "API List Test"
+    );
+
+    expect(apiListTestEntries.length).toBe(1); // Only latest version
+    expect(apiListTestEntries[0].id).toBe(v3Response.jsonResponse.id);
+    expect(apiListTestEntries[0].version).toBe(3);
+    expect(apiListTestEntries[0].hidden).toBe(false);
+
+    // Cleanup
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v3Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+  });
+
+  test("GET history endpoint should return all versions chronologically", async () => {
+    const v1Response = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 1",
+        title: "History Test",
+      }
+    );
+
+    const v2Response = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 2",
+      }
+    );
+
+    const v3Response = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 3",
+      }
+    );
+
+    // Get history
+    const historyResponse = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v3Response.jsonResponse.id}/history`,
+      TEST_USER_1_TOKEN
+    );
+
+    expect(historyResponse.status).toBe(200);
+    expect(historyResponse.jsonResponse.length).toBe(3);
+
+    // Check chronological order (oldest first)
+    expect(historyResponse.jsonResponse[0].id).toBe(v1Response.jsonResponse.id);
+    expect(historyResponse.jsonResponse[0].version).toBe(1);
+    expect(historyResponse.jsonResponse[1].id).toBe(v2Response.jsonResponse.id);
+    expect(historyResponse.jsonResponse[1].version).toBe(2);
+    expect(historyResponse.jsonResponse[2].id).toBe(v3Response.jsonResponse.id);
+    expect(historyResponse.jsonResponse[2].version).toBe(3);
+
+    // Cleanup
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v3Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+  });
+
+  test("GET history should work from any version in chain", async () => {
+    const v1Response = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 1",
+        title: "History Chain Test",
+      }
+    );
+
+    const v2Response = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 2",
+      }
+    );
+
+    const v3Response = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 3",
+      }
+    );
+
+    // Get history from v2 - should still return all 3 versions
+    const historyResponse = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}/history`,
+      TEST_USER_1_TOKEN
+    );
+
+    expect(historyResponse.status).toBe(200);
+    expect(historyResponse.jsonResponse.length).toBe(3);
+    expect(historyResponse.jsonResponse[0].id).toBe(v1Response.jsonResponse.id);
+    expect(historyResponse.jsonResponse[1].id).toBe(v2Response.jsonResponse.id);
+    expect(historyResponse.jsonResponse[2].id).toBe(v3Response.jsonResponse.id);
+
+    // Cleanup
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v3Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+  });
 });

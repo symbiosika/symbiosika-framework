@@ -250,4 +250,109 @@ describe("Knowledge Texts Test", () => {
     expect(updated.title).toBe("Original Title"); // Preserved
     expect(updated.version).toBe(2);
   });
+
+  it("should return only latest versions (hidden=false) in list", async () => {
+    const v1 = await createKnowledgeText({
+      text: "Version 1",
+      title: "List Test Entry",
+      tenantId: TEST_ORGANISATION_1.id,
+      version: 1,
+    });
+
+    const v2 = await updateKnowledgeText(
+      v1.id,
+      { text: "Version 2" },
+      { tenantId: v1.tenantId }
+    );
+
+    const v3 = await updateKnowledgeText(
+      v2.id,
+      { text: "Version 3" },
+      { tenantId: v2.tenantId }
+    );
+
+    // Get list - should only return v3 (latest version)
+    const list = await getKnowledgeText({
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    const listTestEntries = list.filter(
+      (entry) => entry.title === "List Test Entry"
+    );
+
+    expect(listTestEntries.length).toBe(1); // Only one version
+    expect(listTestEntries[0]?.id).toBe(v3.id); // The latest version
+    expect(listTestEntries[0]?.version).toBe(3);
+    expect(listTestEntries[0]?.hidden).toBe(false);
+  });
+
+  it("should return complete version history with getKnowledgeTextHistory", async () => {
+    const v1 = await createKnowledgeText({
+      text: "Version 1",
+      title: "History Test",
+      tenantId: TEST_ORGANISATION_1.id,
+      version: 1,
+    });
+
+    const v2 = await updateKnowledgeText(
+      v1.id,
+      { text: "Version 2" },
+      { tenantId: v1.tenantId }
+    );
+
+    const v3 = await updateKnowledgeText(
+      v2.id,
+      { text: "Version 3" },
+      { tenantId: v2.tenantId }
+    );
+
+    // Import the history function
+    const { getKnowledgeTextHistory } = await import("./knowledge-texts");
+
+    // Get history - should return all 3 versions chronologically
+    const history = await getKnowledgeTextHistory(v3.id, {
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    expect(history.length).toBe(3);
+    expect(history[0]?.id).toBe(v1.id); // Oldest first
+    expect(history[0]?.version).toBe(1);
+    expect(history[1]?.id).toBe(v2.id);
+    expect(history[1]?.version).toBe(2);
+    expect(history[2]?.id).toBe(v3.id); // Newest last
+    expect(history[2]?.version).toBe(3);
+  });
+
+  it("should return history starting from any version in chain", async () => {
+    const v1 = await createKnowledgeText({
+      text: "Version 1",
+      title: "Chain Test",
+      tenantId: TEST_ORGANISATION_1.id,
+      version: 1,
+    });
+
+    const v2 = await updateKnowledgeText(
+      v1.id,
+      { text: "Version 2" },
+      { tenantId: v1.tenantId }
+    );
+
+    const v3 = await updateKnowledgeText(
+      v2.id,
+      { text: "Version 3" },
+      { tenantId: v2.tenantId }
+    );
+
+    const { getKnowledgeTextHistory } = await import("./knowledge-texts");
+
+    // Get history starting from v2 - should still return all 3 versions
+    const history = await getKnowledgeTextHistory(v2.id, {
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    expect(history.length).toBe(3);
+    expect(history[0]?.id).toBe(v1.id);
+    expect(history[1]?.id).toBe(v2.id);
+    expect(history[2]?.id).toBe(v3.id);
+  });
 });

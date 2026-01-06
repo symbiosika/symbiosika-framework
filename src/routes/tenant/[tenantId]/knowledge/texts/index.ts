@@ -9,6 +9,7 @@ import { RESPONSES } from "../../../../../lib/responses";
 import {
   createKnowledgeText,
   getKnowledgeText,
+  getKnowledgeTextHistory,
   updateKnowledgeText,
   deleteKnowledgeText,
 } from "../../../../../lib/knowledge/knowledge-texts";
@@ -69,7 +70,7 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * Read knowledge text entries
+   * Read knowledge text entries (returns only latest versions)
    */
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/texts",
@@ -77,7 +78,7 @@ export default function defineRoutesForKnowledgeTexts(
     checkUserPermission,
     describeRoute({
       tags: ["knowledge"],
-      summary: "Read knowledge text entries",
+      summary: "Read knowledge text entries (returns only latest versions)",
       responses: {
         200: {
           description: "Successful response",
@@ -120,6 +121,59 @@ export default function defineRoutesForKnowledgeTexts(
           id,
           limit,
           page,
+          tenantId,
+          userId,
+          teamId,
+          workspaceId,
+        });
+        return c.json(r);
+      } catch (e) {
+        throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Get complete version history for a knowledge text entry
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/history",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Get complete version history for a knowledge text entry",
+      responses: {
+        200: {
+          description: "Successful response with all versions chronologically",
+          content: {
+            "application/json": {
+              schema: resolver(v.array(knowledgeEntrySchema)),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator(
+      "query",
+      v.object({
+        teamId: v.optional(v.string()),
+        workspaceId: v.optional(v.string()),
+      })
+    ),
+    validator(
+      "param",
+      v.object({ tenantId: v.string(), id: v.string() })
+    ),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { teamId, workspaceId } = c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+
+        const r = await getKnowledgeTextHistory(id, {
           tenantId,
           userId,
           teamId,
