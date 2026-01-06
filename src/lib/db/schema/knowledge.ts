@@ -58,12 +58,9 @@ export const knowledgeText = pgBaseTable(
     // security feature to limit access to knowledge entries
     userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     // parentId: ONLY for Wiki hierarchy (parent-child relationships in tree)
-    parentId: uuid("parent_id").references(
-      (): AnyPgColumn => knowledgeText.id,
-      {
-        onDelete: "cascade",
-      }
-    ),
+    // Stores the documentId of the parent (not id!) to maintain hierarchy across versions
+    // No foreign key constraint since documentId is not unique (multiple versions share it)
+    parentId: uuid("parent_id"),
     text: text("text").notNull(),
     title: varchar("title", { length: 1000 }).notNull().default(""),
     meta: jsonb("meta").notNull().default("{}"),

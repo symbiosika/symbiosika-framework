@@ -130,7 +130,7 @@ describe("Knowledge API Endpoints", () => {
 
     expect(childResponse.status).toBe(200);
     expect(childResponse.jsonResponse.parentId).toBe(
-      parentResponse.jsonResponse.id
+      parentResponse.jsonResponse.documentId // Now stores documentId, not id!
     );
     expect(childResponse.jsonResponse.version).toBe(1); // New entry starts at version 1
     expect(childResponse.jsonResponse.isLatest).toBe(true);
@@ -501,6 +501,102 @@ describe("Knowledge API Endpoints", () => {
     await testFetcher.delete(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+  });
+
+  test("Parent-child hierarchy should persist when parent is updated (Bug Fix Test)", async () => {
+    // Create parent entry
+    const parentResponse = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Parent text v1",
+        title: "Parent Entry",
+      }
+    );
+
+    expect(parentResponse.status).toBe(200);
+    const parentV1Id = parentResponse.jsonResponse.id;
+    const parentDocumentId = parentResponse.jsonResponse.documentId;
+
+    // Create child entry pointing to parent
+    const childResponse = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Child text",
+        title: "Child Entry",
+        parentId: parentV1Id,
+      }
+    );
+
+    expect(childResponse.status).toBe(200);
+    const childId = childResponse.jsonResponse.id;
+    // Child's parentId should be parent's documentId (not id!)
+    expect(childResponse.jsonResponse.parentId).toBe(parentDocumentId);
+
+    // Update parent (creates new version with new id)
+    const parentUpdateResponse = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${parentV1Id}`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Parent text v2",
+        title: "Updated Parent Entry",
+      }
+    );
+
+    expect(parentUpdateResponse.status).toBe(200);
+    const parentV2Id = parentUpdateResponse.jsonResponse.id;
+    expect(parentV2Id).not.toBe(parentV1Id); // New version has new id
+    expect(parentUpdateResponse.jsonResponse.documentId).toBe(parentDocumentId); // Same documentId
+
+    // Get child again - parentId should STILL point to parent's documentId
+    const childCheckResponse = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${childId}`,
+      TEST_USER_1_TOKEN
+    );
+
+    expect(childCheckResponse.status).toBe(200);
+    expect(childCheckResponse.jsonResponse.parentId).toBe(parentDocumentId); // Still valid!
+
+    // Create another child using the updated parent's id
+    const child2Response = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Second child text",
+        title: "Second Child Entry",
+        parentId: parentV2Id, // Use new version's id
+      }
+    );
+
+    expect(child2Response.status).toBe(200);
+    expect(child2Response.jsonResponse.parentId).toBe(parentDocumentId); // Also points to documentId
+
+    // Cleanup
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${child2Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${childId}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${parentV2Id}`,
       TEST_USER_1_TOKEN
     );
   });

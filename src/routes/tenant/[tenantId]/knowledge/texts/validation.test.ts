@@ -109,7 +109,7 @@ describe("Knowledge Text API Validation", () => {
 
     expect(childResponse.status).toBe(200);
     expect(childResponse.jsonResponse.parentId).toBe(
-      parentResponse.jsonResponse.id
+      parentResponse.jsonResponse.documentId // Now stores documentId, not id!
     );
 
     // Cleanup

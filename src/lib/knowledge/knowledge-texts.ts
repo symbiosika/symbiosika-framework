@@ -31,11 +31,27 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
     await checkTenantMemberRole(data.tenantId, data.userId, ["admin", "owner"]);
   }
 
+  // If parentId is provided, resolve it to documentId
+  // This ensures hierarchy is maintained across versions
+  let resolvedParentId = data.parentId;
+  if (data.parentId) {
+    const parentEntry = await getDb()
+      .select({ documentId: knowledgeText.documentId })
+      .from(knowledgeText)
+      .where(eq(knowledgeText.id, data.parentId))
+      .limit(1);
+    
+    if (parentEntry[0]) {
+      resolvedParentId = parentEntry[0].documentId;
+    }
+  }
+
   // documentId will be auto-generated if not provided (default in schema)
   const e = await getDb()
     .insert(knowledgeText)
     .values({
       ...data,
+      parentId: resolvedParentId,
       version: 1,
       isLatest: true,
     })
@@ -381,7 +397,7 @@ export const updateKnowledgeText = async (
     tenantWide: currentEntry.tenantWide,
     teamId: currentEntry.teamId,
     userId: currentEntry.userId,
-    parentId: currentEntry.parentId, // Keep Wiki hierarchy (NOT version chain!)
+    parentId: data.parentId ?? currentEntry.parentId, // Keep Wiki hierarchy (NOT version chain!) - allow updates
     text: data.text ?? currentEntry.text,
     title: data.title ?? currentEntry.title,
     meta: data.meta ?? currentEntry.meta,

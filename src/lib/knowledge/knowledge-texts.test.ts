@@ -129,7 +129,7 @@ describe("Knowledge Texts Test", () => {
     const createdChild = await createKnowledgeText(childText);
     expect(createdChild).toHaveProperty("id");
     expect(createdChild).toHaveProperty("documentId");
-    expect(createdChild.parentId).toBe(createdParent.id);
+    expect(createdChild.parentId).toBe(createdParent.documentId); // Now stores documentId, not id!
     expect(createdChild.documentId).not.toBe(createdParent.documentId); // Different document!
     expect(createdChild.version).toBe(1); // First version of this child document
     expect(createdChild.isLatest).toBe(true);
@@ -427,5 +427,56 @@ describe("Knowledge Texts Test", () => {
     expect(history[0]?.id).toBe(v1.id);
     expect(history[1]?.id).toBe(v2.id);
     expect(history[2]?.id).toBe(v3.id);
+  });
+
+  it("should maintain parent-child hierarchy after parent update", async () => {
+    // Create parent entry
+    const parent = await createKnowledgeText({
+      text: "Parent text v1",
+      title: "Parent Entry",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    // Create child entry with parentId pointing to parent
+    const child = await createKnowledgeText({
+      text: "Child text",
+      title: "Child Entry",
+      tenantId: TEST_ORGANISATION_1.id,
+      parentId: parent.id, // This should be converted to parent.documentId
+    });
+
+    // Verify child's parentId is set to parent's documentId
+    expect(child.parentId).toBe(parent.documentId);
+
+    // Update parent (creates new version with new id)
+    const parentV2 = await updateKnowledgeText(
+      parent.id,
+      { text: "Parent text v2", title: "Updated Parent Entry" },
+      { tenantId: parent.tenantId }
+    );
+
+    // Parent should have new id but same documentId
+    expect(parentV2.id).not.toBe(parent.id);
+    expect(parentV2.documentId).toBe(parent.documentId);
+
+    // Get child again - parentId should still point to parent's documentId
+    const childCheck = await getKnowledgeTextById(child.id, {
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    expect(childCheck.parentId).toBe(parent.documentId);
+    expect(childCheck.parentId).toBe(parentV2.documentId); // Same documentId across versions
+
+    // Create another child after parent update
+    const child2 = await createKnowledgeText({
+      text: "Second child text",
+      title: "Second Child Entry",
+      tenantId: TEST_ORGANISATION_1.id,
+      parentId: parentV2.id, // Use new version's id
+    });
+
+    // Second child should also have parent's documentId
+    expect(child2.parentId).toBe(parent.documentId);
+    expect(child2.parentId).toBe(parentV2.documentId);
   });
 });
