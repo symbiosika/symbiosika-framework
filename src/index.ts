@@ -34,7 +34,7 @@ import { defineFilesRoutes } from "./routes/tenant/[tenantId]/files";
 import aiKnowledgeRoutes from "./routes/tenant/[tenantId]/knowledge";
 // import aiKnowledgeFiltersRoutes from "./routes/tenant/[tenantId]/knowledge/filters";
 import aiKnowledgeGroupRoutes from "./routes/tenant/[tenantId]/knowledge/groups";
-// import aiKnowledgeTextsRoutes from "./routes/tenant/[tenantId]/knowledge/knowledge-texts";
+import aiKnowledgeTextsRoutes from "./routes/tenant/[tenantId]/knowledge/texts";
 import aiKnowledgeChunksRoutes from "./routes/tenant/[tenantId]/knowledge/chunks";
 
 import defineTenantRoutes from "./routes/tenant";
@@ -242,7 +242,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
       aiKnowledgeRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       // aiKnowledgeFiltersRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
-      // aiKnowledgeTextsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      aiKnowledgeTextsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeChunksRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
