@@ -113,6 +113,7 @@ export const getKnowledgeTextByTitle = async (filters: {
 
 /**
  * Update a knowledgeText entry by ID
+ * Creates a new version instead of overwriting the existing entry
  */
 export const updateKnowledgeText = async (
   id: string,
@@ -137,28 +138,47 @@ export const updateKnowledgeText = async (
     throw new Error("Knowledge text not found or access denied");
   }
 
+  const currentEntry = existing[0];
+
   // check permission
   if (context.userId) {
-    const item = existing[0];
-    if (item.tenantWide) {
+    if (currentEntry.tenantWide) {
       await checkTenantMemberRole(context.tenantId, context.userId, [
         "admin",
         "owner",
       ]);
-    } else if (item.teamId) {
-      await checkTeamMemberRole(item.teamId, context.userId, ["admin"]);
+    } else if (currentEntry.teamId) {
+      await checkTeamMemberRole(currentEntry.teamId, context.userId, ["admin"]);
     }
   }
 
-  // update
-  const e = await getDb()
+  // Mark current entry as hidden (old version)
+  await getDb()
     .update(knowledgeText)
-    .set({ ...data })
-    .where(eq(knowledgeText.id, id))
+    .set({ hidden: true })
+    .where(eq(knowledgeText.id, id));
+
+  // Create new version with incremented version number
+  const newVersion: KnowledgeTextInsert = {
+    tenantId: currentEntry.tenantId,
+    tenantWide: currentEntry.tenantWide,
+    teamId: currentEntry.teamId,
+    userId: currentEntry.userId,
+    text: data.text ?? currentEntry.text,
+    title: data.title ?? currentEntry.title,
+    meta: data.meta ?? currentEntry.meta,
+    version: (data.version ?? currentEntry.version) + 1,
+    hidden: data.hidden ?? false,
+    parentId: currentEntry.parentId ?? id, // Link to previous version or original parent
+  };
+
+  const e = await getDb()
+    .insert(knowledgeText)
+    .values(newVersion)
     .returning();
 
   if (!e[0]) {
-    throw new Error("Failed to update knowledge text");
+    throw new Error("Failed to create new version of knowledge text");
   }
   return e[0];
 };

@@ -181,13 +181,140 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(updateResponse.status).toBe(200);
-    expect(updateResponse.jsonResponse.version).toBe(3);
+    expect(updateResponse.jsonResponse.version).toBe(4); // 3+1 due to versioning
     expect(updateResponse.jsonResponse.hidden).toBe(true);
 
-    // Cleanup
+    // Cleanup - delete both versions
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${updateResponse.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
     await testFetcher.delete(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${createResponse.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+  });
+
+  test("PUT should create new version with incremented version number", async () => {
+    const originalData = {
+      tenantId: TEST_ORGANISATION_1.id,
+      text: "Original API text",
+      title: "Original API Title",
+      version: 1,
+    };
+
+    const createResponse = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      originalData
+    );
+
+    expect(createResponse.status).toBe(200);
+    const originalId = createResponse.jsonResponse.id;
+
+    // Update via PUT
+    const updateData = {
+      tenantId: TEST_ORGANISATION_1.id,
+      text: "Updated API text",
+      title: "Updated API Title",
+    };
+
+    const updateResponse = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${originalId}`,
+      TEST_USER_1_TOKEN,
+      updateData
+    );
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.jsonResponse.id).not.toBe(originalId); // New ID
+    expect(updateResponse.jsonResponse.version).toBe(2); // Incremented
+    expect(updateResponse.jsonResponse.text).toBe("Updated API text");
+    expect(updateResponse.jsonResponse.title).toBe("Updated API Title");
+    expect(updateResponse.jsonResponse.parentId).toBe(originalId);
+
+    // Check original is hidden
+    const getOriginalResponse = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts?id=${originalId}`,
+      TEST_USER_1_TOKEN
+    );
+
+    expect(getOriginalResponse.status).toBe(200);
+    expect(getOriginalResponse.jsonResponse[0]?.hidden).toBe(true);
+
+    // Cleanup both versions
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${updateResponse.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${originalId}`,
+      TEST_USER_1_TOKEN
+    );
+  });
+
+  test("Multiple PUTs should create version chain", async () => {
+    const v1Response = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 1",
+        title: "Chain Test",
+      }
+    );
+
+    const v1Id = v1Response.jsonResponse.id;
+
+    // Create version 2
+    const v2Response = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Id}`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 2",
+      }
+    );
+
+    expect(v2Response.jsonResponse.version).toBe(2);
+    expect(v2Response.jsonResponse.parentId).toBe(v1Id);
+
+    // Create version 3
+    const v3Response = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "Version 3",
+      }
+    );
+
+    expect(v3Response.jsonResponse.version).toBe(3);
+    expect(v3Response.jsonResponse.parentId).toBe(v1Id); // Points to root
+
+    // Cleanup all versions
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v3Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Id}`,
       TEST_USER_1_TOKEN
     );
   });

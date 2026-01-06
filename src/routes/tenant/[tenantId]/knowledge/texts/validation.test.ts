@@ -205,7 +205,7 @@ describe("Knowledge Text API Validation", () => {
     );
   });
 
-  test("Should allow updating version and hidden via PUT", async () => {
+  test("Should create new version on PUT with incremented version", async () => {
     const textData = {
       tenantId: TEST_ORGANISATION_1.id,
       text: "Test text for update",
@@ -222,6 +222,7 @@ describe("Knowledge Text API Validation", () => {
     );
 
     expect(createResponse.status).toBe(200);
+    const originalId = createResponse.jsonResponse.id;
 
     const updateData = {
       tenantId: TEST_ORGANISATION_1.id,
@@ -231,19 +232,25 @@ describe("Knowledge Text API Validation", () => {
 
     const updateResponse = await testFetcher.put(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${createResponse.jsonResponse.id}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${originalId}`,
       TEST_USER_1_TOKEN,
       updateData
     );
 
     expect(updateResponse.status).toBe(200);
-    expect(updateResponse.jsonResponse.version).toBe(2);
+    expect(updateResponse.jsonResponse.version).toBe(3); // 2+1 due to auto-increment
     expect(updateResponse.jsonResponse.hidden).toBe(true);
+    expect(updateResponse.jsonResponse.id).not.toBe(originalId); // New version has new ID
 
-    // Cleanup
+    // Cleanup both versions
     await testFetcher.delete(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${createResponse.jsonResponse.id}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${updateResponse.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${originalId}`,
       TEST_USER_1_TOKEN
     );
   });
