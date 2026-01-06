@@ -100,18 +100,25 @@ export default function defineRoutesForKnowledgeTexts(
         workspaceId: v.optional(v.string()),
         limit: v.optional(v.string()),
         page: v.optional(v.string()),
+        includeHidden: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
     isTenantMember,
     async (c) => {
       try {
-        const { teamId, workspaceId, limit: limitStr, page: pageStr } =
-          c.req.valid("query");
+        const {
+          teamId,
+          workspaceId,
+          limit: limitStr,
+          page: pageStr,
+          includeHidden: includeHiddenStr,
+        } = c.req.valid("query");
         const { tenantId } = c.req.valid("param");
         const userId = c.get("usersId");
         const limit = limitStr ? parseInt(limitStr) : undefined;
         const page = pageStr ? parseInt(pageStr) : undefined;
+        const includeHidden = includeHiddenStr === "true";
 
         const r = await getKnowledgeText({
           limit,
@@ -120,6 +127,7 @@ export default function defineRoutesForKnowledgeTexts(
           userId,
           teamId,
           workspaceId,
+          includeHidden,
         });
         return c.json(r);
       } catch (e) {
@@ -158,15 +166,22 @@ export default function defineRoutesForKnowledgeTexts(
         versionId: v.optional(v.string()),
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
+        includeHidden: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     isTenantMember,
     async (c) => {
       try {
-        const { versionId, teamId, workspaceId } = c.req.valid("query");
+        const {
+          versionId,
+          teamId,
+          workspaceId,
+          includeHidden: includeHiddenStr,
+        } = c.req.valid("query");
         const { tenantId, id } = c.req.valid("param");
         const userId = c.get("usersId");
+        const includeHidden = includeHiddenStr === "true";
 
         const r = await getKnowledgeTextById(id, {
           tenantId,
@@ -174,6 +189,7 @@ export default function defineRoutesForKnowledgeTexts(
           teamId,
           workspaceId,
           versionId,
+          includeHidden,
         });
         return c.json(r);
       } catch (e) {
@@ -211,21 +227,25 @@ export default function defineRoutesForKnowledgeTexts(
       v.object({
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
+        includeHidden: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     isTenantMember,
     async (c) => {
       try {
-        const { teamId, workspaceId } = c.req.valid("query");
+        const { teamId, workspaceId, includeHidden: includeHiddenStr } =
+          c.req.valid("query");
         const { tenantId, id } = c.req.valid("param");
         const userId = c.get("usersId");
+        const includeHidden = includeHiddenStr === "true";
 
         const r = await getKnowledgeTextHistory(id, {
           tenantId,
           userId,
           teamId,
           workspaceId,
+          includeHidden,
         });
         return c.json(r);
       } catch (e) {
@@ -262,6 +282,7 @@ export default function defineRoutesForKnowledgeTexts(
       v.object({
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
+        includeHidden: v.optional(v.string()),
       })
     ),
     validator(
@@ -271,10 +292,12 @@ export default function defineRoutesForKnowledgeTexts(
     isTenantMember,
     async (c) => {
       try {
-        const { teamId, workspaceId } = c.req.valid("query");
+        const { teamId, workspaceId, includeHidden: includeHiddenStr } =
+          c.req.valid("query");
         const { tenantId, id } = c.req.valid("param");
         const body = c.req.valid("json");
         const userId = c.get("usersId");
+        const includeHidden = includeHiddenStr === "true";
         validateOrganisationId(body, tenantId);
 
         const r = await updateKnowledgeText(id, body, {
@@ -282,6 +305,7 @@ export default function defineRoutesForKnowledgeTexts(
           userId,
           teamId,
           workspaceId,
+          includeHidden,
         });
         return c.json(r);
       } catch (e) {
@@ -312,6 +336,7 @@ export default function defineRoutesForKnowledgeTexts(
       v.object({
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
+        includeHidden: v.optional(v.string()),
       })
     ),
     validator(
@@ -321,15 +346,18 @@ export default function defineRoutesForKnowledgeTexts(
     isTenantMember,
     async (c) => {
       try {
-        const { teamId, workspaceId } = c.req.valid("query");
+        const { teamId, workspaceId, includeHidden: includeHiddenStr } =
+          c.req.valid("query");
         const { tenantId, id } = c.req.valid("param");
         const userId = c.get("usersId");
+        const includeHidden = includeHiddenStr === "true";
 
         await deleteKnowledgeText(id, {
           tenantId,
           userId,
           teamId,
           workspaceId,
+          includeHidden,
         });
         return c.json(RESPONSES.SUCCESS);
       } catch (e) {

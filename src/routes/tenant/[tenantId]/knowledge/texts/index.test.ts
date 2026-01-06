@@ -97,7 +97,6 @@ describe("Knowledge API Endpoints", () => {
       tenantId: TEST_ORGANISATION_1.id,
       text: "Parent knowledge text for API test",
       title: "Parent API Test",
-      version: 1,
       hidden: false,
     };
 
@@ -110,6 +109,7 @@ describe("Knowledge API Endpoints", () => {
 
     expect(parentResponse.status).toBe(200);
     expect(parentResponse.jsonResponse.version).toBe(1);
+    expect(parentResponse.jsonResponse.isLatest).toBe(true);
     expect(parentResponse.jsonResponse.hidden).toBe(false);
     expect(parentResponse.jsonResponse.parentId).toBeNull();
 
@@ -117,8 +117,7 @@ describe("Knowledge API Endpoints", () => {
       tenantId: TEST_ORGANISATION_1.id,
       text: "Child knowledge text for API test",
       title: "Child API Test",
-      parentId: parentResponse.jsonResponse.id,
-      version: 2,
+      parentId: parentResponse.jsonResponse.id, // Wiki hierarchy
       hidden: true,
     };
 
@@ -133,7 +132,8 @@ describe("Knowledge API Endpoints", () => {
     expect(childResponse.jsonResponse.parentId).toBe(
       parentResponse.jsonResponse.id
     );
-    expect(childResponse.jsonResponse.version).toBe(2);
+    expect(childResponse.jsonResponse.version).toBe(1); // New entry starts at version 1
+    expect(childResponse.jsonResponse.isLatest).toBe(true);
     expect(childResponse.jsonResponse.hidden).toBe(true);
 
     // Cleanup
@@ -154,7 +154,6 @@ describe("Knowledge API Endpoints", () => {
       tenantId: TEST_ORGANISATION_1.id,
       text: "Text for version update test",
       title: "Version Update Test",
-      version: 1,
       hidden: false,
     };
 
@@ -166,10 +165,11 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(createResponse.status).toBe(200);
+    expect(createResponse.jsonResponse.version).toBe(1);
+    expect(createResponse.jsonResponse.isLatest).toBe(true);
 
     const updateData = {
       tenantId: TEST_ORGANISATION_1.id,
-      version: 3,
       hidden: true,
     };
 
@@ -181,18 +181,15 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(updateResponse.status).toBe(200);
-    expect(updateResponse.jsonResponse.version).toBe(4); // 3+1 due to versioning
+    expect(updateResponse.jsonResponse.version).toBe(2); // Auto-incremented from 1
+    expect(updateResponse.jsonResponse.isLatest).toBe(true);
     expect(updateResponse.jsonResponse.hidden).toBe(true);
+    expect(updateResponse.jsonResponse.documentId).toBe(createResponse.jsonResponse.documentId);
 
-    // Cleanup - delete both versions
+    // Cleanup - cascade delete removes all versions
     await testFetcher.delete(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${updateResponse.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${createResponse.jsonResponse.id}`,
       TEST_USER_1_TOKEN
     );
   });
@@ -202,7 +199,6 @@ describe("Knowledge API Endpoints", () => {
       tenantId: TEST_ORGANISATION_1.id,
       text: "Original API text",
       title: "Original API Title",
-      version: 1,
     };
 
     const createResponse = await testFetcher.post(
@@ -214,6 +210,7 @@ describe("Knowledge API Endpoints", () => {
 
     expect(createResponse.status).toBe(200);
     const originalId = createResponse.jsonResponse.id;
+    const documentId = createResponse.jsonResponse.documentId;
 
     // Update via PUT
     const updateData = {
@@ -230,13 +227,15 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(updateResponse.status).toBe(200);
-    expect(updateResponse.jsonResponse.id).not.toBe(originalId); // New ID
-    expect(updateResponse.jsonResponse.version).toBe(2); // Incremented
+    expect(updateResponse.jsonResponse.id).not.toBe(originalId); // New ID for new version
+    expect(updateResponse.jsonResponse.version).toBe(2); // Incremented from 1
     expect(updateResponse.jsonResponse.text).toBe("Updated API text");
     expect(updateResponse.jsonResponse.title).toBe("Updated API Title");
-    expect(updateResponse.jsonResponse.parentId).toBe(originalId);
+    expect(updateResponse.jsonResponse.documentId).toBe(documentId); // Same documentId
+    expect(updateResponse.jsonResponse.parentId).toBeNull(); // parentId is for wiki hierarchy, not versioning
+    expect(updateResponse.jsonResponse.isLatest).toBe(true);
 
-    // Check original is hidden - use versionId parameter to get specific version
+    // Check original is no longer latest - use versionId parameter to get specific version
     const getOriginalResponse = await testFetcher.get(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${originalId}?versionId=${originalId}`,
@@ -244,17 +243,12 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(getOriginalResponse.status).toBe(200);
-    expect(getOriginalResponse.jsonResponse.hidden).toBe(true);
+    expect(getOriginalResponse.jsonResponse.isLatest).toBe(false); // Not latest anymore
 
-    // Cleanup both versions
+    // Cleanup - cascade delete removes all versions
     await testFetcher.delete(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${updateResponse.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${originalId}`,
       TEST_USER_1_TOKEN
     );
   });
@@ -272,6 +266,7 @@ describe("Knowledge API Endpoints", () => {
     );
 
     const v1Id = v1Response.jsonResponse.id;
+    const documentId = v1Response.jsonResponse.documentId;
 
     // Create version 2
     const v2Response = await testFetcher.put(
@@ -285,7 +280,8 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(v2Response.jsonResponse.version).toBe(2);
-    expect(v2Response.jsonResponse.parentId).toBe(v1Id);
+    expect(v2Response.jsonResponse.documentId).toBe(documentId);
+    expect(v2Response.jsonResponse.parentId).toBeNull(); // parentId is for wiki hierarchy
 
     // Create version 3
     const v3Response = await testFetcher.put(
@@ -299,22 +295,13 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(v3Response.jsonResponse.version).toBe(3);
-    expect(v3Response.jsonResponse.parentId).toBe(v1Id); // Points to root
+    expect(v3Response.jsonResponse.documentId).toBe(documentId); // Same documentId for all versions
+    expect(v3Response.jsonResponse.parentId).toBeNull(); // parentId is for wiki hierarchy
 
-    // Cleanup all versions
+    // Cleanup - cascade delete removes all versions
     await testFetcher.delete(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v3Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Id}`,
       TEST_USER_1_TOKEN
     );
   });

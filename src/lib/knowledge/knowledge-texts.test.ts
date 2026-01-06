@@ -106,56 +106,64 @@ describe("Knowledge Texts Test", () => {
       text: "Parent knowledge text",
       title: "Parent Title",
       tenantId: TEST_ORGANISATION_1.id,
-      version: 1,
       hidden: false,
     };
 
     const createdParent = await createKnowledgeText(parentText);
     expect(createdParent).toHaveProperty("id");
+    expect(createdParent).toHaveProperty("documentId");
     expect(createdParent.version).toBe(1);
+    expect(createdParent.isLatest).toBe(true);
     expect(createdParent.hidden).toBe(false);
     expect(createdParent.parentId).toBeNull();
 
+    // Child in Wiki hierarchy (not a version!)
     const childText = {
       text: "Child knowledge text",
       title: "Child Title",
       tenantId: TEST_ORGANISATION_1.id,
-      parentId: createdParent.id,
-      version: 2,
-      hidden: true,
+      parentId: createdParent.id, // Wiki parent
+      hidden: true, // System entry
     };
 
     const createdChild = await createKnowledgeText(childText);
     expect(createdChild).toHaveProperty("id");
+    expect(createdChild).toHaveProperty("documentId");
     expect(createdChild.parentId).toBe(createdParent.id);
-    expect(createdChild.version).toBe(2);
+    expect(createdChild.documentId).not.toBe(createdParent.documentId); // Different document!
+    expect(createdChild.version).toBe(1); // First version of this child document
+    expect(createdChild.isLatest).toBe(true);
     expect(createdChild.hidden).toBe(true);
   });
 
-  it("should create new version with incremented version and custom hidden", async () => {
+  it("should create new version with incremented version and preserve hidden status", async () => {
     const newText = {
       text: "Text to be versioned",
       title: "Version Test",
       tenantId: TEST_ORGANISATION_1.id,
-      version: 1,
       hidden: false,
     };
 
     const createdText = await createKnowledgeText(newText);
+    expect(createdText.version).toBe(1);
+    expect(createdText.isLatest).toBe(true);
+
     const updatedText = await updateKnowledgeText(
       createdText.id,
       {
-        version: 2, // Will be incremented to 3 (2+1)
-        hidden: true,
+        text: "Updated text",
+        hidden: true, // Change to system entry
       },
       {
         tenantId: createdText.tenantId,
       }
     );
 
-    expect(updatedText.version).toBe(3); // 2+1 due to auto-increment
-    expect(updatedText.hidden).toBe(true);
+    expect(updatedText.version).toBe(2); // Auto-incremented
+    expect(updatedText.hidden).toBe(true); // Updated
+    expect(updatedText.isLatest).toBe(true); // New version is latest
     expect(updatedText.id).not.toBe(createdText.id); // New version has new ID
+    expect(updatedText.documentId).toBe(createdText.documentId); // Same document
   });
 
   it("should create a new version instead of overwriting on update", async () => {
@@ -163,12 +171,12 @@ describe("Knowledge Texts Test", () => {
       text: "Original text content",
       title: "Original Title",
       tenantId: TEST_ORGANISATION_1.id,
-      version: 1,
       hidden: false,
     };
 
     const created = await createKnowledgeText(originalText);
     const originalId = created.id;
+    const documentId = created.documentId;
 
     // Update the text
     const updated = await updateKnowledgeText(
@@ -187,25 +195,27 @@ describe("Knowledge Texts Test", () => {
     expect(updated.text).toBe("Updated text content");
     expect(updated.title).toBe("Updated Title");
     expect(updated.hidden).toBe(false);
+    expect(updated.isLatest).toBe(true);
     expect(updated.id).not.toBe(originalId); // New ID
-    expect(updated.parentId).toBe(originalId); // Links to original
+    expect(updated.documentId).toBe(documentId); // Same document
+    expect(updated.parentId).toBe(created.parentId); // Wiki parent preserved
 
-    // Original should be marked as hidden - check via getKnowledgeTextById with versionId
+    // Original should be marked as NOT latest - check via getKnowledgeTextById with versionId
     const originalCheck = await getKnowledgeTextById(originalId, {
       tenantId: created.tenantId,
       versionId: originalId, // Get specific old version
     });
     expect(originalCheck).toBeDefined();
-    expect(originalCheck.hidden).toBe(true);
+    expect(originalCheck.isLatest).toBe(false); // No longer latest
   });
 
-  it("should preserve parentId chain across multiple updates", async () => {
+  it("should preserve documentId and Wiki parentId across multiple updates", async () => {
     const v1 = await createKnowledgeText({
       text: "Version 1",
       title: "Chain Test",
       tenantId: TEST_ORGANISATION_1.id,
-      version: 1,
     });
+    const documentId = v1.documentId;
 
     const v2 = await updateKnowledgeText(
       v1.id,
@@ -213,7 +223,8 @@ describe("Knowledge Texts Test", () => {
       { tenantId: v1.tenantId }
     );
     expect(v2.version).toBe(2);
-    expect(v2.parentId).toBe(v1.id);
+    expect(v2.documentId).toBe(documentId); // Same document
+    expect(v2.parentId).toBe(v1.parentId); // Wiki parent preserved (both null)
 
     const v3 = await updateKnowledgeText(
       v2.id,
@@ -221,27 +232,28 @@ describe("Knowledge Texts Test", () => {
       { tenantId: v2.tenantId }
     );
     expect(v3.version).toBe(3);
-    expect(v3.parentId).toBe(v1.id); // Points to original, not v2
+    expect(v3.documentId).toBe(documentId); // Still same document
+    expect(v3.parentId).toBe(v1.parentId); // Wiki parent still preserved
 
     // Check all versions using versionId
     const v1Check = await getKnowledgeTextById(v1.id, {
       tenantId: v1.tenantId,
       versionId: v1.id,
     });
-    expect(v1Check.hidden).toBe(true);
+    expect(v1Check.isLatest).toBe(false); // Old version
 
     const v2Check = await getKnowledgeTextById(v2.id, {
       tenantId: v2.tenantId,
       versionId: v2.id,
     });
-    expect(v2Check.hidden).toBe(true);
+    expect(v2Check.isLatest).toBe(false); // Old version
 
     // Get latest version - should be v3
     const latestCheck = await getKnowledgeTextById(v1.id, {
       tenantId: v3.tenantId,
     });
     expect(latestCheck.id).toBe(v3.id);
-    expect(latestCheck.hidden).toBe(false); // Latest version is visible
+    expect(latestCheck.isLatest).toBe(true); // Latest version
   });
 
   it("should only update specified fields in new version", async () => {
@@ -249,7 +261,6 @@ describe("Knowledge Texts Test", () => {
       text: "Original text",
       title: "Original Title",
       tenantId: TEST_ORGANISATION_1.id,
-      version: 1,
     });
 
     // Update only the text, keep title
@@ -262,14 +273,14 @@ describe("Knowledge Texts Test", () => {
     expect(updated.text).toBe("Updated text only");
     expect(updated.title).toBe("Original Title"); // Preserved
     expect(updated.version).toBe(2);
+    expect(updated.documentId).toBe(original.documentId);
   });
 
-  it("should return only latest versions (hidden=false) in list WITHOUT text", async () => {
+  it("should return only latest versions (isLatest=true) in list WITHOUT text", async () => {
     const v1 = await createKnowledgeText({
       text: "Version 1",
       title: "List Test Entry",
       tenantId: TEST_ORGANISATION_1.id,
-      version: 1,
     });
 
     const v2 = await updateKnowledgeText(
@@ -296,7 +307,7 @@ describe("Knowledge Texts Test", () => {
     expect(listTestEntries.length).toBe(1); // Only one version
     expect(listTestEntries[0]?.id).toBe(v3.id); // The latest version
     expect(listTestEntries[0]?.version).toBe(3);
-    expect(listTestEntries[0]?.hidden).toBe(false);
+    expect(listTestEntries[0]?.isLatest).toBe(true);
     // @ts-ignore
     expect(listTestEntries[0]?.text).toBeUndefined(); // Text NOT included
   });
@@ -353,7 +364,6 @@ describe("Knowledge Texts Test", () => {
       text: "Version 1",
       title: "History Test",
       tenantId: TEST_ORGANISATION_1.id,
-      version: 1,
     });
 
     const v2 = await updateKnowledgeText(
@@ -376,6 +386,7 @@ describe("Knowledge Texts Test", () => {
     expect(history.length).toBe(3);
     expect(history[0]?.id).toBe(v1.id); // Oldest first
     expect(history[0]?.version).toBe(1);
+    expect(history[0]?.documentId).toBe(v1.documentId);
     // @ts-ignore
     expect(history[0]?.text).toBeUndefined(); // No text in history
     expect(history[1]?.id).toBe(v2.id);
@@ -388,12 +399,11 @@ describe("Knowledge Texts Test", () => {
     expect(history[2]?.text).toBeUndefined(); // No text in history
   });
 
-  it("should return history starting from any version in chain", async () => {
+  it("should return history starting from any version in documentId chain", async () => {
     const v1 = await createKnowledgeText({
       text: "Version 1",
       title: "Chain Test",
       tenantId: TEST_ORGANISATION_1.id,
-      version: 1,
     });
 
     const v2 = await updateKnowledgeText(
@@ -408,9 +418,7 @@ describe("Knowledge Texts Test", () => {
       { tenantId: v2.tenantId }
     );
 
-    const { getKnowledgeTextHistory } = await import("./knowledge-texts");
-
-    // Get history starting from v2 - should still return all 3 versions
+    // Get history starting from v2 - should still return all 3 versions (same documentId)
     const history = await getKnowledgeTextHistory(v2.id, {
       tenantId: TEST_ORGANISATION_1.id,
     });

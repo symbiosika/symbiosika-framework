@@ -43,7 +43,10 @@ export const knowledgeText = pgBaseTable(
       .primaryKey()
       .default(sql`gen_random_uuid()`),
     // documentId: All versions of the same document share this ID
-    documentId: uuid("document_id").notNull(),
+    // Auto-generated via default() when not provided
+    documentId: uuid("document_id")
+      .notNull()
+      .default(sql`gen_random_uuid()`),
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
