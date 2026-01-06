@@ -193,7 +193,11 @@ export default function defineRoutesForKnowledgeTexts(
         });
         return c.json(r);
       } catch (e) {
-        throw new HTTPException(400, { message: e + "" });
+        const errorMsg = e + "";
+        if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
       }
     }
   );

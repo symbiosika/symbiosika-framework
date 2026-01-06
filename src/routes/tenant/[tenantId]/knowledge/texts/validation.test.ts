@@ -27,7 +27,7 @@ describe("Knowledge Text API Validation", () => {
       tenantId: TEST_ORGANISATION_1.id,
       text: "Test text with version",
       title: "Version Test",
-      version: 5,
+      version: 5, // Will be ignored - createKnowledgeText always sets version to 1
     };
 
     const response = await testFetcher.post(
@@ -38,7 +38,8 @@ describe("Knowledge Text API Validation", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.jsonResponse.version).toBe(5);
+    expect(response.jsonResponse.version).toBe(1); // Always starts at 1 for new entries
+    expect(response.jsonResponse.isLatest).toBe(true);
 
     // Cleanup
     await testFetcher.delete(
@@ -222,11 +223,13 @@ describe("Knowledge Text API Validation", () => {
     );
 
     expect(createResponse.status).toBe(200);
+    expect(createResponse.jsonResponse.version).toBe(1); // Initial version
     const originalId = createResponse.jsonResponse.id;
+    const documentId = createResponse.jsonResponse.documentId;
 
     const updateData = {
       tenantId: TEST_ORGANISATION_1.id,
-      version: 2,
+      version: 2, // Will be ignored - updateKnowledgeText auto-increments from current version
       hidden: true,
     };
 
@@ -238,19 +241,16 @@ describe("Knowledge Text API Validation", () => {
     );
 
     expect(updateResponse.status).toBe(200);
-    expect(updateResponse.jsonResponse.version).toBe(3); // 2+1 due to auto-increment
+    expect(updateResponse.jsonResponse.version).toBe(2); // Auto-incremented from 1
     expect(updateResponse.jsonResponse.hidden).toBe(true);
     expect(updateResponse.jsonResponse.id).not.toBe(originalId); // New version has new ID
+    expect(updateResponse.jsonResponse.documentId).toBe(documentId); // Same documentId
+    expect(updateResponse.jsonResponse.isLatest).toBe(true);
 
-    // Cleanup both versions
+    // Cleanup - cascade delete removes all versions
     await testFetcher.delete(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${updateResponse.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${originalId}`,
       TEST_USER_1_TOKEN
     );
   });

@@ -154,14 +154,12 @@ describe("Knowledge API Edge Cases", () => {
 
     const response = await testFetcher.get(
       appKnowledgeTexts,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts?id=${nonExistentId}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${nonExistentId}`,
       TEST_USER_1_TOKEN
     );
 
-    // Should return an empty array, not an error
-    expect(response.status).toBe(200);
-    expect(Array.isArray(response.jsonResponse)).toBe(true);
-    expect(response.jsonResponse.length).toBe(0);
+    // Should return 404 for non-existent entry
+    expect(response.status).toBe(404);
   });
 
   test("Update non-existent knowledge text", async () => {
