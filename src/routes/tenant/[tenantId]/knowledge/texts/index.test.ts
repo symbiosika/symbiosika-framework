@@ -91,4 +91,104 @@ describe("Knowledge API Endpoints", () => {
 
     expect(response.status).toBe(200);
   });
+
+  test("Create knowledge text with version, hidden and parentId", async () => {
+    const parentData = {
+      tenantId: TEST_ORGANISATION_1.id,
+      text: "Parent knowledge text for API test",
+      title: "Parent API Test",
+      version: 1,
+      hidden: false,
+    };
+
+    const parentResponse = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      parentData
+    );
+
+    expect(parentResponse.status).toBe(200);
+    expect(parentResponse.jsonResponse.version).toBe(1);
+    expect(parentResponse.jsonResponse.hidden).toBe(false);
+    expect(parentResponse.jsonResponse.parentId).toBeNull();
+
+    const childData = {
+      tenantId: TEST_ORGANISATION_1.id,
+      text: "Child knowledge text for API test",
+      title: "Child API Test",
+      parentId: parentResponse.jsonResponse.id,
+      version: 2,
+      hidden: true,
+    };
+
+    const childResponse = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      childData
+    );
+
+    expect(childResponse.status).toBe(200);
+    expect(childResponse.jsonResponse.parentId).toBe(
+      parentResponse.jsonResponse.id
+    );
+    expect(childResponse.jsonResponse.version).toBe(2);
+    expect(childResponse.jsonResponse.hidden).toBe(true);
+
+    // Cleanup
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${childResponse.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${parentResponse.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+  });
+
+  test("Update version and hidden attributes via API", async () => {
+    const textData = {
+      tenantId: TEST_ORGANISATION_1.id,
+      text: "Text for version update test",
+      title: "Version Update Test",
+      version: 1,
+      hidden: false,
+    };
+
+    const createResponse = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      textData
+    );
+
+    expect(createResponse.status).toBe(200);
+
+    const updateData = {
+      tenantId: TEST_ORGANISATION_1.id,
+      version: 3,
+      hidden: true,
+    };
+
+    const updateResponse = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${createResponse.jsonResponse.id}`,
+      TEST_USER_1_TOKEN,
+      updateData
+    );
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.jsonResponse.version).toBe(3);
+    expect(updateResponse.jsonResponse.hidden).toBe(true);
+
+    // Cleanup
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${createResponse.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
+  });
 });

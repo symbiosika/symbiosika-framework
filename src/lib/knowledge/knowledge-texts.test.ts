@@ -88,4 +88,60 @@ describe("Knowledge Texts Test", () => {
     });
     expect(readText.length).toBe(0);
   });
+
+  it("should create a knowledge text with version, hidden and parentId attributes", async () => {
+    const parentText = {
+      text: "Parent knowledge text",
+      title: "Parent Title",
+      tenantId: TEST_ORGANISATION_1.id,
+      version: 1,
+      hidden: false,
+    };
+
+    const createdParent = await createKnowledgeText(parentText);
+    expect(createdParent).toHaveProperty("id");
+    expect(createdParent.version).toBe(1);
+    expect(createdParent.hidden).toBe(false);
+    expect(createdParent.parentId).toBeNull();
+
+    const childText = {
+      text: "Child knowledge text",
+      title: "Child Title",
+      tenantId: TEST_ORGANISATION_1.id,
+      parentId: createdParent.id,
+      version: 2,
+      hidden: true,
+    };
+
+    const createdChild = await createKnowledgeText(childText);
+    expect(createdChild).toHaveProperty("id");
+    expect(createdChild.parentId).toBe(createdParent.id);
+    expect(createdChild.version).toBe(2);
+    expect(createdChild.hidden).toBe(true);
+  });
+
+  it("should update version and hidden attributes", async () => {
+    const newText = {
+      text: "Text to be versioned",
+      title: "Version Test",
+      tenantId: TEST_ORGANISATION_1.id,
+      version: 1,
+      hidden: false,
+    };
+
+    const createdText = await createKnowledgeText(newText);
+    const updatedText = await updateKnowledgeText(
+      createdText.id,
+      {
+        version: 2,
+        hidden: true,
+      },
+      {
+        tenantId: createdText.tenantId,
+      }
+    );
+
+    expect(updatedText.version).toBe(2);
+    expect(updatedText.hidden).toBe(true);
+  });
 });

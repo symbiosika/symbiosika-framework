@@ -52,9 +52,17 @@ export const knowledgeText = pgBaseTable(
     // optional user id to assign knowledge entries to a user.
     // security feature to limit access to knowledge entries
     userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    parentId: uuid("parent_id").references(
+      (): AnyPgColumn => knowledgeText.id,
+      {
+        onDelete: "cascade",
+      }
+    ),
     text: text("text").notNull(),
     title: varchar("title", { length: 1000 }).notNull().default(""),
     meta: jsonb("meta").notNull().default("{}"),
+    version: integer("version").notNull().default(1),
+    hidden: boolean("hidden").notNull().default(false),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),
@@ -71,6 +79,7 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_tenant_id_idx").on(knowledgeText.tenantId),
     index("knowledge_text_team_id_idx").on(knowledgeText.teamId),
     index("knowledge_text_user_id_idx").on(knowledgeText.userId),
+    index("knowledge_text_parent_id_idx").on(knowledgeText.parentId),
     check("knowledge_text_text_min_length", sql`length(text) > 3`),
   ]
 );
