@@ -42,6 +42,8 @@ export const knowledgeText = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
+    // documentId: All versions of the same document share this ID
+    documentId: uuid("document_id").notNull(),
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
@@ -52,6 +54,7 @@ export const knowledgeText = pgBaseTable(
     // optional user id to assign knowledge entries to a user.
     // security feature to limit access to knowledge entries
     userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    // parentId: ONLY for Wiki hierarchy (parent-child relationships in tree)
     parentId: uuid("parent_id").references(
       (): AnyPgColumn => knowledgeText.id,
       {
@@ -62,6 +65,8 @@ export const knowledgeText = pgBaseTable(
     title: varchar("title", { length: 1000 }).notNull().default(""),
     meta: jsonb("meta").notNull().default("{}"),
     version: integer("version").notNull().default(1),
+    // isLatest: true for the current version, false for old versions
+    isLatest: boolean("is_latest").notNull().default(true),
     hidden: boolean("hidden").notNull().default(false),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
@@ -80,6 +85,12 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_team_id_idx").on(knowledgeText.teamId),
     index("knowledge_text_user_id_idx").on(knowledgeText.userId),
     index("knowledge_text_parent_id_idx").on(knowledgeText.parentId),
+    // New indexes for documentId
+    index("knowledge_text_document_id_idx").on(knowledgeText.documentId),
+    index("knowledge_text_document_latest_idx").on(
+      knowledgeText.documentId,
+      knowledgeText.isLatest
+    ),
     check("knowledge_text_text_min_length", sql`length(text) > 3`),
   ]
 );
