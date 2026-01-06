@@ -9,6 +9,7 @@ import { RESPONSES } from "../../../../../lib/responses";
 import {
   createKnowledgeText,
   getKnowledgeText,
+  getKnowledgeTextById,
   getKnowledgeTextHistory,
   updateKnowledgeText,
   deleteKnowledgeText,
@@ -70,7 +71,7 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * Read knowledge text entries (returns only latest versions)
+   * Get list of knowledge text entries (returns only latest versions WITHOUT text content)
    */
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/texts",
@@ -78,7 +79,8 @@ export default function defineRoutesForKnowledgeTexts(
     checkUserPermission,
     describeRoute({
       tags: ["knowledge"],
-      summary: "Read knowledge text entries (returns only latest versions)",
+      summary:
+        "Get list of knowledge text entries (returns only latest versions WITHOUT text content)",
       responses: {
         200: {
           description: "Successful response",
@@ -94,7 +96,6 @@ export default function defineRoutesForKnowledgeTexts(
     validator(
       "query",
       v.object({
-        id: v.optional(v.string()),
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
         limit: v.optional(v.string()),
@@ -105,20 +106,14 @@ export default function defineRoutesForKnowledgeTexts(
     isTenantMember,
     async (c) => {
       try {
-        const {
-          id,
-          teamId,
-          workspaceId,
-          limit: limitStr,
-          page: pageStr,
-        } = c.req.valid("query");
+        const { teamId, workspaceId, limit: limitStr, page: pageStr } =
+          c.req.valid("query");
         const { tenantId } = c.req.valid("param");
         const userId = c.get("usersId");
         const limit = limitStr ? parseInt(limitStr) : undefined;
         const page = pageStr ? parseInt(pageStr) : undefined;
 
         const r = await getKnowledgeText({
-          id,
           limit,
           page,
           tenantId,
@@ -134,7 +129,61 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * Get complete version history for a knowledge text entry
+   * Get single knowledge text entry by ID with full content
+   * Returns latest version by default, or specific version with versionId query param
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Get single knowledge text entry with full content (latest version or specific versionId)",
+      responses: {
+        200: {
+          description: "Successful response with full text content",
+          content: {
+            "application/json": {
+              schema: resolver(knowledgeEntrySchema),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator(
+      "query",
+      v.object({
+        versionId: v.optional(v.string()),
+        teamId: v.optional(v.string()),
+        workspaceId: v.optional(v.string()),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { versionId, teamId, workspaceId } = c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+
+        const r = await getKnowledgeTextById(id, {
+          tenantId,
+          userId,
+          teamId,
+          workspaceId,
+          versionId,
+        });
+        return c.json(r);
+      } catch (e) {
+        throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Get complete version history for a knowledge text entry WITHOUT text content
    */
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/history",
@@ -142,10 +191,12 @@ export default function defineRoutesForKnowledgeTexts(
     checkUserPermission,
     describeRoute({
       tags: ["knowledge"],
-      summary: "Get complete version history for a knowledge text entry",
+      summary:
+        "Get complete version history for a knowledge text entry WITHOUT text content",
       responses: {
         200: {
-          description: "Successful response with all versions chronologically",
+          description:
+            "Successful response with all versions chronologically (metadata only)",
           content: {
             "application/json": {
               schema: resolver(v.array(knowledgeEntrySchema)),
@@ -162,10 +213,7 @@ export default function defineRoutesForKnowledgeTexts(
         workspaceId: v.optional(v.string()),
       })
     ),
-    validator(
-      "param",
-      v.object({ tenantId: v.string(), id: v.string() })
-    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     isTenantMember,
     async (c) => {
       try {

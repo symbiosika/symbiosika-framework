@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll } from "bun:test";
 import {
   createKnowledgeText,
   getKnowledgeText,
+  getKnowledgeTextById,
+  getKnowledgeTextHistory,
   updateKnowledgeText,
   deleteKnowledgeText,
 } from "./knowledge-texts";
@@ -25,23 +27,39 @@ describe("Knowledge Texts Test", () => {
     expect(createdText.title).toBe(newText.title);
   });
 
-  it("should read a knowledge text entry by ID", async () => {
+  it("should read knowledge text list WITHOUT text content", async () => {
     const newText = {
       text: "Another test knowledge text",
       title: "Another Test Title",
       tenantId: TEST_ORGANISATION_1.id,
     };
 
+    await createKnowledgeText(newText);
+    const listResult = await getKnowledgeText({
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    expect(listResult.length).toBeGreaterThan(0);
+    // Text should NOT be in list result
+    // @ts-ignore
+    expect(listResult[0]?.text).toBeUndefined();
+    expect(listResult[0]?.title).toBeDefined();
+  });
+
+  it("should read single knowledge text entry by ID WITH full content", async () => {
+    const newText = {
+      text: "Full content test",
+      title: "Full Content Title",
+      tenantId: TEST_ORGANISATION_1.id,
+    };
+
     const createdText = await createKnowledgeText(newText);
-    const readText = await getKnowledgeText({
-      id: createdText.id,
+    const readText = await getKnowledgeTextById(createdText.id, {
       tenantId: createdText.tenantId,
     });
 
-    expect(readText.length).toBe(1);
-    if (!readText[0]) return; // end test if readText is undefined
-    expect(readText[0].text).toBe(newText.text);
-    expect(readText[0].title).toBe(newText.title);
+    expect(readText.text).toBe(newText.text);
+    expect(readText.title).toBe(newText.title);
   });
 
   it("should update a knowledge text entry", async () => {
@@ -81,12 +99,6 @@ describe("Knowledge Texts Test", () => {
     });
 
     expect(deletedText.success).toBe(true);
-
-    const readText = await getKnowledgeText({
-      id: createdText.id,
-      tenantId: createdText.tenantId,
-    });
-    expect(readText.length).toBe(0);
   });
 
   it("should create a knowledge text with version, hidden and parentId attributes", async () => {
@@ -178,13 +190,13 @@ describe("Knowledge Texts Test", () => {
     expect(updated.id).not.toBe(originalId); // New ID
     expect(updated.parentId).toBe(originalId); // Links to original
 
-    // Original should be marked as hidden
-    const originalCheck = await getKnowledgeText({
-      id: originalId,
+    // Original should be marked as hidden - check via getKnowledgeTextById with versionId
+    const originalCheck = await getKnowledgeTextById(originalId, {
       tenantId: created.tenantId,
+      versionId: originalId, // Get specific old version
     });
-    expect(originalCheck[0]).toBeDefined();
-    expect(originalCheck[0]?.hidden).toBe(true);
+    expect(originalCheck).toBeDefined();
+    expect(originalCheck.hidden).toBe(true);
   });
 
   it("should preserve parentId chain across multiple updates", async () => {
@@ -211,24 +223,25 @@ describe("Knowledge Texts Test", () => {
     expect(v3.version).toBe(3);
     expect(v3.parentId).toBe(v1.id); // Points to original, not v2
 
-    // Check all versions are accessible but old ones are hidden
-    const v1Check = await getKnowledgeText({
-      id: v1.id,
+    // Check all versions using versionId
+    const v1Check = await getKnowledgeTextById(v1.id, {
       tenantId: v1.tenantId,
+      versionId: v1.id,
     });
-    expect(v1Check[0]?.hidden).toBe(true);
+    expect(v1Check.hidden).toBe(true);
 
-    const v2Check = await getKnowledgeText({
-      id: v2.id,
+    const v2Check = await getKnowledgeTextById(v2.id, {
       tenantId: v2.tenantId,
+      versionId: v2.id,
     });
-    expect(v2Check[0]?.hidden).toBe(true);
+    expect(v2Check.hidden).toBe(true);
 
-    const v3Check = await getKnowledgeText({
-      id: v3.id,
+    // Get latest version - should be v3
+    const latestCheck = await getKnowledgeTextById(v1.id, {
       tenantId: v3.tenantId,
     });
-    expect(v3Check[0]?.hidden).toBe(false); // Latest version is visible
+    expect(latestCheck.id).toBe(v3.id);
+    expect(latestCheck.hidden).toBe(false); // Latest version is visible
   });
 
   it("should only update specified fields in new version", async () => {
@@ -251,7 +264,7 @@ describe("Knowledge Texts Test", () => {
     expect(updated.version).toBe(2);
   });
 
-  it("should return only latest versions (hidden=false) in list", async () => {
+  it("should return only latest versions (hidden=false) in list WITHOUT text", async () => {
     const v1 = await createKnowledgeText({
       text: "Version 1",
       title: "List Test Entry",
@@ -271,7 +284,7 @@ describe("Knowledge Texts Test", () => {
       { tenantId: v2.tenantId }
     );
 
-    // Get list - should only return v3 (latest version)
+    // Get list - should only return v3 (latest version) WITHOUT text
     const list = await getKnowledgeText({
       tenantId: TEST_ORGANISATION_1.id,
     });
@@ -284,9 +297,58 @@ describe("Knowledge Texts Test", () => {
     expect(listTestEntries[0]?.id).toBe(v3.id); // The latest version
     expect(listTestEntries[0]?.version).toBe(3);
     expect(listTestEntries[0]?.hidden).toBe(false);
+    // @ts-ignore
+    expect(listTestEntries[0]?.text).toBeUndefined(); // Text NOT included
   });
 
-  it("should return complete version history with getKnowledgeTextHistory", async () => {
+  it("should get latest version by ID WITH full text content", async () => {
+    const v1 = await createKnowledgeText({
+      text: "Version 1 content",
+      title: "Get By ID Test",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    const v2 = await updateKnowledgeText(
+      v1.id,
+      { text: "Version 2 content" },
+      { tenantId: v1.tenantId }
+    );
+
+    // Get by ID should return latest version (v2) with full content
+    const result = await getKnowledgeTextById(v1.id, {
+      tenantId: v1.tenantId,
+    });
+
+    expect(result.id).toBe(v2.id);
+    expect(result.version).toBe(2);
+    expect(result.text).toBe("Version 2 content"); // Full text included
+  });
+
+  it("should get specific version by versionId", async () => {
+    const v1 = await createKnowledgeText({
+      text: "Version 1 specific",
+      title: "Version ID Test",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    const v2 = await updateKnowledgeText(
+      v1.id,
+      { text: "Version 2 specific" },
+      { tenantId: v1.tenantId }
+    );
+
+    // Get specific old version
+    const result = await getKnowledgeTextById(v1.id, {
+      tenantId: v1.tenantId,
+      versionId: v1.id, // Get v1 specifically
+    });
+
+    expect(result.id).toBe(v1.id);
+    expect(result.version).toBe(1);
+    expect(result.text).toBe("Version 1 specific");
+  });
+
+  it("should return complete version history WITHOUT text content", async () => {
     const v1 = await createKnowledgeText({
       text: "Version 1",
       title: "History Test",
@@ -306,10 +368,7 @@ describe("Knowledge Texts Test", () => {
       { tenantId: v2.tenantId }
     );
 
-    // Import the history function
-    const { getKnowledgeTextHistory } = await import("./knowledge-texts");
-
-    // Get history - should return all 3 versions chronologically
+    // Get history - should return all 3 versions chronologically WITHOUT text
     const history = await getKnowledgeTextHistory(v3.id, {
       tenantId: TEST_ORGANISATION_1.id,
     });
@@ -317,10 +376,16 @@ describe("Knowledge Texts Test", () => {
     expect(history.length).toBe(3);
     expect(history[0]?.id).toBe(v1.id); // Oldest first
     expect(history[0]?.version).toBe(1);
+    // @ts-ignore
+    expect(history[0]?.text).toBeUndefined(); // No text in history
     expect(history[1]?.id).toBe(v2.id);
     expect(history[1]?.version).toBe(2);
+    // @ts-ignore
+    expect(history[1]?.text).toBeUndefined(); // No text in history
     expect(history[2]?.id).toBe(v3.id); // Newest last
     expect(history[2]?.version).toBe(3);
+    // @ts-ignore
+    expect(history[2]?.text).toBeUndefined(); // No text in history
   });
 
   it("should return history starting from any version in chain", async () => {

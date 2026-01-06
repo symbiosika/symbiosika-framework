@@ -236,15 +236,15 @@ describe("Knowledge API Endpoints", () => {
     expect(updateResponse.jsonResponse.title).toBe("Updated API Title");
     expect(updateResponse.jsonResponse.parentId).toBe(originalId);
 
-    // Check original is hidden
+    // Check original is hidden - use versionId parameter to get specific version
     const getOriginalResponse = await testFetcher.get(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts?id=${originalId}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${originalId}?versionId=${originalId}`,
       TEST_USER_1_TOKEN
     );
 
     expect(getOriginalResponse.status).toBe(200);
-    expect(getOriginalResponse.jsonResponse[0]?.hidden).toBe(true);
+    expect(getOriginalResponse.jsonResponse.hidden).toBe(true);
 
     // Cleanup both versions
     await testFetcher.delete(
@@ -319,14 +319,14 @@ describe("Knowledge API Endpoints", () => {
     );
   });
 
-  test("GET list should return only latest versions (hidden=false)", async () => {
+  test("GET list should return only latest versions (hidden=false) without text content", async () => {
     const v1Response = await testFetcher.post(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
       TEST_USER_1_TOKEN,
       {
         tenantId: TEST_ORGANISATION_1.id,
-        text: "Version 1",
+        text: "Version 1 with long text content",
         title: "API List Test",
       }
     );
@@ -337,7 +337,7 @@ describe("Knowledge API Endpoints", () => {
       TEST_USER_1_TOKEN,
       {
         tenantId: TEST_ORGANISATION_1.id,
-        text: "Version 2",
+        text: "Version 2 with long text content",
       }
     );
 
@@ -347,11 +347,11 @@ describe("Knowledge API Endpoints", () => {
       TEST_USER_1_TOKEN,
       {
         tenantId: TEST_ORGANISATION_1.id,
-        text: "Version 3",
+        text: "Version 3 with long text content",
       }
     );
 
-    // Get list - should only return latest version
+    // Get list - should only return latest version without text content
     const listResponse = await testFetcher.get(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
@@ -367,6 +367,7 @@ describe("Knowledge API Endpoints", () => {
     expect(apiListTestEntries[0].id).toBe(v3Response.jsonResponse.id);
     expect(apiListTestEntries[0].version).toBe(3);
     expect(apiListTestEntries[0].hidden).toBe(false);
+    expect(apiListTestEntries[0].text).toBeUndefined(); // Text should not be in list
 
     // Cleanup
     await testFetcher.delete(
