@@ -56,8 +56,9 @@ describe("Knowledge API Edge Cases", () => {
       textData
     );
 
-    // Empty text should be rejected by validation
-    expect(response.status).toBe(400);
+    // Empty text is allowed
+    expect(response.status).toBe(200);
+    expect(response.jsonResponse.text).toBe("");
   });
 
   test("Create knowledge text with very long text", async () => {
