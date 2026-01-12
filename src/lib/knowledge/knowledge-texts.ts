@@ -64,6 +64,7 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
 
 /**
  * Get list of all knowledge text entries - returns only latest versions WITHOUT text content
+ * Sorted alphabetically by title
  */
 export const getKnowledgeText = async (filters: {
   tenantId: string;
@@ -116,7 +117,7 @@ export const getKnowledgeText = async (filters: {
     .select({ ...rest })
     .from(knowledgeText)
     .where(and(...permissionConditions))
-    .orderBy(desc(knowledgeText.createdAt))
+    .orderBy(asc(knowledgeText.title)) // Sort alphabetically by title
     .$dynamic();
 
   if (filters.limit) {
@@ -384,6 +385,20 @@ export const updateKnowledgeText = async (
     }
   }
 
+  // If parentId is being updated and is not null, resolve it to documentId
+  let resolvedParentId = data.parentId !== undefined ? data.parentId : currentEntry.parentId;
+  if (data.parentId !== undefined && data.parentId !== null) {
+    const parentEntry = await getDb()
+      .select({ documentId: knowledgeText.documentId })
+      .from(knowledgeText)
+      .where(eq(knowledgeText.id, data.parentId))
+      .limit(1);
+    
+    if (parentEntry[0]) {
+      resolvedParentId = parentEntry[0].documentId;
+    }
+  }
+
   // Create new version with incremented version number
   const newVersion: KnowledgeTextInsert = {
     documentId: currentEntry.documentId, // Keep same documentId
@@ -391,7 +406,7 @@ export const updateKnowledgeText = async (
     tenantWide: currentEntry.tenantWide,
     teamId: currentEntry.teamId,
     userId: currentEntry.userId,
-    parentId: data.parentId ?? currentEntry.parentId, // Keep Wiki hierarchy (NOT version chain!) - allow updates
+    parentId: resolvedParentId, // Keep Wiki hierarchy (NOT version chain!) - allow updates
     text: data.text ?? currentEntry.text,
     title: data.title ?? currentEntry.title,
     meta: data.meta ?? currentEntry.meta,
