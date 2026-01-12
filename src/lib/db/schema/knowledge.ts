@@ -61,7 +61,7 @@ export const knowledgeText = pgBaseTable(
     // Stores the documentId of the parent (not id!) to maintain hierarchy across versions
     // No foreign key constraint since documentId is not unique (multiple versions share it)
     parentId: uuid("parent_id"),
-    text: text("text").notNull(),
+    text: text("text").notNull().default(""),
     title: varchar("title", { length: 1000 }).notNull().default(""),
     meta: jsonb("meta").notNull().default("{}"),
     version: integer("version").notNull().default(1),
@@ -91,7 +91,6 @@ export const knowledgeText = pgBaseTable(
       knowledgeText.documentId,
       knowledgeText.isLatest
     ),
-    check("knowledge_text_text_min_length", sql`length(text) > 3`),
   ]
 );
 

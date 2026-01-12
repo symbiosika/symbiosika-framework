@@ -479,4 +479,91 @@ describe("Knowledge Texts Test", () => {
     expect(child2.parentId).toBe(parent.documentId);
     expect(child2.parentId).toBe(parentV2.documentId);
   });
+
+  it("should allow creating and updating knowledge text with empty text", async () => {
+    // Create entry with empty text
+    const emptyText = await createKnowledgeText({
+      text: "",
+      title: "Entry with empty text",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    expect(emptyText).toHaveProperty("id");
+    expect(emptyText.text).toBe("");
+    expect(emptyText.title).toBe("Entry with empty text");
+    expect(emptyText.isLatest).toBe(true);
+
+    // Update to empty text should also work
+    const updated = await updateKnowledgeText(
+      emptyText.id,
+      { text: "" },
+      { tenantId: emptyText.tenantId }
+    );
+
+    expect(updated.text).toBe("");
+    expect(updated.version).toBe(2);
+    expect(updated.isLatest).toBe(true);
+    expect(updated.documentId).toBe(emptyText.documentId);
+
+    // Entry should still be visible in list
+    const list = await getKnowledgeText({
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    const foundEntry = list.find((e) => e.documentId === emptyText.documentId);
+    expect(foundEntry).toBeDefined();
+    expect(foundEntry?.id).toBe(updated.id); // Latest version
+    expect(foundEntry?.isLatest).toBe(true);
+  });
+
+  it("should not break hierarchy when parent is updated with empty text", async () => {
+    // Create parent with content
+    const parent = await createKnowledgeText({
+      text: "Parent with content",
+      title: "Parent Entry",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    // Create child
+    const child = await createKnowledgeText({
+      text: "Child text",
+      title: "Child Entry",
+      tenantId: TEST_ORGANISATION_1.id,
+      parentId: parent.id,
+    });
+
+    expect(child.parentId).toBe(parent.documentId);
+
+    // Update parent with empty text
+    const parentV2 = await updateKnowledgeText(
+      parent.id,
+      { text: "" },
+      { tenantId: parent.tenantId }
+    );
+
+    expect(parentV2.text).toBe("");
+    expect(parentV2.isLatest).toBe(true);
+    expect(parentV2.documentId).toBe(parent.documentId);
+
+    // Child should still have correct parent reference
+    const childCheck = await getKnowledgeTextById(child.id, {
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    expect(childCheck.parentId).toBe(parent.documentId);
+    expect(childCheck.parentId).toBe(parentV2.documentId);
+
+    // Both parent and child should be visible in list
+    const list = await getKnowledgeText({
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    const foundParent = list.find((e) => e.documentId === parent.documentId);
+    const foundChild = list.find((e) => e.documentId === child.documentId);
+
+    expect(foundParent).toBeDefined();
+    expect(foundParent?.id).toBe(parentV2.id); // Latest version with empty text
+    expect(foundChild).toBeDefined();
+    expect(foundChild?.parentId).toBe(parent.documentId);
+  });
 });

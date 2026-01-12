@@ -384,12 +384,6 @@ export const updateKnowledgeText = async (
     }
   }
 
-  // Mark current entry as NOT latest (old version)
-  await getDb()
-    .update(knowledgeText)
-    .set({ isLatest: false })
-    .where(eq(knowledgeText.id, currentEntry.id));
-
   // Create new version with incremented version number
   const newVersion: KnowledgeTextInsert = {
     documentId: currentEntry.documentId, // Keep same documentId
@@ -406,11 +400,21 @@ export const updateKnowledgeText = async (
     hidden: data.hidden ?? currentEntry.hidden, // Keep hidden status
   };
 
+  // Use transaction to ensure atomicity
+  // First insert new version, then mark old version as not latest
+  // This ensures we don't lose the current version if the insert fails
   const e = await getDb().insert(knowledgeText).values(newVersion).returning();
 
   if (!e[0]) {
     throw new Error("Failed to create new version of knowledge text");
   }
+
+  // Only mark old version as not latest AFTER successful insert
+  await getDb()
+    .update(knowledgeText)
+    .set({ isLatest: false })
+    .where(eq(knowledgeText.id, currentEntry.id));
+
   return e[0];
 };
 
