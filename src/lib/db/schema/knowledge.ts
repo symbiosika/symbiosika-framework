@@ -42,11 +42,6 @@ export const knowledgeText = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    // documentId: All versions of the same document share this ID
-    // Auto-generated via default() when not provided
-    documentId: uuid("document_id")
-      .notNull()
-      .default(sql`gen_random_uuid()`),
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
@@ -58,15 +53,13 @@ export const knowledgeText = pgBaseTable(
     // security feature to limit access to knowledge entries
     userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     // parentId: ONLY for Wiki hierarchy (parent-child relationships in tree)
-    // Stores the documentId of the parent (not id!) to maintain hierarchy across versions
-    // No foreign key constraint since documentId is not unique (multiple versions share it)
-    parentId: uuid("parent_id"),
+    parentId: uuid("parent_id").references(
+      (): AnyPgColumn => knowledgeText.id,
+      { onDelete: "cascade" }
+    ),
     text: text("text").notNull().default(""),
     title: varchar("title", { length: 1000 }).notNull().default(""),
     meta: jsonb("meta").notNull().default("{}"),
-    version: integer("version").notNull().default(1),
-    // isLatest: true for the current version, false for old versions
-    isLatest: boolean("is_latest").notNull().default(true),
     hidden: boolean("hidden").notNull().default(false),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
@@ -85,11 +78,43 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_team_id_idx").on(knowledgeText.teamId),
     index("knowledge_text_user_id_idx").on(knowledgeText.userId),
     index("knowledge_text_parent_id_idx").on(knowledgeText.parentId),
-    // New indexes for documentId
-    index("knowledge_text_document_id_idx").on(knowledgeText.documentId),
-    index("knowledge_text_document_latest_idx").on(
-      knowledgeText.documentId,
-      knowledgeText.isLatest
+  ]
+);
+
+// History table for knowledgeText versions
+export const knowledgeTextHistory = pgBaseTable(
+  "knowledge_text_history",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    knowledgeTextId: uuid("knowledge_text_id")
+      .notNull()
+      .references(() => knowledgeText.id, { onDelete: "cascade" }),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    tenantWide: boolean("tenant_wide").notNull().default(false),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    parentId: uuid("parent_id"), // Store the parentId at time of history creation
+    text: text("text").notNull().default(""),
+    title: varchar("title", { length: 1000 }).notNull().default(""),
+    meta: jsonb("meta").notNull().default("{}"),
+    hidden: boolean("hidden").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(), // When this history entry was created
+  },
+  (knowledgeTextHistory) => [
+    index("knowledge_text_history_knowledge_text_id_idx").on(
+      knowledgeTextHistory.knowledgeTextId
+    ),
+    index("knowledge_text_history_tenant_id_idx").on(
+      knowledgeTextHistory.tenantId
+    ),
+    index("knowledge_text_history_created_at_idx").on(
+      knowledgeTextHistory.createdAt
     ),
   ]
 );
@@ -100,6 +125,13 @@ export type KnowledgeTextInsert = typeof knowledgeText.$inferInsert;
 export const knowledgeTextSchema = createSelectSchema(knowledgeText);
 export const knowledgeTextInsertSchema = createInsertSchema(knowledgeText);
 export const knowledgeTextUpdateSchema = createUpdateSchema(knowledgeText);
+
+export type KnowledgeTextHistorySelect = typeof knowledgeTextHistory.$inferSelect;
+export type KnowledgeTextHistoryInsert = typeof knowledgeTextHistory.$inferInsert;
+
+export const knowledgeTextHistorySchema = createSelectSchema(knowledgeTextHistory);
+export const knowledgeTextHistoryInsertSchema = createInsertSchema(knowledgeTextHistory);
+export const knowledgeTextHistoryUpdateSchema = createUpdateSchema(knowledgeTextHistory);
 
 export type KnowledgeTextMeta = {
   sourceUri?: string;
@@ -428,6 +460,29 @@ export const knowledgeTextRelations = relations(
     }),
     user: one(users, {
       fields: [knowledgeText.userId],
+      references: [users.id],
+    }),
+    history: many(knowledgeTextHistory),
+  })
+);
+
+export const knowledgeTextHistoryRelations = relations(
+  knowledgeTextHistory,
+  ({ one }) => ({
+    knowledgeText: one(knowledgeText, {
+      fields: [knowledgeTextHistory.knowledgeTextId],
+      references: [knowledgeText.id],
+    }),
+    tenant: one(tenants, {
+      fields: [knowledgeTextHistory.tenantId],
+      references: [tenants.id],
+    }),
+    team: one(teams, {
+      fields: [knowledgeTextHistory.teamId],
+      references: [teams.id],
+    }),
+    user: one(users, {
+      fields: [knowledgeTextHistory.userId],
       references: [users.id],
     }),
   })

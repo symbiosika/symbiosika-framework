@@ -50,6 +50,13 @@
       "when": 1768231362594,
       "tag": "0006_confused_warstar",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1768662998608,
+      "tag": "0007_quiet_living_lightning",
+      "breakpoints": true
     }
   ]
 }

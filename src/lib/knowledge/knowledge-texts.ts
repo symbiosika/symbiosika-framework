@@ -13,7 +13,9 @@ import {
 import { getDb } from "../db/db-connection";
 import {
   knowledgeText,
+  knowledgeTextHistory,
   type KnowledgeTextInsert,
+  type KnowledgeTextHistoryInsert,
 } from "../db/schema/knowledge";
 import { RESPONSES } from "../responses";
 import { teamMembers } from "../db/schema/users";
@@ -31,30 +33,9 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
     await checkTenantMemberRole(data.tenantId, data.userId, ["admin", "owner"]);
   }
 
-  // If parentId is provided, resolve it to documentId
-  // This ensures hierarchy is maintained across versions
-  let resolvedParentId = data.parentId;
-  if (data.parentId) {
-    const parentEntry = await getDb()
-      .select({ documentId: knowledgeText.documentId })
-      .from(knowledgeText)
-      .where(eq(knowledgeText.id, data.parentId))
-      .limit(1);
-    
-    if (parentEntry[0]) {
-      resolvedParentId = parentEntry[0].documentId;
-    }
-  }
-
-  // documentId will be auto-generated if not provided (default in schema)
   const e = await getDb()
     .insert(knowledgeText)
-    .values({
-      ...data,
-      parentId: resolvedParentId,
-      version: 1,
-      isLatest: true,
-    })
+    .values(data)
     .returning();
   if (!e[0]) {
     throw new Error("Failed to create knowledge text");
@@ -63,7 +44,7 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
 };
 
 /**
- * Get list of all knowledge text entries - returns only latest versions WITHOUT text content
+ * Get list of all knowledge text entries WITHOUT text content
  * Sorted alphabetically by title
  */
 export const getKnowledgeText = async (filters: {
@@ -75,12 +56,9 @@ export const getKnowledgeText = async (filters: {
   page?: number;
   includeHidden?: boolean; // Optional: include system/hidden entries
 }) => {
-  // For list queries: Get all entries with isLatest=true (latest versions)
-  // Only the latest version has isLatest=true
   // Exclude 'text' field to reduce payload size
   const permissionConditions: SQLWrapper[] = [
     eq(knowledgeText.tenantId, filters.tenantId),
-    eq(knowledgeText.isLatest, true), // Only show latest versions
   ];
 
   // By default, exclude hidden (system) entries unless explicitly requested
@@ -132,7 +110,6 @@ export const getKnowledgeText = async (filters: {
 
 /**
  * Get a single knowledge text entry by ID with full content
- * Returns latest version by default, or specific version if versionId is provided
  */
 export const getKnowledgeTextById = async (
   id: string,
@@ -141,81 +118,12 @@ export const getKnowledgeTextById = async (
     userId?: string;
     teamId?: string;
     workspaceId?: string;
-    versionId?: string; // Optional: get specific version instead of latest
     includeHidden?: boolean; // Optional: include system/hidden entries
   }
 ) => {
-  // If versionId is provided, get that specific version
-  if (context.versionId) {
-    const permissionConditions: SQLWrapper[] = [
-      eq(knowledgeText.tenantId, context.tenantId),
-      eq(knowledgeText.id, context.versionId),
-    ];
-
-    // Check hidden flag unless explicitly allowed
-    if (!context.includeHidden) {
-      permissionConditions.push(eq(knowledgeText.hidden, false));
-    }
-
-    if (context.userId) {
-      permissionConditions.push(
-        or(
-          eq(knowledgeText.userId, context.userId),
-          and(isNull(knowledgeText.teamId), eq(knowledgeText.tenantWide, true)),
-          exists(
-            getDb()
-              .select()
-              .from(teamMembers)
-              .where(
-                and(
-                  eq(teamMembers.userId, context.userId),
-                  eq(teamMembers.teamId, knowledgeText.teamId)
-                )
-              )
-          )
-        )!
-      );
-    }
-
-    if (context.teamId) {
-      permissionConditions.push(eq(knowledgeText.teamId, context.teamId));
-    }
-
-    const result = await getDb()
-      .select()
-      .from(knowledgeText)
-      .where(and(...permissionConditions));
-
-    if (!result[0]) {
-      throw new Error("Knowledge text version not found or access denied");
-    }
-
-    return result[0];
-  }
-
-  // Otherwise, find the latest version (isLatest=true) for this documentId
-  // First, get the entry to determine its documentId
-  const entry = await getDb()
-    .select()
-    .from(knowledgeText)
-    .where(
-      and(
-        eq(knowledgeText.id, id),
-        eq(knowledgeText.tenantId, context.tenantId)
-      )
-    );
-
-  if (!entry[0]) {
-    throw new Error("Knowledge text not found");
-  }
-
-  const documentId = entry[0].documentId;
-
-  // Now find the latest version (isLatest=true) for this documentId
   const permissionConditions: SQLWrapper[] = [
     eq(knowledgeText.tenantId, context.tenantId),
-    eq(knowledgeText.documentId, documentId),
-    eq(knowledgeText.isLatest, true),
+    eq(knowledgeText.id, id),
   ];
 
   // Check hidden flag unless explicitly allowed
@@ -250,9 +158,7 @@ export const getKnowledgeTextById = async (
   const result = await getDb()
     .select()
     .from(knowledgeText)
-    .where(and(...permissionConditions))
-    .orderBy(desc(knowledgeText.version))
-    .limit(1);
+    .where(and(...permissionConditions));
 
   if (!result[0]) {
     throw new Error("Knowledge text not found or access denied");
@@ -275,62 +181,17 @@ export const getKnowledgeTextHistory = async (
     includeHidden?: boolean;
   }
 ) => {
-  // First get the entry to check permissions and find documentId
-  const entry = await getDb()
+  // First get the entry to check permissions
+  const entry = await getKnowledgeTextById(id, context);
+
+  // Get all history entries for this knowledge text
+  const historyEntries = await getDb()
     .select()
-    .from(knowledgeText)
-    .where(
-      and(eq(knowledgeText.id, id), eq(knowledgeText.tenantId, context.tenantId))
-    );
+    .from(knowledgeTextHistory)
+    .where(eq(knowledgeTextHistory.knowledgeTextId, id))
+    .orderBy(desc(knowledgeTextHistory.createdAt)); // Newest first
 
-  if (!entry[0]) {
-    throw new Error("Knowledge text not found");
-  }
-
-  const documentId = entry[0].documentId;
-
-  // Get all versions that belong to this documentId
-  const permissionConditions: SQLWrapper[] = [
-    eq(knowledgeText.tenantId, context.tenantId),
-    eq(knowledgeText.documentId, documentId),
-  ];
-
-  // Check hidden flag unless explicitly allowed
-  if (!context.includeHidden) {
-    permissionConditions.push(eq(knowledgeText.hidden, false));
-  }
-
-  if (context.userId) {
-    permissionConditions.push(
-      or(
-        eq(knowledgeText.userId, context.userId),
-        and(isNull(knowledgeText.teamId), eq(knowledgeText.tenantWide, true)),
-        exists(
-          getDb()
-            .select()
-            .from(teamMembers)
-            .where(
-              and(
-                eq(teamMembers.userId, context.userId),
-                eq(teamMembers.teamId, knowledgeText.teamId)
-              )
-            )
-        )
-      )!
-    );
-  }
-
-  if (context.teamId) {
-    permissionConditions.push(eq(knowledgeText.teamId, context.teamId));
-  }
-
-  // Return all versions WITHOUT text content, ordered chronologically (oldest first)
-  const { text, ...rest } = getTableColumns(knowledgeText);
-  return await getDb()
-    .select({ ...rest })
-    .from(knowledgeText)
-    .where(and(...permissionConditions))
-    .orderBy(asc(knowledgeText.version), asc(knowledgeText.createdAt));
+  return historyEntries;
 };
 
 /**
@@ -357,7 +218,7 @@ export const getKnowledgeTextByTitle = async (filters: {
 
 /**
  * Update a knowledgeText entry by ID
- * Creates a new version instead of overwriting the existing entry
+ * Creates a history entry before updating
  */
 export const updateKnowledgeText = async (
   id: string,
@@ -370,7 +231,7 @@ export const updateKnowledgeText = async (
     includeHidden?: boolean;
   }
 ) => {
-  // Get the full entry (including text) to create new version
+  // Get the current entry (including text) to create history
   const currentEntry = await getKnowledgeTextById(id, context);
 
   // check permission
@@ -385,57 +246,43 @@ export const updateKnowledgeText = async (
     }
   }
 
-  // If parentId is being updated and is not null, resolve it to documentId
-  let resolvedParentId = data.parentId !== undefined ? data.parentId : currentEntry.parentId;
-  if (data.parentId !== undefined && data.parentId !== null) {
-    const parentEntry = await getDb()
-      .select({ documentId: knowledgeText.documentId })
-      .from(knowledgeText)
-      .where(eq(knowledgeText.id, data.parentId))
-      .limit(1);
-    
-    if (parentEntry[0]) {
-      resolvedParentId = parentEntry[0].documentId;
-    }
-  }
-
-  // Create new version with incremented version number
-  const newVersion: KnowledgeTextInsert = {
-    documentId: currentEntry.documentId, // Keep same documentId
+  // Create history entry with the current state BEFORE updating
+  const historyEntry: KnowledgeTextHistoryInsert = {
+    knowledgeTextId: currentEntry.id,
     tenantId: currentEntry.tenantId,
     tenantWide: currentEntry.tenantWide,
     teamId: currentEntry.teamId,
     userId: currentEntry.userId,
-    parentId: resolvedParentId, // Keep Wiki hierarchy (NOT version chain!) - allow updates
-    text: data.text ?? currentEntry.text,
-    title: data.title ?? currentEntry.title,
-    meta: data.meta ?? currentEntry.meta,
-    version: currentEntry.version + 1,
-    isLatest: true, // New version is always latest
-    hidden: data.hidden ?? currentEntry.hidden, // Keep hidden status
+    parentId: currentEntry.parentId,
+    text: currentEntry.text,
+    title: currentEntry.title,
+    meta: currentEntry.meta,
+    hidden: currentEntry.hidden,
   };
 
-  // Use transaction to ensure atomicity
-  // First insert new version, then mark old version as not latest
-  // This ensures we don't lose the current version if the insert fails
-  const e = await getDb().insert(knowledgeText).values(newVersion).returning();
+  await getDb().insert(knowledgeTextHistory).values(historyEntry);
 
-  if (!e[0]) {
-    throw new Error("Failed to create new version of knowledge text");
+  // Now update the current entry
+  const updateData: Partial<KnowledgeTextInsert> = {
+    ...data,
+    updatedAt: sql`now()`,
+  };
+
+  const result = await getDb()
+    .update(knowledgeText)
+    .set(updateData)
+    .where(eq(knowledgeText.id, id))
+    .returning();
+
+  if (!result[0]) {
+    throw new Error("Failed to update knowledge text");
   }
 
-  // Only mark old version as not latest AFTER successful insert
-  await getDb()
-    .update(knowledgeText)
-    .set({ isLatest: false })
-    .where(eq(knowledgeText.id, currentEntry.id));
-
-  return e[0];
+  return result[0];
 };
 
 /**
  * Delete a knowledgeText entry by ID
- * Deletes ALL versions with the same documentId (cascade delete in both directions)
  */
 export const deleteKnowledgeText = async (
   id: string,
@@ -460,12 +307,12 @@ export const deleteKnowledgeText = async (
     }
   }
 
-  // Delete ALL versions with the same documentId (cascade in both directions)
+  // Delete the entry (history will be cascade deleted due to foreign key)
   await getDb()
     .delete(knowledgeText)
     .where(
       and(
-        eq(knowledgeText.documentId, item.documentId),
+        eq(knowledgeText.id, id),
         eq(knowledgeText.tenantId, context.tenantId)
       )
     );
