@@ -80,6 +80,7 @@ describe("Knowledge API Endpoints", () => {
     expect(response.status).toBe(200);
     expect(response.jsonResponse.text).toBe(updatedData.text);
     expect(response.jsonResponse.title).toBe(updatedData.title);
+    expect(response.jsonResponse.id).toBe(createdKnowledgeTextId); // Same ID (not a new version)
   });
 
   test("Delete a knowledge text entry", async () => {
@@ -92,7 +93,7 @@ describe("Knowledge API Endpoints", () => {
     expect(response.status).toBe(200);
   });
 
-  test("Create knowledge text with version, hidden and parentId", async () => {
+  test("Create knowledge text with hidden and parentId", async () => {
     const parentData = {
       tenantId: TEST_ORGANISATION_1.id,
       text: "Parent knowledge text for API test",
@@ -108,8 +109,6 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(parentResponse.status).toBe(200);
-    expect(parentResponse.jsonResponse.version).toBe(1);
-    expect(parentResponse.jsonResponse.isLatest).toBe(true);
     expect(parentResponse.jsonResponse.hidden).toBe(false);
     expect(parentResponse.jsonResponse.parentId).toBeNull();
 
@@ -129,11 +128,7 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(childResponse.status).toBe(200);
-    expect(childResponse.jsonResponse.parentId).toBe(
-      parentResponse.jsonResponse.documentId // Now stores documentId, not id!
-    );
-    expect(childResponse.jsonResponse.version).toBe(1); // New entry starts at version 1
-    expect(childResponse.jsonResponse.isLatest).toBe(true);
+    expect(childResponse.jsonResponse.parentId).toBe(parentResponse.jsonResponse.id); // Now stores id directly!
     expect(childResponse.jsonResponse.hidden).toBe(true);
 
     // Cleanup
@@ -149,11 +144,11 @@ describe("Knowledge API Endpoints", () => {
     );
   });
 
-  test("Update version and hidden attributes via API", async () => {
+  test("Update hidden attribute via API", async () => {
     const textData = {
       tenantId: TEST_ORGANISATION_1.id,
-      text: "Text for version update test",
-      title: "Version Update Test",
+      text: "Text for hidden update test",
+      title: "Hidden Update Test",
       hidden: false,
     };
 
@@ -165,8 +160,6 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(createResponse.status).toBe(200);
-    expect(createResponse.jsonResponse.version).toBe(1);
-    expect(createResponse.jsonResponse.isLatest).toBe(true);
 
     const updateData = {
       tenantId: TEST_ORGANISATION_1.id,
@@ -181,12 +174,10 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(updateResponse.status).toBe(200);
-    expect(updateResponse.jsonResponse.version).toBe(2); // Auto-incremented from 1
-    expect(updateResponse.jsonResponse.isLatest).toBe(true);
     expect(updateResponse.jsonResponse.hidden).toBe(true);
-    expect(updateResponse.jsonResponse.documentId).toBe(createResponse.jsonResponse.documentId);
+    expect(updateResponse.jsonResponse.id).toBe(createResponse.jsonResponse.id); // Same entry
 
-    // Cleanup - cascade delete removes all versions
+    // Cleanup
     await testFetcher.delete(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${updateResponse.jsonResponse.id}`,
@@ -194,7 +185,7 @@ describe("Knowledge API Endpoints", () => {
     );
   });
 
-  test("PUT should create new version with incremented version number", async () => {
+  test("PUT should update entry and create history", async () => {
     const originalData = {
       tenantId: TEST_ORGANISATION_1.id,
       text: "Original API text",
@@ -209,8 +200,7 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(createResponse.status).toBe(200);
-    const originalId = createResponse.jsonResponse.id;
-    const documentId = createResponse.jsonResponse.documentId;
+    const entryId = createResponse.jsonResponse.id;
 
     // Update via PUT
     const updateData = {
@@ -221,31 +211,30 @@ describe("Knowledge API Endpoints", () => {
 
     const updateResponse = await testFetcher.put(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${originalId}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}`,
       TEST_USER_1_TOKEN,
       updateData
     );
 
     expect(updateResponse.status).toBe(200);
-    expect(updateResponse.jsonResponse.id).not.toBe(originalId); // New ID for new version
-    expect(updateResponse.jsonResponse.version).toBe(2); // Incremented from 1
+    expect(updateResponse.jsonResponse.id).toBe(entryId); // Same ID (updated in place)
     expect(updateResponse.jsonResponse.text).toBe("Updated API text");
     expect(updateResponse.jsonResponse.title).toBe("Updated API Title");
-    expect(updateResponse.jsonResponse.documentId).toBe(documentId); // Same documentId
-    expect(updateResponse.jsonResponse.parentId).toBeNull(); // parentId is for wiki hierarchy, not versioning
-    expect(updateResponse.jsonResponse.isLatest).toBe(true);
+    expect(updateResponse.jsonResponse.parentId).toBeNull(); // parentId is for wiki hierarchy
 
-    // Check original is no longer latest - use versionId parameter to get specific version
-    const getOriginalResponse = await testFetcher.get(
+    // Check history was created
+    const historyResponse = await testFetcher.get(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${originalId}?versionId=${originalId}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}/history`,
       TEST_USER_1_TOKEN
     );
 
-    expect(getOriginalResponse.status).toBe(200);
-    expect(getOriginalResponse.jsonResponse.isLatest).toBe(false); // Not latest anymore
+    expect(historyResponse.status).toBe(200);
+    expect(historyResponse.jsonResponse.length).toBeGreaterThan(0);
+    // History should contain the original version
+    expect(historyResponse.jsonResponse[0].text).toBe("Original API text");
 
-    // Cleanup - cascade delete removes all versions
+    // Cleanup
     await testFetcher.delete(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${updateResponse.jsonResponse.id}`,
@@ -253,7 +242,7 @@ describe("Knowledge API Endpoints", () => {
     );
   });
 
-  test("Multiple PUTs should create version chain", async () => {
+  test("Multiple PUTs should create multiple history entries", async () => {
     const v1Response = await testFetcher.post(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
@@ -265,13 +254,12 @@ describe("Knowledge API Endpoints", () => {
       }
     );
 
-    const v1Id = v1Response.jsonResponse.id;
-    const documentId = v1Response.jsonResponse.documentId;
+    const entryId = v1Response.jsonResponse.id;
 
-    // Create version 2
+    // Update 1
     const v2Response = await testFetcher.put(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Id}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}`,
       TEST_USER_1_TOKEN,
       {
         tenantId: TEST_ORGANISATION_1.id,
@@ -279,14 +267,13 @@ describe("Knowledge API Endpoints", () => {
       }
     );
 
-    expect(v2Response.jsonResponse.version).toBe(2);
-    expect(v2Response.jsonResponse.documentId).toBe(documentId);
+    expect(v2Response.jsonResponse.id).toBe(entryId); // Same entry
     expect(v2Response.jsonResponse.parentId).toBeNull(); // parentId is for wiki hierarchy
 
-    // Create version 3
+    // Update 2
     const v3Response = await testFetcher.put(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}`,
       TEST_USER_1_TOKEN,
       {
         tenantId: TEST_ORGANISATION_1.id,
@@ -294,11 +281,20 @@ describe("Knowledge API Endpoints", () => {
       }
     );
 
-    expect(v3Response.jsonResponse.version).toBe(3);
-    expect(v3Response.jsonResponse.documentId).toBe(documentId); // Same documentId for all versions
+    expect(v3Response.jsonResponse.id).toBe(entryId); // Still same entry
     expect(v3Response.jsonResponse.parentId).toBeNull(); // parentId is for wiki hierarchy
 
-    // Cleanup - cascade delete removes all versions
+    // Check history
+    const historyResponse = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}/history`,
+      TEST_USER_1_TOKEN
+    );
+
+    expect(historyResponse.status).toBe(200);
+    expect(historyResponse.jsonResponse.length).toBe(2); // 2 updates = 2 history entries
+
+    // Cleanup
     await testFetcher.delete(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v3Response.jsonResponse.id}`,
@@ -306,39 +302,29 @@ describe("Knowledge API Endpoints", () => {
     );
   });
 
-  test("GET list should return only latest versions (hidden=false) without text content", async () => {
+  test("GET list should return all entries without text content", async () => {
     const v1Response = await testFetcher.post(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
       TEST_USER_1_TOKEN,
       {
         tenantId: TEST_ORGANISATION_1.id,
-        text: "Version 1 with long text content",
+        text: "Long text content",
         title: "API List Test",
       }
     );
 
-    const v2Response = await testFetcher.put(
+    await testFetcher.put(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
       TEST_USER_1_TOKEN,
       {
         tenantId: TEST_ORGANISATION_1.id,
-        text: "Version 2 with long text content",
+        text: "Updated long text content",
       }
     );
 
-    const v3Response = await testFetcher.put(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN,
-      {
-        tenantId: TEST_ORGANISATION_1.id,
-        text: "Version 3 with long text content",
-      }
-    );
-
-    // Get list - should only return latest version without text content
+    // Get list - should return entry without text content
     const listResponse = await testFetcher.get(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
@@ -350,23 +336,12 @@ describe("Knowledge API Endpoints", () => {
       (entry: any) => entry.title === "API List Test"
     );
 
-    expect(apiListTestEntries.length).toBe(1); // Only latest version
-    expect(apiListTestEntries[0].id).toBe(v3Response.jsonResponse.id);
-    expect(apiListTestEntries[0].version).toBe(3);
+    expect(apiListTestEntries.length).toBe(1);
+    expect(apiListTestEntries[0].id).toBe(v1Response.jsonResponse.id);
     expect(apiListTestEntries[0].hidden).toBe(false);
     expect(apiListTestEntries[0].text).toBeUndefined(); // Text should not be in list
 
     // Cleanup
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v3Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
     await testFetcher.delete(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
@@ -374,7 +349,7 @@ describe("Knowledge API Endpoints", () => {
     );
   });
 
-  test("GET history endpoint should return all versions chronologically", async () => {
+  test("GET history endpoint should return all history entries", async () => {
     const v1Response = await testFetcher.post(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
@@ -386,9 +361,11 @@ describe("Knowledge API Endpoints", () => {
       }
     );
 
-    const v2Response = await testFetcher.put(
+    const entryId = v1Response.jsonResponse.id;
+
+    await testFetcher.put(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}`,
       TEST_USER_1_TOKEN,
       {
         tenantId: TEST_ORGANISATION_1.id,
@@ -396,9 +373,9 @@ describe("Knowledge API Endpoints", () => {
       }
     );
 
-    const v3Response = await testFetcher.put(
+    await testFetcher.put(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}`,
       TEST_USER_1_TOKEN,
       {
         tenantId: TEST_ORGANISATION_1.id,
@@ -409,103 +386,26 @@ describe("Knowledge API Endpoints", () => {
     // Get history
     const historyResponse = await testFetcher.get(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v3Response.jsonResponse.id}/history`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}/history`,
       TEST_USER_1_TOKEN
     );
 
     expect(historyResponse.status).toBe(200);
-    expect(historyResponse.jsonResponse.length).toBe(3);
+    expect(historyResponse.jsonResponse.length).toBe(2); // 2 updates = 2 history entries
 
-    // Check chronological order (oldest first)
-    expect(historyResponse.jsonResponse[0].id).toBe(v1Response.jsonResponse.id);
-    expect(historyResponse.jsonResponse[0].version).toBe(1);
-    expect(historyResponse.jsonResponse[1].id).toBe(v2Response.jsonResponse.id);
-    expect(historyResponse.jsonResponse[1].version).toBe(2);
-    expect(historyResponse.jsonResponse[2].id).toBe(v3Response.jsonResponse.id);
-    expect(historyResponse.jsonResponse[2].version).toBe(3);
+    // Check order (newest first)
+    expect(historyResponse.jsonResponse[0].text).toBe("Version 2");
+    expect(historyResponse.jsonResponse[1].text).toBe("Version 1");
 
     // Cleanup
     await testFetcher.delete(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v3Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}`,
       TEST_USER_1_TOKEN
     );
   });
 
-  test("GET history should work from any version in chain", async () => {
-    const v1Response = await testFetcher.post(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
-      TEST_USER_1_TOKEN,
-      {
-        tenantId: TEST_ORGANISATION_1.id,
-        text: "Version 1",
-        title: "History Chain Test",
-      }
-    );
-
-    const v2Response = await testFetcher.put(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN,
-      {
-        tenantId: TEST_ORGANISATION_1.id,
-        text: "Version 2",
-      }
-    );
-
-    const v3Response = await testFetcher.put(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN,
-      {
-        tenantId: TEST_ORGANISATION_1.id,
-        text: "Version 3",
-      }
-    );
-
-    // Get history from v2 - should still return all 3 versions
-    const historyResponse = await testFetcher.get(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}/history`,
-      TEST_USER_1_TOKEN
-    );
-
-    expect(historyResponse.status).toBe(200);
-    expect(historyResponse.jsonResponse.length).toBe(3);
-    expect(historyResponse.jsonResponse[0].id).toBe(v1Response.jsonResponse.id);
-    expect(historyResponse.jsonResponse[1].id).toBe(v2Response.jsonResponse.id);
-    expect(historyResponse.jsonResponse[2].id).toBe(v3Response.jsonResponse.id);
-
-    // Cleanup
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v3Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v2Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
-    await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${v1Response.jsonResponse.id}`,
-      TEST_USER_1_TOKEN
-    );
-  });
-
-  test("Parent-child hierarchy should persist when parent is updated (Bug Fix Test)", async () => {
+  test("Parent-child hierarchy should persist when parent is updated", async () => {
     // Create parent entry
     const parentResponse = await testFetcher.post(
       app,
@@ -519,8 +419,7 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(parentResponse.status).toBe(200);
-    const parentV1Id = parentResponse.jsonResponse.id;
-    const parentDocumentId = parentResponse.jsonResponse.documentId;
+    const parentId = parentResponse.jsonResponse.id;
 
     // Create child entry pointing to parent
     const childResponse = await testFetcher.post(
@@ -531,19 +430,19 @@ describe("Knowledge API Endpoints", () => {
         tenantId: TEST_ORGANISATION_1.id,
         text: "Child text",
         title: "Child Entry",
-        parentId: parentV1Id,
+        parentId: parentId,
       }
     );
 
     expect(childResponse.status).toBe(200);
     const childId = childResponse.jsonResponse.id;
-    // Child's parentId should be parent's documentId (not id!)
-    expect(childResponse.jsonResponse.parentId).toBe(parentDocumentId);
+    // Child's parentId should be parent's id
+    expect(childResponse.jsonResponse.parentId).toBe(parentId);
 
-    // Update parent (creates new version with new id)
+    // Update parent (same id, just updates content)
     const parentUpdateResponse = await testFetcher.put(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${parentV1Id}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${parentId}`,
       TEST_USER_1_TOKEN,
       {
         tenantId: TEST_ORGANISATION_1.id,
@@ -553,11 +452,9 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(parentUpdateResponse.status).toBe(200);
-    const parentV2Id = parentUpdateResponse.jsonResponse.id;
-    expect(parentV2Id).not.toBe(parentV1Id); // New version has new id
-    expect(parentUpdateResponse.jsonResponse.documentId).toBe(parentDocumentId); // Same documentId
+    expect(parentUpdateResponse.jsonResponse.id).toBe(parentId); // Same ID
 
-    // Get child again - parentId should STILL point to parent's documentId
+    // Get child again - parentId should STILL point to parent's id
     const childCheckResponse = await testFetcher.get(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${childId}`,
@@ -565,9 +462,9 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(childCheckResponse.status).toBe(200);
-    expect(childCheckResponse.jsonResponse.parentId).toBe(parentDocumentId); // Still valid!
+    expect(childCheckResponse.jsonResponse.parentId).toBe(parentId); // Still valid!
 
-    // Create another child using the updated parent's id
+    // Create another child using the parent's id
     const child2Response = await testFetcher.post(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
@@ -576,12 +473,12 @@ describe("Knowledge API Endpoints", () => {
         tenantId: TEST_ORGANISATION_1.id,
         text: "Second child text",
         title: "Second Child Entry",
-        parentId: parentV2Id, // Use new version's id
+        parentId: parentId,
       }
     );
 
     expect(child2Response.status).toBe(200);
-    expect(child2Response.jsonResponse.parentId).toBe(parentDocumentId); // Also points to documentId
+    expect(child2Response.jsonResponse.parentId).toBe(parentId); // Also points to same id
 
     // Cleanup
     await testFetcher.delete(
@@ -596,7 +493,7 @@ describe("Knowledge API Endpoints", () => {
     );
     await testFetcher.delete(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${parentV2Id}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${parentId}`,
       TEST_USER_1_TOKEN
     );
   });

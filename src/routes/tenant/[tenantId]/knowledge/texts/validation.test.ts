@@ -27,7 +27,7 @@ describe("Knowledge Text API Validation", () => {
       tenantId: TEST_ORGANISATION_1.id,
       text: "Test text with version",
       title: "Version Test",
-      version: 5, // Will be ignored - createKnowledgeText always sets version to 1
+      version: 5, // This field no longer exists in the schema
     };
 
     const response = await testFetcher.post(
@@ -38,8 +38,7 @@ describe("Knowledge Text API Validation", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.jsonResponse.version).toBe(1); // Always starts at 1 for new entries
-    expect(response.jsonResponse.isLatest).toBe(true);
+    // version field is no longer part of the schema
 
     // Cleanup
     await testFetcher.delete(
@@ -109,7 +108,7 @@ describe("Knowledge Text API Validation", () => {
 
     expect(childResponse.status).toBe(200);
     expect(childResponse.jsonResponse.parentId).toBe(
-      parentResponse.jsonResponse.documentId // Now stores documentId, not id!
+      parentResponse.jsonResponse.id // Now stores id directly!
     );
 
     // Cleanup
@@ -130,7 +129,7 @@ describe("Knowledge Text API Validation", () => {
       tenantId: TEST_ORGANISATION_1.id,
       text: "Test text",
       title: "Test",
-      version: "invalid", // Should be number
+      version: "invalid", // This field no longer exists in schema
     };
 
     const response = await testFetcher.post(
@@ -140,7 +139,15 @@ describe("Knowledge Text API Validation", () => {
       textData
     );
 
-    expect(response.status).toBe(400);
+    // Should succeed and ignore the version field
+    expect(response.status).toBe(200);
+    
+    // Cleanup
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${response.jsonResponse.id}`,
+      TEST_USER_1_TOKEN
+    );
   });
 
   test("Should reject invalid hidden type", async () => {
@@ -194,7 +201,6 @@ describe("Knowledge Text API Validation", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.jsonResponse.version).toBe(1); // Default value
     expect(response.jsonResponse.hidden).toBe(false); // Default value
     expect(response.jsonResponse.parentId).toBeNull(); // No parent
 
@@ -206,12 +212,11 @@ describe("Knowledge Text API Validation", () => {
     );
   });
 
-  test("Should create new version on PUT with incremented version", async () => {
+  test("Should update entry and create history", async () => {
     const textData = {
       tenantId: TEST_ORGANISATION_1.id,
       text: "Test text for update",
       title: "Update Test",
-      version: 1,
       hidden: false,
     };
 
@@ -223,31 +228,25 @@ describe("Knowledge Text API Validation", () => {
     );
 
     expect(createResponse.status).toBe(200);
-    expect(createResponse.jsonResponse.version).toBe(1); // Initial version
-    const originalId = createResponse.jsonResponse.id;
-    const documentId = createResponse.jsonResponse.documentId;
+    const entryId = createResponse.jsonResponse.id;
 
     const updateData = {
       tenantId: TEST_ORGANISATION_1.id,
-      version: 2, // Will be ignored - updateKnowledgeText auto-increments from current version
       hidden: true,
     };
 
     const updateResponse = await testFetcher.put(
       app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${originalId}`,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}`,
       TEST_USER_1_TOKEN,
       updateData
     );
 
     expect(updateResponse.status).toBe(200);
-    expect(updateResponse.jsonResponse.version).toBe(2); // Auto-incremented from 1
     expect(updateResponse.jsonResponse.hidden).toBe(true);
-    expect(updateResponse.jsonResponse.id).not.toBe(originalId); // New version has new ID
-    expect(updateResponse.jsonResponse.documentId).toBe(documentId); // Same documentId
-    expect(updateResponse.jsonResponse.isLatest).toBe(true);
+    expect(updateResponse.jsonResponse.id).toBe(entryId); // Same entry updated in place
 
-    // Cleanup - cascade delete removes all versions
+    // Cleanup
     await testFetcher.delete(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${updateResponse.jsonResponse.id}`,
