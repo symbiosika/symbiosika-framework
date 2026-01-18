@@ -1,22 +1,19 @@
-# CLAUDE.md
+# Backend Framework
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to work with this framework.
 
 ## Development Commands
 
 ### Database Environment
-- `docker compose up` - Start development database
-- `docker compose down` - Stop development database
+- `bun run docker:up` - Start development database
+- `bun run docker:down` - Stop development database
 
 ### Database Migrations
 - `bun run framework:migrate` - Run database migrations. Should be run on each start of development server to be up to date.
 - `bun run framework:generate` - Generate new migration files after schema changes
 
-### Basic Development
-- `bun dev` - Start development server with hot reload
-- `bun dev:inspect` - Start development server with debugging
-- `bun build` - Build TypeScript to JavaScript
-- `bun clean` - Remove built files
+### Server Development
+- `bun run dev` - Start development server with hot reload
 
 ### Testing
 - Run tests from root directory: `bun test src/path/to/file.test.ts`
@@ -98,3 +95,14 @@ Validation is done using Valibot!
 - Type definitions: `src/types.ts`
 - Configuration: `drizzle.config.ts`
 - Test utilities: `src/test/`
+
+### Testing Patterns (Additional)
+- All tests must be in a single `describe` block (Bun bug workaround)
+- Use `expect(async () => await fn()).toThrow()` for error testing
+- Response properties: `jsonResponse`, `textResponse`, `headers`
+- Example assertion: `expect(response.jsonResponse?.success).toBe(true)`
+
+### Request Validation
+- Use Valibot schemas for request validation
+- Schemas in route files or separate `validation.ts` files
+- Use `@hono/valibot-validator` for route validation
