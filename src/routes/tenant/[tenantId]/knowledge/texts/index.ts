@@ -188,7 +188,6 @@ export default function defineRoutesForKnowledgeTexts(
           userId,
           teamId,
           workspaceId,
-          versionId,
           includeHidden,
         });
         return c.json(r);

@@ -265,12 +265,14 @@ export const updateKnowledgeText = async (
   // Now update the current entry
   const updateData: Partial<KnowledgeTextInsert> = {
     ...data,
-    updatedAt: sql`now()`,
   };
 
   const result = await getDb()
     .update(knowledgeText)
-    .set(updateData)
+    .set({
+      ...updateData,
+      updatedAt: sql`now()`,
+    })
     .where(eq(knowledgeText.id, id))
     .returning();
 
