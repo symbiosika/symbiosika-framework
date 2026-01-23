@@ -3,7 +3,10 @@ import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
-import { authOrRedirectToLogin } from "./lib/utils/hono-middlewares";
+import {
+  authAndSetUsersInfo,
+  authOrRedirectToLogin,
+} from "./lib/utils/hono-middlewares";
 import { ipRestriction } from "hono/ip-restriction";
 // DB
 import {
@@ -276,16 +279,39 @@ export const defineServer = (config: ServerSpecificConfig) => {
       defineDocsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
-       * Adds custom routes from customHonoApps
-       * These are used to add custom routes to the server
-       * These are defined in the App config
+       * Adds custom routes from customHonoApps (without auth)
+       * These routes are public and do not require authentication
        */
       if (config.customHonoApps) {
         config.customHonoApps.forEach(({ baseRoute, app: customApp }) => {
           const honoApp = new Hono<{
             Variables: FastAppHonoContextVariables;
           }>();
+
+          // Register routes without global auth middleware
           customApp(honoApp);
+
+          app.route(_GLOBAL_SERVER_CONFIG.basePath + baseRoute, honoApp);
+        });
+      }
+
+      /**
+       * Adds custom routes from customHonoAppsWithAuth (with auth)
+       * These routes are protected by default and require authentication
+       * Security by design: All routes in customHonoAppsWithAuth are protected
+       */
+      if (config.customHonoAppsWithAuth) {
+        config.customHonoAppsWithAuth.forEach(({ baseRoute, app: customApp }) => {
+          const honoApp = new Hono<{
+            Variables: FastAppHonoContextVariables;
+          }>();
+
+          // Apply global auth middleware to all routes
+          honoApp.use("/*", authAndSetUsersInfo);
+
+          // Register routes
+          customApp(honoApp);
+
           app.route(_GLOBAL_SERVER_CONFIG.basePath + baseRoute, honoApp);
         });
       }

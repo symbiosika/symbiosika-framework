@@ -66,6 +66,10 @@ export interface ServerSpecificConfig {
     baseRoute: string;
     app: (app: Hono<{ Variables: FastAppHonoContextVariables }>) => void;
   }[];
+  customHonoAppsWithAuth?: {
+    baseRoute: string;
+    app: (app: Hono<{ Variables: FastAppHonoContextVariables }>) => void;
+  }[];
   customDbSchema?: any; // Drizzle Schema
   customCollectionPermissions?: PermissionDefinitionPerTable;
   staticPrivateDataPath?: string;
