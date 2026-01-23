@@ -82,6 +82,46 @@ Validation is done using Valibot!
 - Plugin architecture for extensibility without core modification
 - Multi-tenant resource isolation at tenant level
 
+### Custom Routes (customHonoApps)
+When adding custom routes to your application, use one of two options:
+
+**`customHonoApps`** - Public routes without authentication
+- Routes registered here are accessible without authentication
+- Use for public endpoints like health checks, public APIs, etc.
+
+**`customHonoAppsWithAuth`** - Protected routes with authentication
+- Routes registered here are automatically protected by global auth middleware
+- All routes in `customHonoAppsWithAuth` require authentication by default
+- Security by design: Routes are protected unless explicitly placed in `customHonoApps`
+
+Example:
+```typescript
+const server = defineServer({
+  // Public routes (without auth)
+  customHonoApps: [
+    {
+      baseRoute: "",
+      app: (app) => {
+        app.get("/public-endpoint", async (c) => { ... });
+      },
+    },
+  ],
+  // Protected routes (with auth)
+  customHonoAppsWithAuth: [
+    {
+      baseRoute: "",
+      app: (app) => {
+        app.get("/protected-endpoint", async (c) => {
+          const userId = c.get("usersId"); // Available due to global auth
+        });
+      },
+    },
+  ],
+});
+```
+
+**Note**: The global auth middleware (`authAndSetUsersInfo`) is automatically applied to all routes in `customHonoAppsWithAuth`. You don't need to add it manually to each route.
+
 ### Testing Guidelines
 - Use test data from `src/test/init.test.ts` and `/test/` folder
 - Wrap API calls with `testFetcher` from `../../test/fetcher.test`
