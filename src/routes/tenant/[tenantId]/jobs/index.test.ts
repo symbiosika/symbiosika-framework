@@ -22,12 +22,6 @@ describe("Jobs API Endpoints", () => {
     TEST_USER_1_TOKEN = user1Token;
     TEST_USER_2_TOKEN = user2Token;
     TEST_USER_3_TOKEN = user3Token;
-
-    const t = await testFetcher.delete(
-      app,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/jobs/${jobId}`,
-      TEST_USER_1_TOKEN
-    );
   });
 
   afterAll(async () => {
