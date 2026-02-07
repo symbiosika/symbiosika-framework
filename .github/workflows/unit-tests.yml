@@ -51,40 +51,25 @@ jobs:
           POSTGRES_USE_SSL=false
           POSTGRES_CA=''
 
-          # OpenAI for Chat,Embeddings and Text Features
-          OPENAI_API_KEY=${{ secrets.FASTAPP_UNITTEST_OPENAI_API_KEY }}
-
           # Mistral for Chat and MultiModal
-          MISTRAL_API_KEY=${{ secrets.FASTAPP_UNITTEST_MISTRAL_API_KEY }}
-
-          # Anthropic for Chat
-          ANTHROPIC_API_KEY=${{ secrets.FASTAPP_UNITTEST_ANTHROPIC_API_KEY }}
-
-           # Perplexity
-          PERPLEXITY_API_KEY=${{ secrets.FASTAPP_UNITTEST_PERPLEXITY_API_KEY }}
-
-          # Black Forest Labs
-          BLACK_FOREST_LABS_API_KEY=${{ secrets.FASTAPP_UNITTEST_BLACK_FOREST_LABS_API_KEY }}
-
-          # Replicate
-          REPLICATE_API_KEY=${{ secrets.FASTAPP_UNITTEST_REPLICATE_API_KEY }}
+          MISTRAL_API_KEY=${{ secrets.UNITTEST_MISTRAL_API_KEY }}
 
           # Webserver Settings
           ALLOWED_ORIGINS="*"
 
           # Parsing
           PDF_PARSER_SERVICE="local"
-          LOCAL_PDF_PARSER_API_KEY="${{ secrets.FASTAPP_UNITTEST_PDF_PARSER_API_KEY }}"
-          LOCAL_PDF_PARSER_BASE_URL="${{ secrets.FASTAPP_UNITTEST_PDF_PARSER_BASE_URL }}"
-          LLAMA_CLOUD_API_KEY="${{ secrets.FASTAPP_UNITTEST_LLAMA_CLOUD_API_KEY }}"
+          LOCAL_PDF_PARSER_API_KEY=""
+          LOCAL_PDF_PARSER_BASE_URL=""
+          LLAMA_CLOUD_API_KEY=""
 
           # Encryption
-          SECRETS_AES_KEY=${{ secrets.FASTAPP_UNITTEST_SECRETS_AES_KEY }}
-          SECRETS_AES_IV=${{ secrets.FASTAPP_UNITTEST_SECRETS_AES_IV }}
+          SECRETS_AES_KEY=${{ secrets.UNITTEST_SECRETS_AES_KEY }}
+          SECRETS_AES_IV=${{ secrets.UNITTEST_SECRETS_AES_IV }}
 
           # JWT
-          JWT_PUBLIC_KEY="${{ secrets.FASTAPP_UNITTEST_JWT_KEY }}"
-          JWT_PRIVATE_KEY="${{ secrets.FASTAPP_UNITTEST_JWT_KEY }}"
+          JWT_PUBLIC_KEY="${{ secrets.UNITTEST_JWT_KEY }}"
+          JWT_PRIVATE_KEY="${{ secrets.UNITTEST_JWT_KEY }}"
 
           # Cron
           CRON_LOG=false
