@@ -2,6 +2,11 @@
 
 This repo contains a typeScript backend based on Hono + Bun + Postgre + DrizzleORM.
 
+## Rules
+
+- Always create unit tests for new routes and business logic
+- Run tests until green before finishing: `bun test src/path/to/file.test.ts`
+
 ## Quick Reference
 
 - `bun run dev` - Start dev server
