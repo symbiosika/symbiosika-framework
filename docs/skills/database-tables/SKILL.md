@@ -1,6 +1,9 @@
 ---
 name: database-tables
-description: Create and manage database tables using Drizzle ORM. Use when adding new tables, modifying schema, or working with database migrations.
+description: >
+  Use when the user asks to create a new database table, add or modify columns, add indexes or relations,
+  or generate/run database migrations. Use when editing files in backend/src/db/ or backend/framework/src/lib/db/.
+  Use when the user mentions Drizzle ORM schema definitions.
 ---
 
 # Database Tables Skill
