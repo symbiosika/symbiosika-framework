@@ -7,7 +7,7 @@ description: >
   Use when the user asks "how does X work" about core features like auth, AI, plugins, jobs, or files.
 ---
 
-# FastApp Framework
+# symbiosika-framework
 
 TypeScript backend framework on Hono + Bun runtime. Multi-tenant, AI-powered.
 
@@ -36,11 +36,11 @@ defineServer({
   // Custom routes
   customHonoApps: [{          // Public (no auth)
     baseRoute: string,
-    app: (app: FastAppHono) => void,
+    app: (app: SymbiosikaFrameworkHonoApp) => void,
   }],
   customHonoAppsWithAuth: [{  // Protected (auth middleware applied)
     baseRoute: string,
-    app: (app: FastAppHono) => void,
+    app: (app: SymbiosikaFrameworkHonoApp) => void,
   }],
 
   // Database
@@ -85,21 +85,21 @@ defineServer({
 
 ```typescript
 // Context variables set by auth middleware
-type FastAppHonoContextVariables = {
+type SymbiosikaFrameworkHonoAppContextVariables = {
   usersId: string;
   usersEmail: string;
   usersRoles: string[];
   scopes: string[];
 };
 
-type FastAppHono = Hono<{ Variables: FastAppHonoContextVariables }>;
+type SymbiosikaFrameworkHonoApp = Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>;
 ```
 
 ### Exports from Framework
 
 ```typescript
 import { defineServer } from "@framework/index";
-import type { FastAppHono } from "@framework/types";
+import type { SymbiosikaFrameworkHonoApp } from "@framework/types";
 import { HTTPException } from "hono/http-exception";
 import { getDb } from "@framework/lib/db/db-connection";
 import { smtpService } from "@framework/lib/email";

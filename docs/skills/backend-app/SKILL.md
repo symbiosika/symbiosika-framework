@@ -9,7 +9,7 @@ description: >
 
 # App Backend Development
 
-The app uses the FastApp Framework (`backend/framework/`). Path alias: `@framework/*` → `./framework/src/*`
+The app uses the symbiosika-framework (`backend/framework/`). Path alias: `@framework/*` → `./framework/src/*`
 
 ## Commands
 
@@ -59,14 +59,14 @@ const server = defineServer({
 Every route file follows this exact structure:
 
 ```typescript
-import type { FastAppHono } from "@framework/types";
+import type { SymbiosikaFrameworkHonoApp } from "@framework/types";
 import { Hono } from "hono";
 import { validator } from "hono-openapi";
 import * as v from "valibot";
 import { HTTPException } from "hono/http-exception";
 import { getX, createX, updateX, deleteX } from "../../../lib/x";
 
-const app: FastAppHono = new Hono();
+const app: SymbiosikaFrameworkHonoApp = new Hono();
 
 // GET / - List all
 app.get(
@@ -106,7 +106,7 @@ app.post(
 );
 
 // Route registration export
-export const defineXRoutes = (honoApp: FastAppHono) => {
+export const defineXRoutes = (honoApp: SymbiosikaFrameworkHonoApp) => {
   honoApp.route("/tenant/:tenantId/x", app);
 };
 ```

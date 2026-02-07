@@ -171,7 +171,7 @@ export async function create<Domain>Agent(tenantId: string) {
 Routes are registered via `customHonoAppsWithAuth` (auth is automatic).
 
 ```typescript
-import type { FastAppHono } from "@framework/types";
+import type { SymbiosikaFrameworkHonoApp } from "@framework/types";
 import { HTTPException } from "hono/http-exception";
 import { describeRoute } from "hono-openapi";
 import { resolver, validator } from "hono-openapi";
@@ -183,7 +183,7 @@ import {
   saveMessage, uiMessageToStorage, storageToUIMessage, generateTitleFromMessage,
 } from "../../../../lib/chat";
 
-export default function defineChatRoutes(app: FastAppHono, API_BASE_PATH = "") {
+export default function defineChatRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH = "") {
   const baseRoute = `${API_BASE_PATH}/tenant/:tenantId/chat`;
   const chatsRoute = `${API_BASE_PATH}/tenant/:tenantId/chats`;
 

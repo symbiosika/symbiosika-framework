@@ -4,7 +4,7 @@ This guide explains how to create and secure custom API endpoints in the framewo
 
 ## Overview
 
-The framework allows you to add custom API routes using Hono.js with built-in authentication, validation, database access, and encryption services. Custom routes are defined as functions that accept a `FastAppHono` app instance and register endpoints on it.
+The framework allows you to add custom API routes using Hono.js with built-in authentication, validation, database access, and encryption services. Custom routes are defined as functions that accept a `SymbiosikaFrameworkHonoApp` app instance and register endpoints on it.
 
 ## Route Registration
 
@@ -50,7 +50,7 @@ const server = defineServer({
 
 ```typescript
 import {
-  type FastAppHono,
+  type SymbiosikaFrameworkHonoApp,
   HTTPException,
   secretsService,
   log,
@@ -59,7 +59,7 @@ import { resolver, validator } from "hono-openapi/valibot";
 import * as v from "valibot";
 import { getDb } from "kinaut-webserver/dbSchema";
 
-export function defineMyCustomRoutes(app: FastAppHono) {
+export function defineMyCustomRoutes(app: SymbiosikaFrameworkHonoApp) {
   // Your routes will be defined here
 }
 ```
@@ -69,7 +69,7 @@ export function defineMyCustomRoutes(app: FastAppHono) {
 When registered via `customHonoAppsWithAuth`, the user is already authenticated. You can directly access user context:
 
 ```typescript
-export function defineMyCustomRoutes(app: FastAppHono) {
+export function defineMyCustomRoutes(app: SymbiosikaFrameworkHonoApp) {
   /**
    * GET endpoint - auth is already handled by customHonoAppsWithAuth
    */

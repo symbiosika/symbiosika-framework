@@ -28,12 +28,12 @@ import { initTests, TEST_ORGANISATION_1 } from "@framework/test/init.test";
 import { testFetcher } from "@framework/test/fetcher.test";
 import { getDb } from "@framework/lib/db/db-connection";
 import { Hono } from "hono";
-import type { FastAppHono } from "@framework/types";
+import type { SymbiosikaFrameworkHonoApp } from "@framework/types";
 import { defineXRoutes } from "./index";
 import { xTable } from "../../../../db/schema";
 import { eq, and } from "drizzle-orm";
 
-let app: FastAppHono;
+let app: SymbiosikaFrameworkHonoApp;
 let adminToken: string;
 
 describe("X Routes", () => {

@@ -1,10 +1,10 @@
-# FastApp Framework
+# symbiosika-framework
 
 A powerful, abstracted framework for rapid application development that allows developers to focus on business logic while providing essential infrastructure and API endpoints out of the box.
 
 ## Overview
 
-FastApp Framework is designed to accelerate application development by providing:
+symbiosika-framework Framework is designed to accelerate application development by providing:
 
 - A pre-configured web server
 - Essential API endpoints
