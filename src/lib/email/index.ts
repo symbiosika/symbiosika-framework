@@ -2,6 +2,23 @@ import nodemailer from "nodemailer";
 import * as v from "valibot";
 import log from "../log";
 
+/** Convert HTML to plain text for console so links (e.g. magic link) are visible. */
+function htmlToPlainText(html: string): string {
+  let s = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+  s = s.replace(/<a\s[^>]*href\s*=\s*["']([^"']+)["'][^>]*>[^<]*/gi, (_match, url) => url.replace(/&amp;/g, "&") + "\n");
+  s = s.replace(/<[^>]+>/g, " ");
+  s = s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
+  return s.replace(/\s+/g, " ").trim();
+}
+
 const emailSchema = v.object({
   sender: v.optional(v.string()),
   recipients: v.array(v.pipe(v.string(), v.email())),
@@ -114,12 +131,9 @@ class SMTPService {
       console.log(`Subject: ${emailData.subject}`);
       console.log("-".repeat(60));
       if (text) {
-        console.log("Text Body:");
         console.log(text);
-      }
-      if (html) {
-        console.log("HTML Body:");
-        console.log(html);
+      } else if (html) {
+        console.log(htmlToPlainText(html));
       }
       console.log("=".repeat(60) + "\n");
 
