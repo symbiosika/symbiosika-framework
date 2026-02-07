@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Fastapp Framework provides a powerful, extensible AI chat endpoint for organizations. This endpoint allows you to chat with AI models using general knowledge, prompt templates, and custom tools. You can also send and receive artifacts (such as files or images) as part of the conversation. All routes are protected by JWT authentication and permission checks.
+The symbiosika-framework provides a powerful, extensible AI chat endpoint for organizations. This endpoint allows you to chat with AI models using general knowledge, prompt templates, and custom tools. You can also send and receive artifacts (such as files or images) as part of the conversation. All routes are protected by JWT authentication and permission checks.
 
 ---
 

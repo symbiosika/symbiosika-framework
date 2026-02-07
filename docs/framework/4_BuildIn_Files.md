@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Fastapp Framework provides a built-in file management system for organizations. These endpoints allow you to upload, retrieve, get info, and delete files either in the database or on the local disk. All routes are protected by JWT authentication and permission checks.
+The symbiosika-framework provides a built-in file management system for organizations. These endpoints allow you to upload, retrieve, get info, and delete files either in the database or on the local disk. All routes are protected by JWT authentication and permission checks.
 
 ---
 

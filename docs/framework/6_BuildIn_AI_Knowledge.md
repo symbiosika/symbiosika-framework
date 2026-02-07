@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Fastapp Framework provides a built-in, organization-wide knowledge base that is tightly integrated with the AI chat functionality. Knowledge can be added as text, from documents, or from URLs, and is organized into **groups** and further refined with **filters**. This knowledge can then be leveraged in the AI chat endpoints, either directly or via prompt templates.
+The symbiosika-framework provides a built-in, organization-wide knowledge base that is tightly integrated with the AI chat functionality. Knowledge can be added as text, from documents, or from URLs, and is organized into **groups** and further refined with **filters**. This knowledge can then be leveraged in the AI chat endpoints, either directly or via prompt templates.
 
 ---
 

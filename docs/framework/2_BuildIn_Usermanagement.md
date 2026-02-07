@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Fastapp Framework comes with a fully integrated user management system. As soon as you start a webserver with the framework, all essential features for managing users, organizations, teams, and invitations are available out of the box—including the necessary API routes. You do not need to implement your own user management: authentication, authorization, and all core endpoints are ready to use.
+The symbiosika-framework comes with a fully integrated user management system. As soon as you start a webserver with the framework, all essential features for managing users, organizations, teams, and invitations are available out of the box—including the necessary API routes. You do not need to implement your own user management: authentication, authorization, and all core endpoints are ready to use.
 
 ---
 

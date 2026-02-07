@@ -1,4 +1,4 @@
-# Fastapp Framework Webserver - Get Started
+# symbiosika-framework Webserver - Get Started
 
 This guide explains how to quickly set up a webserver using the `kinaut-webserver`.
 

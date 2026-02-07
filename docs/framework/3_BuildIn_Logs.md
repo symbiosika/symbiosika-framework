@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Fastapp Framework provides a comprehensive logging system out of the box. All essential features for collecting, storing, and managing logs are available, including API endpoints for administrators to download and clear logs. This system supports multiple log levels and outputs logs to both files and the database.
+The symbiosika-framework provides a comprehensive logging system out of the box. All essential features for collecting, storing, and managing logs are available, including API endpoints for administrators to download and clear logs. This system supports multiple log levels and outputs logs to both files and the database.
 
 ---
 
