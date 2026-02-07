@@ -6,17 +6,52 @@ This guide explains how to create and secure custom API endpoints in the framewo
 
 The framework allows you to add custom API routes using Hono.js with built-in authentication, validation, database access, and encryption services. Custom routes are defined as functions that accept a `FastAppHono` app instance and register endpoints on it.
 
+## Route Registration
+
+Routes are registered in `defineServer()` using two options:
+
+### `customHonoAppsWithAuth` - Protected Routes (recommended)
+
+Routes registered here are **automatically protected** by the global `authAndSetUsersInfo` middleware. You do NOT need to add it manually to each route.
+
+```typescript
+import { defineServer } from "kinaut-webserver";
+
+const server = defineServer({
+  appName: "My Application",
+  // ...
+  customHonoAppsWithAuth: [
+    {
+      baseRoute: "/app",
+      app: defineMyCustomRoutes,
+    },
+  ],
+});
+```
+
+### `customHonoApps` - Public Routes (no auth)
+
+Routes registered here are accessible **without authentication**. Use for public endpoints like health checks or webhooks.
+
+```typescript
+const server = defineServer({
+  customHonoApps: [
+    {
+      baseRoute: "/public",
+      app: definePublicRoutes,
+    },
+  ],
+});
+```
+
 ## Basic Structure
 
-### 1. Create Route Definition Function
-
-Create a function that defines your routes and accepts a `FastAppHono` app instance:
+### Create Route Definition Function
 
 ```typescript
 import {
   type FastAppHono,
   HTTPException,
-  middlewareService,
   secretsService,
   log,
 } from "kinaut-webserver";
@@ -29,18 +64,17 @@ export function defineMyCustomRoutes(app: FastAppHono) {
 }
 ```
 
-### 2. Define Individual Routes
+### Define Individual Routes
 
-Add routes with appropriate HTTP methods, middleware, and validation:
+When registered via `customHonoAppsWithAuth`, the user is already authenticated. You can directly access user context:
 
 ```typescript
 export function defineMyCustomRoutes(app: FastAppHono) {
   /**
-   * GET endpoint with authentication and validation
+   * GET endpoint - auth is already handled by customHonoAppsWithAuth
    */
   app.get(
     "/my-endpoint/:id",
-    middlewareService.authAndSetUsersInfo, // Authentication middleware
     validator(
       "param",
       v.object({
@@ -48,11 +82,10 @@ export function defineMyCustomRoutes(app: FastAppHono) {
       })
     ),
     async (c) => {
-      const userId = c.get("usersId"); // Get authenticated user ID
-      const { id } = c.req.valid("param"); // Get validated parameters
+      const userId = c.get("usersId"); // Available via global auth middleware
+      const { id } = c.req.valid("param");
       
       try {
-        // Your business logic here
         const data = await getMyData(userId, id);
         return c.json(data);
       } catch (error) {
@@ -68,7 +101,6 @@ export function defineMyCustomRoutes(app: FastAppHono) {
    */
   app.post(
     "/my-endpoint",
-    middlewareService.authAndSetUsersInfo,
     validator(
       "json",
       v.object({
@@ -96,22 +128,24 @@ export function defineMyCustomRoutes(app: FastAppHono) {
 
 ## Authentication & Security
 
-### Built-in Authentication Middleware
+### Automatic Auth via customHonoAppsWithAuth
 
-Use `middlewareService.authAndSetUsersInfo` to secure endpoints:
+When you register routes with `customHonoAppsWithAuth`, the `authAndSetUsersInfo` middleware is **automatically applied** to all routes. This means:
+
+- JWT tokens are validated automatically
+- User context (`usersId`, `usersEmail`, `scopes`) is set automatically
+- Unauthenticated requests are rejected with 401
+
+You only need to add `authAndSetUsersInfo` manually if you register routes via `customHonoApps` and want to protect individual endpoints.
+
+### Available Context Variables
+
+After authentication, these context variables are available:
 
 ```typescript
-app.get(
-  "/secure-endpoint",
-  middlewareService.authAndSetUsersInfo, // Validates JWT and sets user info
-  async (c) => {
-    const userId = c.get("usersId"); // Authenticated user ID
-    const userEmail = c.get("usersEmail"); // User email
-    const orgId = c.get("tenantId"); // User's organization ID
-    
-    // Your secure logic here
-  }
-);
+const userId = c.get("usersId");      // Authenticated user ID
+const userEmail = c.get("usersEmail"); // User email
+const scopes = c.get("scopes");        // User scopes
 ```
 
 ### User-Specific Data Access
@@ -383,38 +417,3 @@ app.post("/endpoint", async (c) => {
   }
 });
 ```
-
-## Integration with Main Server
-
-### Register Custom Routes
-
-In your main server file (e.g., `src/index.ts`), register your custom routes using the `customHonoApps` configuration:
-
-```typescript
-import { defineServer } from "./kinaut-webserver/src";
-import { defineMyCustomRoutes } from "./lib/routes/my-custom-routes";
-
-const server = defineServer({
-  appName: "My Application",
-  // ... other configuration
-  
-  customHonoApps: [
-    {
-      baseRoute: "/app", // Base path for your routes
-      app: defineMyCustomRoutes,   // Your route definition function
-    },
-    {
-      baseRoute: "/admin",
-      app: defineAdminRoutes,
-    },
-  ],
-  
-  // ... rest of configuration
-});
-```
-
-### Route Accessibility
-
-With the above configuration:
-- Routes defined in `defineMyCustomRoutes` will be accessible under `/app/`
-- For example: `app.get("/data/:id", ...)` becomes `GET /app/data/:id`
