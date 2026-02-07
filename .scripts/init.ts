@@ -99,7 +99,7 @@ async function init(): Promise<void> {
     SECRETS_AES_KEY: aesSecrets.key,
     SECRETS_AES_IV: aesSecrets.iv,
     JWT_PUBLIC_KEY: jwtKeys.publicKey,
-    JWT_PRIVATE_KEY: jwtKeys.privateKey,
+    JWT_PRIVATE_KEY: jwtKeys.publicKey, // jwtKeys.privateKey,
   };
 
   // Update .env file
