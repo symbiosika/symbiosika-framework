@@ -18,6 +18,14 @@ export interface EmailOptions {
   html?: string;
 }
 
+/**
+ * Check if console mode is enabled (fake SMTP for development)
+ * When SMTP_HOST is "console.localhost", emails are logged to console instead of being sent
+ */
+const isConsoleMode = (): boolean => {
+  return process.env.SMTP_HOST === "console.localhost";
+};
+
 const getMailCredentials = () => {
   return {
     host: process.env.SMTP_HOST,
@@ -34,12 +42,21 @@ const getMailCredentials = () => {
 };
 
 class SMTPService {
-  private transporter: nodemailer.Transporter;
+  private transporter: nodemailer.Transporter | null = null;
   private logEnabled: boolean = false;
+  private consoleMode: boolean = false;
 
   constructor() {
     this.logEnabled = process.env.SMTP_DEBUG === "true";
-    this.transporter = nodemailer.createTransport(getMailCredentials());
+    this.consoleMode = isConsoleMode();
+
+    if (!this.consoleMode) {
+      this.transporter = nodemailer.createTransport(getMailCredentials());
+    } else {
+      console.log(
+        "📧 SMTP Console Mode enabled - emails will be logged to console"
+      );
+    }
   }
 
   private log(message: string): void {
@@ -61,25 +78,63 @@ class SMTPService {
     text,
     html,
   }: EmailOptions): Promise<boolean> {
+    // Validate email options first
+    try {
+      v.parse(emailSchema, {
+        sender,
+        recipients,
+        subject,
+        text,
+        html,
+      });
+
+      if (!text && !html) {
+        throw new Error("Text or HTML body is required");
+      }
+    } catch (error) {
+      this.error(`Email validation failed: ${error}`);
+      return false;
+    }
+
+    // Console mode: log email to console instead of sending
+    if (this.consoleMode) {
+      const emailData = {
+        from: sender || process.env.SMTP_DEFAULT_SENDER,
+        to: recipients.join(", "),
+        subject,
+        text,
+        html,
+      };
+
+      console.log("\n" + "=".repeat(60));
+      console.log("📧 EMAIL (Console Mode - Not Actually Sent)");
+      console.log("=".repeat(60));
+      console.log(`From: ${emailData.from}`);
+      console.log(`To: ${emailData.to}`);
+      console.log(`Subject: ${emailData.subject}`);
+      console.log("-".repeat(60));
+      if (text) {
+        console.log("Text Body:");
+        console.log(text);
+      }
+      if (html) {
+        console.log("HTML Body:");
+        console.log(html);
+      }
+      console.log("=".repeat(60) + "\n");
+
+      this.log(`[Console Mode] Email logged: ${subject}`);
+      return true;
+    }
+
+    // Real SMTP mode: send email with retries
     const maxRetries = 3;
     const retryInterval = 15 * 60 * 1000; // 15 minutes in milliseconds
     let attempt = 0;
 
     while (attempt < maxRetries) {
       try {
-        v.parse(emailSchema, {
-          sender,
-          recipients,
-          subject,
-          text,
-          html,
-        });
-
-        if (!text && !html) {
-          throw new Error("Text or HTML body is required");
-        }
-
-        const info = await this.transporter.sendMail({
+        const info = await this.transporter!.sendMail({
           from: sender || process.env.SMTP_DEFAULT_SENDER,
           to: recipients.join(", "),
           subject,
@@ -129,8 +184,14 @@ class SMTPService {
   }
 
   async verifyConnection(): Promise<boolean> {
+    // Console mode always returns true
+    if (this.consoleMode) {
+      this.log("[Console Mode] SMTP connection verification skipped");
+      return true;
+    }
+
     return new Promise((resolve) =>
-      this.transporter.verify((error) => {
+      this.transporter!.verify((error) => {
         if (error) {
           this.error(`SMTP connection verification failed: ${error}`);
           this.error(

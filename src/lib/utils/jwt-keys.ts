@@ -2,7 +2,7 @@
  * Generates RSA key pair for JWT signing/verification
  * Uses Bun's native crypto capabilities
  */
-async function generateJWTKeys(): Promise<{
+export async function generateJWTKeys(): Promise<{
   privateKey: string;
   publicKey: string;
 }> {

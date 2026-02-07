@@ -1,12 +1,10 @@
 import { createCipheriv, createDecipheriv } from "crypto";
 import { randomBytes } from "crypto";
-
-// Uses SECRETS_AES_KEY and SECRETS_AES_IV in .env file
+import { generateAESSecrets } from "./aes-generate";
 
 const checkSecrets = async () => {
   if (!process.env.SECRETS_AES_KEY || !process.env.SECRETS_AES_IV) {
-    const key = randomBytes(32).toString("hex");
-    const iv = randomBytes(16).toString("hex");
+    const { key, iv } = generateAESSecrets();
 
     process.env.SECRETS_AES_KEY = key;
     process.env.SECRETS_AES_IV = iv;
@@ -15,7 +13,7 @@ const checkSecrets = async () => {
     console.log("Created new AES key and IV:");
     console.log(`SECRETS_AES_KEY=${key}`);
     console.log(`SECRETS_AES_IV=${iv}`);
-    console.log("Please that to your .env file");
+    console.log("Please add that to your .env file");
     console.log("Then run the application again");
     process.exit(0);
   }
