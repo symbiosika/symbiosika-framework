@@ -3,7 +3,7 @@
  * These routes are protected by JWT and CheckPermission middleware
  */
 
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { HTTPException } from "hono/http-exception";
 import {
   authAndSetUsersInfo,
@@ -93,7 +93,7 @@ export const isTeamMemberForPayload: MiddlewareHandler = async (c, next) => {
 };
 
 export default function defineTeamRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**

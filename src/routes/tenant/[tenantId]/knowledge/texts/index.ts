@@ -2,7 +2,7 @@
  * Routes to manage the knowledge entries for each tenant
  * These routes are protected by JWT and CheckPermission middleware
  */
-import type { FastAppHono } from "../../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../../types";
 import * as v from "valibot";
 import { HTTPException } from "hono/http-exception";
 import { RESPONSES } from "../../../../../lib/responses";
@@ -30,7 +30,7 @@ import { isTenantMember } from "../../..";
 import { validateScope } from "../../../../../lib/utils/validate-scope";
 
 export default function defineRoutesForKnowledgeTexts(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**

@@ -1,9 +1,9 @@
 import type { HeadersInit } from "bun";
-import type { FastAppHono } from "../types";
+import type { SymbiosikaFrameworkHonoApp } from "../types";
 
 export const testFetcher = {
   get: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined
   ): Promise<{
@@ -37,7 +37,7 @@ export const testFetcher = {
   },
 
   post: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined,
     body: any
@@ -74,7 +74,7 @@ export const testFetcher = {
   },
 
   postFormData: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined,
     body: FormData
@@ -110,7 +110,7 @@ export const testFetcher = {
   },
 
   postWithPlainResponse: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined,
     body: any
@@ -130,7 +130,7 @@ export const testFetcher = {
   },
 
   put: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined,
     body: any
@@ -167,7 +167,7 @@ export const testFetcher = {
   },
 
   patch: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined,
     body: any
@@ -204,7 +204,7 @@ export const testFetcher = {
   },
 
   delete: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined
   ): Promise<{

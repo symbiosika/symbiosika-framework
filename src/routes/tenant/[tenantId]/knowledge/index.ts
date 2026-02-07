@@ -2,7 +2,7 @@
  * Routes to manage the knowledge entries for each tenant
  * These routes are protected by JWT and CheckPermission middleware
  */
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import * as v from "valibot";
 import { HTTPException } from "hono/http-exception";
 import {
@@ -188,7 +188,7 @@ const syncKnowledgeValidation = v.object({
   userOwned: v.optional(v.boolean()),
 });
 
-export default function defineRoutes(app: FastAppHono, API_BASE_PATH: string) {
+export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH: string) {
   /**
    * Get all knowledge entries
    * URL params:

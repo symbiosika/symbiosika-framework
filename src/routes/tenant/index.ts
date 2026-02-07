@@ -2,7 +2,7 @@
  * Routes to manage tenants
  * These routes are for the admin of the tenant and normally not used by a SPA or any Frontend
  */
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { HTTPException } from "hono/http-exception";
 import {
   authAndSetUsersInfo,
@@ -93,7 +93,7 @@ export const checkTenantIdInBody: MiddlewareHandler = async (c, next) => {
 };
 
 export default function defineTenantRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**

@@ -1,17 +1,17 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { initTests } from "../../test/init.test";
 import { logApiRoutes } from "./log-api-routes";
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { Hono } from "hono";
 
 describe("logApiRoutes", () => {
-  let app: FastAppHono;
+  let app: SymbiosikaFrameworkHonoApp;
   let consoleOutput: string[] = [];
   let originalLog: typeof console.log;
 
   beforeAll(async () => {
     await initTests();
-    app = new Hono() as FastAppHono;
+    app = new Hono() as SymbiosikaFrameworkHonoApp;
 
     // Mock console.log
     originalLog = console.log;
@@ -51,7 +51,7 @@ describe("logApiRoutes", () => {
     consoleOutput = [];
 
     // Create a new app instance without routes
-    const emptyApp = new Hono() as FastAppHono;
+    const emptyApp = new Hono() as SymbiosikaFrameworkHonoApp;
 
     // Call the function
     logApiRoutes(emptyApp);

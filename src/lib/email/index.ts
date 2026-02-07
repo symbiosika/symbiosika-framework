@@ -170,7 +170,7 @@ class SMTPService {
   async sendTestMail(recipient: string): Promise<boolean> {
     const testEmailOptions: EmailOptions = {
       recipients: [recipient],
-      subject: "SMTP Test Email from FastApp-Framework",
+      subject: "SMTP Test Email from symbiosika-framework",
       html: "<h1>SMTP Test Email</h1><p>This is a test email to verify SMTP configuration.</p>",
     };
 

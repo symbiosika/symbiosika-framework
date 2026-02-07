@@ -15,7 +15,7 @@ import {
   updateJobProgress,
   cancelJob,
 } from "../../../../lib/jobs";
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { jobsSelectSchema } from "../../../../lib/db/schema/jobs";
 import * as v from "valibot";
 import { describeRoute } from "hono-openapi";
@@ -31,7 +31,7 @@ import { validateScope } from "../../../../lib/utils/validate-scope";
  * Define the job management routes
  */
 export default function defineJobRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**

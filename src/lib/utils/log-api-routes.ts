@@ -1,6 +1,6 @@
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 
-export const logApiRoutes = (app: FastAppHono) => {
+export const logApiRoutes = (app: SymbiosikaFrameworkHonoApp) => {
   console.log("\n🛣️  Registered Routes:");
   app.routes.forEach((route) => {
     const method = route.method;

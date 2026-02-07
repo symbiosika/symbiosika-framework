@@ -9,7 +9,7 @@ import {
   checkUserPermission,
 } from "../../../../lib/utils/hono-middlewares";
 import { deleteSecret, getSecrets, setSecret } from "../../../../lib/crypt";
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { resolver, validator } from "hono-openapi";
 import * as v from "valibot";
 import { describeRoute } from "hono-openapi";
@@ -32,7 +32,7 @@ const secretResponseSchema = v.object({
  * Define the backend secret management routes
  */
 export default function defineManageSecretsRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   app.get(

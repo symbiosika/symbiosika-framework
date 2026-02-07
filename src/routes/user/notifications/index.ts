@@ -3,7 +3,7 @@
  * These routes are protected by JWT and CheckPermission middleware
  */
 
-import type { FastAppHono } from "../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../types";
 import { HTTPException } from "hono/http-exception";
 import {
   authAndSetUsersInfo,
@@ -23,7 +23,7 @@ import { userMessagesSelectSchema } from "../../../lib/db/schema/users";
  * Define notification routes
  */
 export default function defineNotificationRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string = ""
 ) {
   const baseRoute = `${API_BASE_PATH}/user/notifications`;

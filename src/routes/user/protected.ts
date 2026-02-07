@@ -7,7 +7,7 @@
 import type {
   CustomPostRegisterAction,
   CustomPreRegisterVerification,
-  FastAppHono,
+  SymbiosikaFrameworkHonoApp,
 } from "../../types";
 import { HTTPException } from "hono/http-exception";
 import {
@@ -86,7 +86,7 @@ export const registerPostRegisterAction = (
  * Define the payment routes
  */
 export function defineSecuredUserRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**

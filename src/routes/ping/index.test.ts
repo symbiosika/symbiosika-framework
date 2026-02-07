@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll } from "bun:test";
 import { Hono } from "hono";
 import definePingRoute from ".";
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 
 describe("Ping API Endpoint", () => {
-  const app: FastAppHono = new Hono();
+  const app: SymbiosikaFrameworkHonoApp = new Hono();
 
   beforeAll(() => {
     definePingRoute(app, "/api");

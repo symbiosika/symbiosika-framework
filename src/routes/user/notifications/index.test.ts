@@ -12,7 +12,7 @@ import {
   TEST_ORG2_USER_1,
 } from "../../../test/init.test";
 import { Hono } from "hono";
-import type { FastAppHonoContextVariables } from "../../../types";
+import type { SymbiosikaFrameworkHonoAppContextVariables } from "../../../types";
 import {
   createDatabaseClient,
   waitForDbConnection,
@@ -21,7 +21,7 @@ import { getDb } from "../../../lib/db/db-connection";
 import { userMessages } from "../../../lib/db/db-schema";
 import { eq } from "drizzle-orm";
 
-let app = new Hono<{ Variables: FastAppHonoContextVariables }>();
+let app = new Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>();
 let TEST_USER_1_TOKEN: string;
 let TEST_USER_2_TOKEN: string;
 

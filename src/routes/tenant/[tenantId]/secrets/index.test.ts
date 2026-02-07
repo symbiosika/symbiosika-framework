@@ -1,13 +1,13 @@
 import { describe, test, expect, beforeAll } from "bun:test";
 import { Hono } from "hono";
 import defineManageSecretsRoutes from ".";
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { initTests, TEST_ORGANISATION_1 } from "../../../../test/init.test";
 import { testFetcher } from "../../../../test/fetcher.test";
 
 let userOrg1Token: string;
 let userOrg2Token: string;
-const app: FastAppHono = new Hono();
+const app: SymbiosikaFrameworkHonoApp = new Hono();
 
 describe("Secrets API Endpoints", () => {
   let jwt: string;

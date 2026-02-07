@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { createGzip } from "zlib";
 import { Readable } from "stream";
-import { HTTPException, type FastAppHono } from "../../types";
+import { HTTPException, type SymbiosikaFrameworkHonoApp } from "../../types";
 import { describeRoute } from "hono-openapi";
 import { RESPONSES } from "../../lib/responses";
 import { validator } from "hono-openapi";
@@ -12,7 +12,7 @@ import log from "../../lib/log";
 import { authAndSetUsersInfo } from "../../lib/utils/hono-middlewares";
 import { validateScope } from "../../lib/utils/validate-scope";
 
-export default function defineAdminRoutes(app: FastAppHono, basePath: string) {
+export default function defineAdminRoutes(app: SymbiosikaFrameworkHonoApp, basePath: string) {
   /**
    * Download all logs
    */

@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeAll } from "bun:test";
 import { Hono } from "hono";
 import definePermissionGroupRoutes from ".";
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { initTests, TEST_ORGANISATION_1 } from "../../../../test/init.test";
 import { testFetcher } from "../../../../test/fetcher.test";
 import { rejectUnauthorized } from "../../../../test/reject-unauthorized.test";
@@ -12,7 +12,7 @@ import { eq } from "drizzle-orm";
 describe("Permission Groups API Endpoints", () => {
   let createdPermissionGroup: any;
   let createdPathPermission: any;
-  const app: FastAppHono = new Hono();
+  const app: SymbiosikaFrameworkHonoApp = new Hono();
   let user1Token: string;
 
   beforeAll(async () => {

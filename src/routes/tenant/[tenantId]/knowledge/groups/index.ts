@@ -2,7 +2,7 @@
  * Routes to manage the knowledge entries for each tenant
  * These routes are protected by JWT and CheckPermission middleware
  */
-import type { FastAppHono } from "../../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../../types";
 import * as v from "valibot";
 import { HTTPException } from "hono/http-exception";
 import {
@@ -43,7 +43,7 @@ const knowledgeGroupUpdateValidation = v.object({
 });
 
 export default function defineKnowledgeGroupRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**

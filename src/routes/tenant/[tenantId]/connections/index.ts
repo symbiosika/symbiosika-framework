@@ -16,7 +16,7 @@
  * - DELETE /:connectionId - Drop a connection
  */
 
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { HTTPException } from "hono/http-exception";
 import {
   authAndSetUsersInfo,
@@ -32,7 +32,7 @@ import { validateScope } from "../../../../lib/utils/validate-scope";
 /**
  * Define connections routes
  */
-const defineConnectionsRoutes = (app: FastAppHono, basePath: string) => {
+const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: string) => {
   const baseRoute = `${basePath}/tenant/:tenantId/connections`;
 
   /**

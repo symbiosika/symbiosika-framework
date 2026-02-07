@@ -6,11 +6,11 @@ import {
 } from "../../test/init.test";
 import { Hono } from "hono";
 import { defineSecuredUserRoutes } from "./protected";
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { createApiToken } from "../../lib/auth/token-auth";
 
 describe("Scope Validation Tests", () => {
-  let app: FastAppHono;
+  let app: SymbiosikaFrameworkHonoApp;
   let userReadToken: string;
   let orgReadToken: string;
 

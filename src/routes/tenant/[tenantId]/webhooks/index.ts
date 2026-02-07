@@ -1,4 +1,4 @@
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { HTTPException } from "hono/http-exception";
 import { authAndSetUsersInfo } from "../../../../lib/utils/hono-middlewares";
 import {
@@ -34,7 +34,7 @@ const normalizeToolName = (name: string): string => {
 };
 
 export default function defineWebhookRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "bun:test";
 import { Hono } from "hono";
 import { definePublicUserRoutes } from "./public";
 import { defineSecuredUserRoutes } from "./protected";
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { initTests } from "../../test/init.test";
 import { TEST_ADMIN_USER } from "../../test/init.test";
 import { getDb } from "../../lib/db/db-connection";
@@ -12,7 +12,7 @@ import { eq } from "drizzle-orm";
 const TEST_EMAIL_USER = "test-user@symbiosika.de";
 
 describe("User API Endpoints", () => {
-  const app: FastAppHono = new Hono();
+  const app: SymbiosikaFrameworkHonoApp = new Hono();
   let jwt: string;
 
   beforeAll(async () => {

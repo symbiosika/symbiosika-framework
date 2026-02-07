@@ -3,7 +3,7 @@
  * These routes are protected by JWT and CheckPermission middleware
  */
 
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { HTTPException } from "hono/http-exception";
 import {
   authAndSetUsersInfo,
@@ -30,7 +30,7 @@ import { checkTenantIdInBody, isTenantAdmin } from "../..";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 
 export default function defineInvitationsRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**

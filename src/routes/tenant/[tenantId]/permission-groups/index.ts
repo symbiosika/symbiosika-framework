@@ -4,7 +4,7 @@
  * These routes are NOT used by the frontend in normal applications!
  */
 
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { HTTPException } from "hono/http-exception";
 import { authAndSetUsersInfo } from "../../../../lib/utils/hono-middlewares";
 import {
@@ -35,7 +35,7 @@ import { RESPONSES } from "../../../../lib/responses";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 
 export default function definePermissionGroupRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**

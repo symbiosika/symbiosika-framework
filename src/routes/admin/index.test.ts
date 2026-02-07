@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeAll } from "bun:test";
 import { testFetcher } from "../../test/fetcher.test";
 import { Hono } from "hono";
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { initTests } from "../../test/init.test";
 import defineAdminRoutes from "./index";
 
 let TEST_ADMIN_TOKEN: string;
 
 // Initialize the app and define routes
-const app: FastAppHono = new Hono();
+const app: SymbiosikaFrameworkHonoApp = new Hono();
 defineAdminRoutes(app, "/api");
 
 // Test suite for admin endpoints

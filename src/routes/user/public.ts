@@ -2,7 +2,7 @@
  * Routes to register and login a user.
  * These routes are not secured and public.
  */
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { HTTPException } from "hono/http-exception";
 import { LocalAuth } from "../../lib/auth";
 import log from "../../lib/log";
@@ -21,7 +21,7 @@ import { OAuthAuth } from "../../lib/auth/oauth2";
  * Define the payment routes
  */
 export function definePublicUserRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**

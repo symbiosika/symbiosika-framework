@@ -13,7 +13,7 @@ import {
   getFileFromLocalDisc,
   saveFileToLocalDisc,
 } from "../../../../lib/storage/local";
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import {
   authAndSetUsersInfo,
   checkUserPermission,
@@ -33,7 +33,7 @@ import { validateScope } from "../../../../lib/utils/validate-scope";
 /**
  * Define the payment routes
  */
-export function defineFilesRoutes(app: FastAppHono, API_BASE_PATH: string) {
+export function defineFilesRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH: string) {
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/files/:type/:bucket",
     authAndSetUsersInfo,

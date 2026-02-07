@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "bun:test";
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import defineTenantRoutes from "./index";
 import { addTenantMember } from "../../lib/usermanagement/tenants";
 import { Hono } from "hono";
@@ -11,7 +11,7 @@ import {
 import { testFetcher } from "../../test/fetcher.test";
 import { type TenantsSelect } from "../../lib/db/db-schema";
 
-let app: FastAppHono;
+let app: SymbiosikaFrameworkHonoApp;
 let TEST_USER_1_TOKEN: string;
 let TEST_USER_2_TOKEN: string;
 let TEST_USER_3_TOKEN: string;

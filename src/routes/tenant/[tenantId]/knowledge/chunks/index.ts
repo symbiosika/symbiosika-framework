@@ -1,4 +1,4 @@
-import type { FastAppHono } from "../../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../../types";
 import * as v from "valibot";
 import { HTTPException } from "hono/http-exception";
 import { getKnowledgeChunkById } from "../../../../../lib/knowledge/chunks";
@@ -13,7 +13,7 @@ import { isTenantMember } from "../../..";
 import { validateScope } from "../../../../../lib/utils/validate-scope";
 
 export default function defineRoutesForKnowledgeChunks(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**

@@ -11,10 +11,10 @@ import { Hono } from "hono";
 import { getDb } from "../../../../lib/db/db-connection";
 import { teams } from "../../../../lib/db/db-schema";
 import { eq } from "drizzle-orm";
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { addTenantMember } from "../../../../lib/usermanagement/tenants";
 
-let app: FastAppHono;
+let app: SymbiosikaFrameworkHonoApp;
 let adminToken: string;
 let memberToken: string;
 let nonMemberToken: string;

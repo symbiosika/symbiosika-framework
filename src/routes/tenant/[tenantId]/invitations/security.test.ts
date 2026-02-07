@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeAll } from "bun:test";
 import { Hono } from "hono";
 import defineInvitationsRoutes from ".";
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import {
   initTests,
   TEST_ORGANISATION_1,
@@ -13,7 +13,7 @@ import { getDb } from "../../../../lib/db/db-connection";
 import { tenantInvitations } from "../../../../lib/db/schema/users";
 import { eq } from "drizzle-orm";
 
-const app: FastAppHono = new Hono();
+const app: SymbiosikaFrameworkHonoApp = new Hono();
 defineInvitationsRoutes(app, "/api");
 
 describe("Invitations Security Tests", () => {

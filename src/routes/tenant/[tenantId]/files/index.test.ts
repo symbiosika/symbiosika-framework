@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeAll } from "bun:test";
 import { Hono } from "hono";
 import { defineFilesRoutes } from ".";
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { initTests, TEST_ORGANISATION_1 } from "../../../../test/init.test";
 
 describe("Files API Endpoints", () => {
-  const app: FastAppHono = new Hono();
+  const app: SymbiosikaFrameworkHonoApp = new Hono();
   const testBucket = "test-bucket";
   let dbFileId: string;
   let localFileId: string;

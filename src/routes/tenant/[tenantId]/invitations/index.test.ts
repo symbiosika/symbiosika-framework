@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeAll } from "bun:test";
 import { Hono } from "hono";
 import defineInvitationsRoutes from ".";
-import type { FastAppHono } from "../../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import {
   initTests,
   TEST_ORGANISATION_1,
@@ -12,7 +12,7 @@ import {
 import { testFetcher } from "../../../../test/fetcher.test";
 
 describe("Invitations API Endpoints", () => {
-  const app: FastAppHono = new Hono();
+  const app: SymbiosikaFrameworkHonoApp = new Hono();
   let u1Token: string;
   let u2Token: string;
   let u3Token: string;

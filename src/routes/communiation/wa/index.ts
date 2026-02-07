@@ -1,5 +1,5 @@
 import { describeRoute } from "hono-openapi";
-import type { FastAppHono } from "../../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../../types";
 import log from "../../../lib/log";
 import { validator } from "hono-openapi";
 import * as v from "valibot";
@@ -7,7 +7,7 @@ import { processWebhook } from "../../../lib/communication/whatsapp";
 import { _GLOBAL_SERVER_CONFIG } from "../../../store";
 
 export default function defineWhatsAppRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   basePath: string
 ) {
   // Webhook verification endpoint
