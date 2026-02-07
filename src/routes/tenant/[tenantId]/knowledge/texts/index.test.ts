@@ -3,13 +3,13 @@ import { testFetcher } from "../../../../../test/fetcher.test";
 import defineRoutes from ".";
 import { initTests, TEST_ORGANISATION_1 } from "../../../../../test/init.test";
 import { Hono } from "hono";
-import type { SymbiosikaFrameworkHonoAppContextVariables } from "../../../../../types";
+import type { SFContextVariables } from "../../../../../types";
 import {
   createDatabaseClient,
   waitForDbConnection,
 } from "../../../../../lib/db/db-connection";
 
-let app = new Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>();
+let app = new Hono<{ Variables: SFContextVariables }>();
 let TEST_USER_1_TOKEN: string;
 let createdKnowledgeTextId: string;
 

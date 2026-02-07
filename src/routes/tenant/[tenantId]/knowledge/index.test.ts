@@ -8,7 +8,7 @@ import {
   TEST_ORG1_USER_1,
 } from "../../../../test/init.test";
 import { Hono } from "hono";
-import type { SymbiosikaFrameworkHonoAppContextVariables } from "../../../../types";
+import type { SFContextVariables } from "../../../../types";
 import {
   createDatabaseClient,
   waitForDbConnection,
@@ -17,8 +17,8 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { TEST_PDF_TEXT } from "../../../../test/files.test";
 
-let appKnowledge = new Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>();
-let appTexts = new Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>();
+let appKnowledge = new Hono<{ Variables: SFContextVariables }>();
+let appTexts = new Hono<{ Variables: SFContextVariables }>();
 
 let TEST_USER_1_TOKEN: string;
 let createdKnowledgeTextId: string;

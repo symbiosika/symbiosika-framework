@@ -11,7 +11,7 @@ export type { JobHandlerRegister };
 export { HTTPException } from "hono/http-exception";
 export type { ProcessedWhatsAppMessage };
 
-export type SymbiosikaFrameworkHonoAppContextVariables = {
+export type SFContextVariables = {
   usersId: string;
   usersEmail: string;
   usersRoles: string[];
@@ -19,7 +19,7 @@ export type SymbiosikaFrameworkHonoAppContextVariables = {
 };
 
 export interface SymbiosikaFrameworkHonoApp
-  extends Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }, BlankSchema, "/"> {}
+  extends Hono<{ Variables: SFContextVariables }, BlankSchema, "/"> {}
 
 type UserInfo = {
   firstname: string;
@@ -64,11 +64,11 @@ export interface ServerSpecificConfig {
   customEnvVariablesToCheckOnStartup?: string[];
   customHonoApps?: {
     baseRoute: string;
-    app: (app: Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>) => void;
+    app: (app: Hono<{ Variables: SFContextVariables }>) => void;
   }[];
   customHonoAppsWithAuth?: {
     baseRoute: string;
-    app: (app: Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>) => void;
+    app: (app: Hono<{ Variables: SFContextVariables }>) => void;
   }[];
   customDbSchema?: any; // Drizzle Schema
   customCollectionPermissions?: PermissionDefinitionPerTable;

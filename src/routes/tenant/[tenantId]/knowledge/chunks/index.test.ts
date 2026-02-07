@@ -7,7 +7,7 @@ import {
   TEST_ORG1_USER_1,
 } from "../../../../../test/init.test";
 import { Hono } from "hono";
-import type { SymbiosikaFrameworkHonoAppContextVariables } from "../../../../../types";
+import type { SFContextVariables } from "../../../../../types";
 import {
   createDatabaseClient,
   waitForDbConnection,
@@ -18,7 +18,7 @@ import {
   knowledgeChunks,
 } from "../../../../../lib/db/db-schema";
 
-let app = new Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>();
+let app = new Hono<{ Variables: SFContextVariables }>();
 let TEST_USER_1_TOKEN: string;
 let testKnowledgeEntryId: string;
 let testKnowledgeChunkId: string;

@@ -85,14 +85,14 @@ defineServer({
 
 ```typescript
 // Context variables set by auth middleware
-type SymbiosikaFrameworkHonoAppContextVariables = {
+type SFContextVariables = {
   usersId: string;
   usersEmail: string;
   usersRoles: string[];
   scopes: string[];
 };
 
-type SymbiosikaFrameworkHonoApp = Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>;
+type SymbiosikaFrameworkHonoApp = Hono<{ Variables: SFContextVariables }>;
 ```
 
 ### Exports from Framework

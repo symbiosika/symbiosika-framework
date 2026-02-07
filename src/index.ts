@@ -18,7 +18,7 @@ import { initializeCollectionPermissions } from "./lib/db/db-collections";
 // Types
 import type {
   ServerSpecificConfig,
-  SymbiosikaFrameworkHonoAppContextVariables,
+  SFContextVariables,
 } from "./types";
 import { getConnInfo } from "hono/bun";
 // Utils
@@ -115,7 +115,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
   /**
    * Init the main Hono app
    */
-  const app = new Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>();
+  const app = new Hono<{ Variables: SFContextVariables }>();
   app.use(logger());
   if (config.useConsoleLogger) {
     console.log("Using console logger");
@@ -285,7 +285,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
       if (config.customHonoApps) {
         config.customHonoApps.forEach(({ baseRoute, app: customApp }) => {
           const honoApp = new Hono<{
-            Variables: SymbiosikaFrameworkHonoAppContextVariables;
+            Variables: SFContextVariables;
           }>();
 
           // Register routes without global auth middleware
@@ -303,7 +303,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
       if (config.customHonoAppsWithAuth) {
         config.customHonoAppsWithAuth.forEach(({ baseRoute, app: customApp }) => {
           const honoApp = new Hono<{
-            Variables: SymbiosikaFrameworkHonoAppContextVariables;
+            Variables: SFContextVariables;
           }>();
 
           // Apply global auth middleware to all routes

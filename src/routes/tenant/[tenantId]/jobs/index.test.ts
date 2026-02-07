@@ -3,12 +3,12 @@ import { testFetcher } from "../../../../test/fetcher.test";
 import defineJobRoutes from "./index";
 import { initTests, TEST_ORGANISATION_1 } from "../../../../test/init.test";
 import { Hono } from "hono";
-import type { SymbiosikaFrameworkHonoAppContextVariables } from "../../../../types";
 import { getDb } from "../../../../lib/db/db-connection";
 import { jobs } from "../../../../lib/db/db-schema";
 import { eq, or } from "drizzle-orm";
+import type { SFContextVariables } from "../../../../types";
 
-let app = new Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>();
+let app = new Hono<{ Variables: SFContextVariables }>();
 let TEST_USER_1_TOKEN: string;
 let TEST_USER_2_TOKEN: string;
 let TEST_USER_3_TOKEN: string;

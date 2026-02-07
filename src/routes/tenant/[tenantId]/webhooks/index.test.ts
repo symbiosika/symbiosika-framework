@@ -7,10 +7,10 @@ import {
   TEST_ORGANISATION_1,
   TEST_ORG1_USER_1,
 } from "../../../../test/init.test";
-import type { SymbiosikaFrameworkHonoAppContextVariables } from "../../../../types";
+import type { SFContextVariables } from "../../../../types";
 import { createServer } from "http";
 
-let app = new Hono<{ Variables: SymbiosikaFrameworkHonoAppContextVariables }>();
+let app = new Hono<{ Variables: SFContextVariables }>();
 let TEST_USER_1_TOKEN: string;
 let TEST_USER_2_TOKEN: string;
 
