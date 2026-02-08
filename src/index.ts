@@ -409,6 +409,11 @@ export const defineServer = (config: ServerSpecificConfig) => {
 export * from "./types";
 
 /**
+ * Export the resource system for composable CRUD resources
+ */
+export * from "./lib/resource";
+
+/**
  * Export all services for the customer App
  */
 export { log };
