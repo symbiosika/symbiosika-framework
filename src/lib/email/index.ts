@@ -7,7 +7,13 @@ function htmlToPlainText(html: string): string {
   let s = html
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
-  s = s.replace(/<a\s[^>]*href\s*=\s*["']([^"']+)["'][^>]*>[^<]*/gi, (_match, url) => url.replace(/&amp;/g, "&") + "\n");
+  // Preserve links as "text (url)" so URLs remain visible in plain text
+  s = s.replace(/<a\s[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, url, text) => {
+    const cleanUrl = url.replace(/&amp;/g, "&");
+    const cleanText = text.replace(/<[^>]+>/g, "").trim();
+    if (!cleanText || cleanText === cleanUrl) return cleanUrl + "\n";
+    return `${cleanText} (${cleanUrl})\n`;
+  });
   s = s.replace(/<[^>]+>/g, " ");
   s = s
     .replace(/&amp;/g, "&")
