@@ -2,7 +2,6 @@
 # Contains: PostgreSQL (pgvector) + Bun + Backend App + Frontend
 # Usage: 
 #   From project root: docker build -f Dockerfile.dev -t business-app-dev .
-#   Or: cd .. && docker build -f business-app/Dockerfile.dev -t business-app-dev business-app
 
 FROM ubuntu:22.04 AS base
 
@@ -86,6 +85,7 @@ RUN bun install
 # Install frontend dependencies and build
 WORKDIR /app/frontend
 RUN rm -f bun.lockb && bun install
+
 # Use build-only to skip type-check during Docker build (faster, type-check can be done in CI)
 RUN bun run build-only || bun run build
 
@@ -111,7 +111,7 @@ RUN mkdir -p /var/log/postgresql /app/logs && \
     chmod 755 /var/log/postgresql && \
     chmod 777 /app/logs
 
-# Expose ports
+# Expose port for the webserver (add 5432 for PostgreSQL if needed)
 EXPOSE 3100
 
 # Start the application (which will start PostgreSQL first)
