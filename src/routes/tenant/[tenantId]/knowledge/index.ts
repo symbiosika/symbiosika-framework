@@ -470,7 +470,7 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
 
         if (body.fullDocument) {
           const r = await getFullSourceDocumentsForSimilaritySearch({
-            tenantId: body.tenantId,
+            tenantId: tenantId,
             searchText: body.searchText,
             n: body.n,
             filterKnowledgeEntryIds: body.filterKnowledgeEntryIds,
@@ -482,7 +482,7 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
         }
 
         const r = await getNearestEmbeddings({
-          tenantId: body.tenantId,
+          tenantId: tenantId,
           searchText: body.searchText,
           n: body.n,
           addBeforeN: body.addBeforeN,
