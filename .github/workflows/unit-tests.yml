@@ -76,6 +76,15 @@ jobs:
           ZYTE_API_KEY=not-needed
           EOL
 
+          # SMTP
+          SMTP_DEBUG=true
+          SMTP_HOST=console.localhost
+          SMTP_PORT=465
+          SMTP_SECURE=false
+          SMTP_USER=
+          SMTP_DEFAULT_SENDER=noreply@localhost
+          SMTP_PASS=
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
