@@ -19,7 +19,7 @@ const skillsSourceDir = path.join(frameworkDir, "docs", "skills");
 
 // Target directories for different AI tools
 const targetDirs = [
-  // path.join(projectRoot, ".cursor", "skills"),
+  // path.join(projectRoot, ".claude", "skills"),
   path.join(projectRoot, ".claude", "skills"),
 ];
 
