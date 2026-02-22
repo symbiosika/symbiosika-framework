@@ -1,0 +1,160 @@
+name: Build the docker container for deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+
+  # FRONTEND
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.BE_GH_REGISTRY_KEY }}
+          ref: main
+          submodules: recursive
+          fetch-depth: 2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          bun install
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          bun run build
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-${{ github.ref_name }}-frontend
+          path: frontend/dist
+          retention-days: 1
+
+  # BACKEND
+  build-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.BE_GH_REGISTRY_KEY }}
+          ref: main
+          submodules: recursive
+          fetch-depth: 2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          bun install
+
+      - name: Build backend
+        run: |
+          cd backend
+          bun run build
+
+      - name: Prepare artifact
+        run: |
+          cd backend
+          mkdir -p backend-artifact/dist
+          mkdir -p backend-artifact/static
+          mkdir -p backend-artifact/public
+          mkdir -p backend-artifact/drizzle-sql
+          mkdir -p backend-artifact/framework/drizzle-sql
+          mkdir -p backend-artifact/src/db
+
+          # Copy built files
+          cp -r dist/* backend-artifact/dist/
+
+          # Copy static and public folders
+          cp -r static/* backend-artifact/static/ 2>/dev/null || true
+          cp -r public/* backend-artifact/public/ 2>/dev/null || true
+
+          # Copy drizzle configuration and migrations
+          cp drizzle.config.ts backend-artifact/
+          cp -r drizzle-sql/* backend-artifact/drizzle-sql/
+          cp framework/drizzle.config.ts backend-artifact/framework/
+          cp -r framework/drizzle-sql/* backend-artifact/framework/drizzle-sql/
+
+          # Copy database schema files
+          cp -r src/db/* backend-artifact/src/db/
+
+          # Copy package.json
+          cp package.json backend-artifact/
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-${{ github.ref_name }}-backend
+          path: backend/backend-artifact
+          retention-days: 30
+
+
+  # DOCKER IMAGE
+  build-docker:
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build output for backend
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-${{ github.ref_name }}-backend
+          path: dist
+
+      - name: Download build output for frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-${{ github.ref_name }}-frontend
+          path: frontend_artifact
+      
+      - name: List all files in artifact directory
+        run: |
+          ls -alR .
+
+      - name: Copy frontend_artifact to static folder
+        run: |
+          mkdir -p dist/static
+          cp -r frontend_artifact/static/* dist/static/
+
+      - name: Build Docker image
+        run: |
+          docker build --target release-ci -t ${{ github.event.repository.name }}-${{ github.ref_name }} .
+
+      - name: Tag Docker image
+        run: |
+          docker tag ${{ github.event.repository.name }}-${{ github.ref_name }} ghcr.io/symbiosika/${{ github.event.repository.name }}-${{ github.ref_name }}:1
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.BE_GH_REGISTRY_KEY }}
+      - name: Push Docker image
+        run: |
+          docker push ghcr.io/symbiosika/${{ github.event.repository.name }}-${{ github.ref_name }}:1
+
+      - name: Trigger Coolify Deployment
+        run: |
+          curl -X GET "${{ secrets.BUSINESS_SYMBIOSIKA_DE_DEPLOY_TRIGGER_URL }}" \
+          -H "Authorization: Bearer ${{ secrets.BUSINESS_SYMBIOSIKA_DE_DEPLOY_TOKEN }}" \
+          -H "Content-Type: application/json"

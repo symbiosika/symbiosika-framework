@@ -1,0 +1,47 @@
+name: Claude Migration Review
+
+on:
+  pull_request:
+    paths:
+      - "backend/drizzle-sql/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review-migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.BE_GH_REGISTRY_KEY }}
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          direct_prompt: |
+            You are reviewing Drizzle ORM SQL migration files for a PostgreSQL database.
+            Only review changed files under backend/drizzle-sql/.
+
+            Your ONLY task: Check whether the migration could FAIL on a production database
+            that already has data in the existing tables.
+
+            Specifically look for:
+            - Adding a NOT NULL column without a DEFAULT value (INSERT/ALTER will fail on existing rows)
+            - Adding a FOREIGN KEY constraint that references data which may not exist yet
+            - Dropping a column or table that other tables still reference via foreign keys
+            - Adding a UNIQUE constraint on a column that may already contain duplicates
+            - Changing a column type in a way that existing data cannot be cast (e.g. text -> integer)
+            - DELETE or UPDATE statements that could violate existing foreign key constraints
+            - Any operation where existing row data would cause a constraint violation
+
+            Read ALL existing migration files in backend/drizzle-sql/ (in order) to understand
+            the current table state before evaluating the new migration.
+
+            Be concise. Only flag real risks of failure on existing data.
+            If the migration is safe, say so in one sentence.
