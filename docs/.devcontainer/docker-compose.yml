@@ -1,0 +1,50 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/workspace:cached
+      - devcontainer_backend_modules:/workspace/backend/node_modules
+      - devcontainer_frontend_modules:/workspace/frontend/node_modules
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: pg
+      POSTGRES_PASSWORD: pg
+      POSTGRES_DB: dev
+      POSTGRES_USE_SSL: "false"
+      BASE_URL: "http://localhost:3100"
+      WRITE_DEBUG_FILES: "true"
+      SMTP_DEBUG: "true"
+      SMTP_HOST: "console.localhost"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Keep the container alive so VS Code / Cursor can attach
+    command: sleep infinity
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: pg
+      POSTGRES_PASSWORD: pg
+      POSTGRES_DB: dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data_devcontainer:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pg -d dev -p 5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pg_data_devcontainer:
+    driver: local
+  devcontainer_backend_modules:
+    driver: local
+  devcontainer_frontend_modules:
+    driver: local
