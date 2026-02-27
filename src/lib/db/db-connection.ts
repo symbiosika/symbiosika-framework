@@ -18,30 +18,29 @@ const POSTGRES_USER = process.env.POSTGRES_USER ?? "";
 const POSTGRES_PASSWORD = process.env.POSTGRES_PASSWORD ?? "";
 const POSTGRES_HOST = process.env.POSTGRES_HOST ?? "";
 const POSTGRES_PORT = parseInt(process.env.POSTGRES_PORT ?? "5432");
-let POSTGRE_CA_CERT = process.env.POSTGRE_CA_CERT ?? undefined;
-console.log("POSTGRE_CA_CERT is ", POSTGRE_CA_CERT);
-if (POSTGRE_CA_CERT === "") {
-  POSTGRE_CA_CERT = undefined;
-}
-const POSTGRES_USE_SSL = !process.env.POSTGRES_USE_SSL
-  ? false
-  : process.env.POSTGRES_USE_SSL === "true";
-const POSTGRES_SSL_REJECT_UNAUTHORIZED = process.env
-  .POSTGRES_SSL_REJECT_UNAUTHORIZED
-  ? process.env.POSTGRES_SSL_REJECT_UNAUTHORIZED !== "false"
-  : true;
+const POSTGRES_CA = process.env.POSTGRES_CA?.trim() || undefined;
+const useSSL = !!POSTGRES_CA;
+const POSTGRES_CHECK_IDENTITY =
+  process.env.POSTGRES_CHECK_IDENTITY?.trim().toLowerCase() === "true";
 
-console.log("POSTGRES_USE_SSL is", POSTGRES_USE_SSL);
-console.log("POSTGRES_CA", POSTGRE_CA_CERT);
+console.log(
+  "POSTGRES SSL is",
+  useSSL
+    ? `enabled (CA provided, identity check: ${POSTGRES_CHECK_IDENTITY})`
+    : "disabled"
+);
 
 // PostgresJS client
 let dbClient = postgres(
   `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}`,
   {
-    ...(POSTGRES_USE_SSL && {
+    ...(useSSL && {
       ssl: {
-        rejectUnauthorized: POSTGRES_SSL_REJECT_UNAUTHORIZED,
-        ca: POSTGRE_CA_CERT,
+        rejectUnauthorized: false,
+        ca: POSTGRES_CA,
+        ...(!POSTGRES_CHECK_IDENTITY && {
+          checkServerIdentity: () => undefined,
+        }),
       },
     }),
   }
