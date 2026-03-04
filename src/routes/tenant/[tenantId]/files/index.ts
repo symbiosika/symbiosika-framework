@@ -148,10 +148,35 @@ export function defineFilesRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH
         } else {
           throw new HTTPException(400, { message: "Invalid type" });
         }
-        return new Response(f, {
+
+        const rangeHeader = c.req.header("range");
+        const fileBuffer = await f.arrayBuffer();
+        const totalSize = fileBuffer.byteLength;
+
+        if (rangeHeader) {
+          const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+          if (match) {
+            const start = parseInt(match[1]);
+            const end = match[2] ? parseInt(match[2]) : totalSize - 1;
+            const chunkSize = end - start + 1;
+            return new Response(fileBuffer.slice(start, end + 1), {
+              status: 206,
+              headers: {
+                "Content-Type": f.type,
+                "Content-Range": `bytes ${start}-${end}/${totalSize}`,
+                "Accept-Ranges": "bytes",
+                "Content-Length": chunkSize.toString(),
+              },
+            });
+          }
+        }
+
+        return new Response(fileBuffer, {
           status: 200,
           headers: {
             "Content-Type": f.type,
+            "Accept-Ranges": "bytes",
+            "Content-Length": totalSize.toString(),
           },
         });
       } catch (err) {
