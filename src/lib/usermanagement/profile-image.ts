@@ -7,7 +7,7 @@ import { getDb } from "../db/db-connection";
  */
 export const upsertUserProfileImage = async (userId: string, file: File) => {
   // check that file is < 1MB
-  if (file.size > 1024 * 1024) {
+  if (file.size > 5 * 1024 * 1024) {
     throw new Error("File is too large");
   }
 
