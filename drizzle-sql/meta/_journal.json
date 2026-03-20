@@ -57,6 +57,13 @@
       "when": 1768662998608,
       "tag": "0007_quiet_living_lightning",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1774010582359,
+      "tag": "0008_closed_lifeguard",
+      "breakpoints": true
     }
   ]
 }

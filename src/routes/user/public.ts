@@ -16,6 +16,11 @@ import { verifyPasswordResetToken } from "../../lib/auth/magic-link";
 import { checkIfInvitationCodeIsNeededToRegister } from "../../lib/usermanagement/invitations";
 import { verifyApiTokenAndGetJwt } from "../../lib/auth/token-auth";
 import { OAuthAuth } from "../../lib/auth/oauth2";
+import {
+  isPasskeysEnabledForLocalAuth,
+  passkeyAuthenticationOptions,
+  passkeyAuthenticationVerify,
+} from "../../lib/auth/passkeys";
 
 /**
  * Define the payment routes
@@ -403,6 +408,85 @@ export function definePublicUserRoutes(
         throw new HTTPException(401, {
           message: err + "",
         });
+      }
+    }
+  );
+
+  /**
+   * WebAuthn: begin passkey authentication (local auth; RP ID from BASE_URL hostname)
+   */
+  app.post(
+    API_BASE_PATH + "/user/passkey/authentication/options",
+    describeRoute({
+      tags: ["user"],
+      summary: "Begin passkey sign-in (returns WebAuthn request options)",
+      responses: {
+        200: { description: "PublicKeyCredentialRequestOptions + challenge token" },
+      },
+    }),
+    validator(
+      "json",
+      v.object({
+        email: v.string(),
+      })
+    ),
+    async (c) => {
+      if (!isPasskeysEnabledForLocalAuth()) {
+        throw new HTTPException(404, { message: "Passkeys are not enabled" });
+      }
+      try {
+        const { email } = c.req.valid("json");
+        const r = await passkeyAuthenticationOptions(c, email);
+        return c.json({
+          options: r.options,
+          challengeToken: r.challengeToken,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new HTTPException(400, { message });
+      }
+    }
+  );
+
+  /**
+   * WebAuthn: finish passkey authentication and issue JWT
+   */
+  app.post(
+    API_BASE_PATH + "/user/passkey/authentication/verify",
+    describeRoute({
+      tags: ["user"],
+      summary: "Complete passkey sign-in",
+      responses: {
+        200: {
+          description: "JWT and user profile",
+        },
+      },
+    }),
+    validator(
+      "json",
+      v.object({
+        challengeToken: v.string(),
+        credential: v.any(),
+      })
+    ),
+    async (c) => {
+      if (!isPasskeysEnabledForLocalAuth()) {
+        throw new HTTPException(404, { message: "Passkeys are not enabled" });
+      }
+      try {
+        const body = c.req.valid("json");
+        const r = await passkeyAuthenticationVerify(c, {
+          challengeToken: body.challengeToken,
+          credential: body.credential,
+        });
+        return c.json({
+          token: r.token,
+          expiresAt: r.expiresAt.toISOString(),
+          user: r.user,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new HTTPException(400, { message });
       }
     }
   );

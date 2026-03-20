@@ -160,6 +160,49 @@ export const sessionsSelectSchema = createSelectSchema(sessions);
 export const sessionsInsertSchema = createInsertSchema(sessions);
 export const sessionsUpdateSchema = createUpdateSchema(sessions);
 
+/**
+ * WebAuthn / passkey credentials (FIDO2 discoverable credentials).
+ */
+export const webauthnCredentials = pgBaseTable(
+  "webauthn_credentials",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** base64url-encoded credential ID */
+    credentialId: text("credential_id").notNull(),
+    /** COSE-encoded public key */
+    publicKey: bytea("public_key").notNull(),
+    counter: bigint("counter", { mode: "number" }).notNull(),
+    transports: jsonb("transports").$type<string[]>(),
+    credentialDeviceType: varchar("credential_device_type", { length: 32 }),
+    credentialBackedUp: boolean("credential_backed_up"),
+    aaguid: varchar("aaguid", { length: 64 }),
+    nickname: varchar("nickname", { length: 255 }),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { mode: "string" }),
+  },
+  (t) => [
+    uniqueIndex("webauthn_credentials_credential_id_idx").on(t.credentialId),
+    index("webauthn_credentials_user_id_idx").on(t.userId),
+  ]
+);
+
+export type WebauthnCredentialsSelect = typeof webauthnCredentials.$inferSelect;
+export type WebauthnCredentialsInsert = typeof webauthnCredentials.$inferInsert;
+
+export const webauthnCredentialsSelectSchema =
+  createSelectSchema(webauthnCredentials);
+export const webauthnCredentialsInsertSchema =
+  createInsertSchema(webauthnCredentials);
+export const webauthnCredentialsUpdateSchema =
+  createUpdateSchema(webauthnCredentials);
+
 // User Permission Groups Table
 export const userPermissionGroups = pgBaseTable(
   "user_permission_groups",
@@ -406,6 +449,7 @@ export const teamMembersUpdateSchema = createUpdateSchema(teamMembers);
 // RELATIONS
 export const usersRelations = relations(users, ({ many, one }) => ({
   sessions: many(sessions),
+  webauthnCredentials: many(webauthnCredentials),
   userGroupMembers: many(userGroupMembers),
   teamMembers: many(teamMembers),
   tenantMembers: many(tenantMembers),
@@ -417,6 +461,16 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export const webauthnCredentialsRelations = relations(
+  webauthnCredentials,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [webauthnCredentials.userId],
+      references: [users.id],
+    }),
+  })
+);
 
 export const pathPermissionsRelations = relations(
   pathPermissions,

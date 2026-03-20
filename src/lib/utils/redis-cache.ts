@@ -172,4 +172,65 @@ export function closeRedisCache(): void {
     redisAvailable = false;
   }
   FALLBACK_CACHE.clear();
+  WEBAUTHN_CHALLENGE_FALLBACK.clear();
+}
+
+const WEBAUTHN_CHALLENGE_PREFIX = "webauthn:challenge:";
+const WEBAUTHN_CHALLENGE_TTL_SECONDS = 300;
+
+const WEBAUTHN_CHALLENGE_FALLBACK = new Map<
+  string,
+  { payload: string; expiresAt: number }
+>();
+
+/**
+ * Store a WebAuthn challenge payload (JSON) for a short-lived token.
+ */
+export async function setWebAuthnChallengePayload(
+  token: string,
+  payloadJson: string
+): Promise<void> {
+  const key = WEBAUTHN_CHALLENGE_PREFIX + token;
+  if (redisAvailable && redisClient) {
+    try {
+      await redisClient.set(key, payloadJson);
+      await redisClient.expire(key, WEBAUTHN_CHALLENGE_TTL_SECONDS);
+      return;
+    } catch (error) {
+      log.debug("Redis set error for webauthn challenge", { error });
+      redisAvailable = false;
+    }
+  }
+  WEBAUTHN_CHALLENGE_FALLBACK.set(key, {
+    payload: payloadJson,
+    expiresAt: Date.now() + WEBAUTHN_CHALLENGE_TTL_SECONDS * 1000,
+  });
+}
+
+/**
+ * Read and delete a WebAuthn challenge payload (one-time use).
+ */
+export async function takeWebAuthnChallengePayload(
+  token: string
+): Promise<string | null> {
+  const key = WEBAUTHN_CHALLENGE_PREFIX + token;
+  if (redisAvailable && redisClient) {
+    try {
+      const cached = await redisClient.get(key);
+      if (cached) {
+        await redisClient.del(key);
+        return cached;
+      }
+      return null;
+    } catch (error) {
+      log.debug("Redis get/del error for webauthn challenge", { error });
+      redisAvailable = false;
+    }
+  }
+  const entry = WEBAUTHN_CHALLENGE_FALLBACK.get(key);
+  WEBAUTHN_CHALLENGE_FALLBACK.delete(key);
+  if (entry && entry.expiresAt > Date.now()) {
+    return entry.payload;
+  }
+  return null;
 }

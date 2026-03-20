@@ -160,6 +160,46 @@ export const generateJwt = async (
 };
 
 /**
+ * Creates a JWT and session row for an existing user (e.g. passkey login).
+ */
+export const createJwtSessionForUserId = async (userId: string) => {
+  const user = await getDb()
+    .select({
+      id: users.id,
+      email: users.email,
+      firstname: users.firstname,
+      surname: users.surname,
+    })
+    .from(users)
+    .where(eq(users.id, userId));
+  if (!user[0]) {
+    throw new Error("User not found");
+  }
+  const { token, expiresAt } = await generateJwt(
+    user[0],
+    _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
+  );
+  await getDb()
+    .insert(sessions)
+    .values({
+      sessionToken: "",
+      userId: user[0].id,
+      expires: expiresAt.toISOString(),
+    })
+    .onConflictDoUpdate({
+      target: sessions.sessionToken,
+      set: {
+        expires: expiresAt.toISOString(),
+      },
+    });
+  return {
+    token,
+    expiresAt,
+    user: user[0],
+  };
+};
+
+/**
  * Checks if a user exists and creates a session
  */
 const checkAndCreateSession = async (

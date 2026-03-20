@@ -57,6 +57,13 @@ import {
 import { validateScope } from "../../lib/utils/validate-scope";
 import { availableScopes } from "../../lib/auth/available-scopes";
 import { sendValidationPin, validatePhoneNumber } from "../../lib/auth/phone";
+import {
+  isPasskeysEnabledForLocalAuth,
+  passkeyRegistrationOptions,
+  passkeyRegistrationVerify,
+  listPasskeysForUser,
+  deletePasskeyForUser,
+} from "../../lib/auth/passkeys";
 
 /**
  * Pre-register custom verification
@@ -989,6 +996,145 @@ export function defineSecuredUserRoutes(
       } catch (err) {
         throw new HTTPException(500, {
           message: "Error validating phone number: " + err,
+        });
+      }
+    }
+  );
+
+  /**
+   * WebAuthn: begin registering a passkey for the signed-in user
+   */
+  app.post(
+    API_BASE_PATH + "/user/passkey/registration/options",
+    authAndSetUsersInfo,
+    describeRoute({
+      tags: ["user"],
+      summary: "Begin passkey registration",
+      responses: {
+        200: { description: "PublicKeyCredentialCreationOptions + challenge token" },
+      },
+    }),
+    validateScope("user:write"),
+    async (c) => {
+      if (!isPasskeysEnabledForLocalAuth()) {
+        throw new HTTPException(404, { message: "Passkeys are not enabled" });
+      }
+      try {
+        const userId = c.get("usersId");
+        const r = await passkeyRegistrationOptions(c, userId);
+        return c.json({
+          options: r.options,
+          challengeToken: r.challengeToken,
+        });
+      } catch (err) {
+        throw new HTTPException(400, {
+          message: "Passkey registration failed: " + err,
+        });
+      }
+    }
+  );
+
+  /**
+   * WebAuthn: finish registering a passkey
+   */
+  app.post(
+    API_BASE_PATH + "/user/passkey/registration/verify",
+    authAndSetUsersInfo,
+    describeRoute({
+      tags: ["user"],
+      summary: "Complete passkey registration",
+      responses: {
+        200: { description: "Success" },
+      },
+    }),
+    validateScope("user:write"),
+    validator(
+      "json",
+      v.object({
+        challengeToken: v.string(),
+        credential: v.any(),
+      })
+    ),
+    async (c) => {
+      if (!isPasskeysEnabledForLocalAuth()) {
+        throw new HTTPException(404, { message: "Passkeys are not enabled" });
+      }
+      try {
+        const userId = c.get("usersId");
+        const body = c.req.valid("json");
+        const r = await passkeyRegistrationVerify(c, userId, {
+          challengeToken: body.challengeToken,
+          credential: body.credential,
+        });
+        return c.json(r);
+      } catch (err) {
+        throw new HTTPException(400, {
+          message: "Passkey registration failed: " + err,
+        });
+      }
+    }
+  );
+
+  /**
+   * List passkeys for the signed-in user
+   */
+  app.get(
+    API_BASE_PATH + "/user/passkeys",
+    authAndSetUsersInfo,
+    describeRoute({
+      tags: ["user"],
+      summary: "List registered passkeys",
+      responses: {
+        200: { description: "Passkey metadata list" },
+      },
+    }),
+    validateScope("user:read"),
+    async (c) => {
+      if (!isPasskeysEnabledForLocalAuth()) {
+        throw new HTTPException(404, { message: "Passkeys are not enabled" });
+      }
+      try {
+        const rows = await listPasskeysForUser(c.get("usersId"));
+        return c.json({ passkeys: rows });
+      } catch (err) {
+        throw new HTTPException(500, {
+          message: "Error listing passkeys: " + err,
+        });
+      }
+    }
+  );
+
+  /**
+   * Remove a passkey
+   */
+  app.delete(
+    API_BASE_PATH + "/user/passkeys/:passkeyId",
+    authAndSetUsersInfo,
+    describeRoute({
+      tags: ["user"],
+      summary: "Delete a passkey",
+      responses: {
+        200: { description: "Deleted" },
+      },
+    }),
+    validateScope("user:write"),
+    validator(
+      "param",
+      v.object({
+        passkeyId: v.string(),
+      })
+    ),
+    async (c) => {
+      if (!isPasskeysEnabledForLocalAuth()) {
+        throw new HTTPException(404, { message: "Passkeys are not enabled" });
+      }
+      try {
+        const { passkeyId } = c.req.valid("param");
+        await deletePasskeyForUser(c.get("usersId"), passkeyId);
+        return c.json(RESPONSES.SUCCESS);
+      } catch (err) {
+        throw new HTTPException(400, {
+          message: "Could not delete passkey: " + err,
         });
       }
     }
