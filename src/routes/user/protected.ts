@@ -1053,6 +1053,7 @@ export function defineSecuredUserRoutes(
       v.object({
         challengeToken: v.string(),
         credential: v.any(),
+        nickname: v.optional(v.string()),
       })
     ),
     async (c) => {
@@ -1065,6 +1066,7 @@ export function defineSecuredUserRoutes(
         const r = await passkeyRegistrationVerify(c, userId, {
           challengeToken: body.challengeToken,
           credential: body.credential,
+          nickname: body.nickname,
         });
         return c.json(r);
       } catch (err) {

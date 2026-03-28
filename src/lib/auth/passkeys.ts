@@ -193,6 +193,7 @@ export async function passkeyRegistrationVerify(
     challengeToken: string;
     /** Full credential response from `startRegistration()` */
     credential: any;
+    nickname?: string;
   }
 ) {
   const cfg = getPasskeyConfig();
@@ -238,6 +239,7 @@ export async function passkeyRegistrationVerify(
     credentialDeviceType: info.credentialDeviceType,
     credentialBackedUp: info.credentialBackedUp,
     aaguid: info.aaguid,
+    nickname: body.nickname?.trim() || null,
   });
 
   return { verified: true as const };
