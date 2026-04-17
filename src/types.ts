@@ -119,9 +119,24 @@ export type CustomPreRegisterVerification = (
   meta: any
 ) => Promise<{ success: boolean; message?: string }>;
 
+/**
+ * Custom post-register action.
+ *
+ * The `meta` argument contains the same object passed to the register flow
+ * (for the local register endpoint this is the `meta` field of the request
+ * body, for the magic-link flow it is assembled from query parameters).
+ * A register flow may carry custom per-user data in `meta.customRegisterData`
+ * which will be persisted on the user row (`users.meta.customRegisterData`)
+ * and is available to post-register actions.
+ */
 export type CustomPostRegisterAction = (
   userId: string,
-  email: string
+  email: string,
+  meta?: {
+    invitationCode?: string;
+    customRegisterData?: Record<string, any>;
+    [key: string]: any;
+  }
 ) => Promise<void>;
 
 export type RenderTypeText = {

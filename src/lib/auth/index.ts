@@ -315,6 +315,8 @@ export const LocalAuth = {
     sendVerificationEmail: boolean,
     meta: {
       invitationCode?: string;
+      customRegisterData?: Record<string, any>;
+      [key: string]: any;
     }
   ) {
     log.info(`Registering user: ${email}`);
@@ -347,6 +349,17 @@ export const LocalAuth = {
     }
     log.info(`New user registered: ${user.id}`);
 
+    // persist custom register data on the user row for later processing
+    // by post-register actions (the post-register action callbacks also
+    // receive the meta object directly, but we still persist it so that
+    // downstream code / asynchronous flows can access it later).
+    if (meta?.customRegisterData && typeof meta.customRegisterData === "object") {
+      await getDb()
+        .update(users)
+        .set({ meta: { customRegisterData: meta.customRegisterData } })
+        .where(eq(users.id, user.id));
+    }
+
     // check if an tenant was provided via invitation code
     if (firstTenantId) {
       // check if the tenant has already members
@@ -372,10 +385,10 @@ export const LocalAuth = {
       }
     }
 
-    // go through all post-register actions
+    // go through all post-register actions (meta is forwarded for custom per-user data)
     for (const action of postRegisterActions) {
       log.info(`Running post-register action`);
-      await action(user.id, user.email);
+      await action(user.id, user.email, meta);
     }
 
     return user;
@@ -389,8 +402,20 @@ export const LocalAuth = {
     return await verifyMagicLink(token);
   },
 
-  async sendMagicLink(email: string, redirectUrl?: string, createUserIfMissing: boolean = false, invitationCode?: string) {
-    return await sendMagicLinkImpl(email, redirectUrl, createUserIfMissing, invitationCode);
+  async sendMagicLink(
+    email: string,
+    redirectUrl?: string,
+    createUserIfMissing: boolean = false,
+    invitationCode?: string,
+    customRegisterData?: Record<string, any>
+  ) {
+    return await sendMagicLinkImpl(
+      email,
+      redirectUrl,
+      createUserIfMissing,
+      invitationCode,
+      customRegisterData
+    );
   },
 
   async sendVerificationEmail(email: string) {

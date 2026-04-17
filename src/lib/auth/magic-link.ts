@@ -22,7 +22,8 @@ export const createMagicLinkToken = async (
   email: string,
   purpose: "login" | "email_verification" | "password_reset",
   createUserIfMissing: boolean = false,
-  invitationCode?: string
+  invitationCode?: string,
+  customRegisterData?: Record<string, any>
 ): Promise<string> => {
   // Check if user exists
   let userResult = await getDb()
@@ -61,7 +62,12 @@ export const createMagicLinkToken = async (
       }
     }
 
-    // Create the user
+    // Create the user – persist customRegisterData (if any) in the meta column
+    const metaToPersist =
+      customRegisterData && typeof customRegisterData === "object"
+        ? { customRegisterData }
+        : null;
+
     const newUser = await getDb()
       .insert(users)
       .values({
@@ -72,6 +78,7 @@ export const createMagicLinkToken = async (
         salt: "",
         password: null,
         emailVerified: false,
+        meta: metaToPersist,
       })
       .onConflictDoNothing()
       .returning({
@@ -86,9 +93,15 @@ export const createMagicLinkToken = async (
     }
     userResult = newUser;
 
-    // Execute post-register actions for newly created user
+    // Execute post-register actions for newly created user. The register meta
+    // (invitation code + custom data) is forwarded so custom hooks can react
+    // to per-user registration context (e.g. auto-assign to a sub-entity).
+    const registerMeta = {
+      invitationCode,
+      customRegisterData,
+    };
     for (const action of postRegisterActions) {
-      await action(newUser[0].id, newUser[0].email);
+      await action(newUser[0].id, newUser[0].email, registerMeta);
     }
   }
 
@@ -123,9 +136,16 @@ export const createMagicLoginLink = async (
   email: string,
   redirectUrl?: string,
   createUserIfMissing: boolean = false,
-  invitationCode?: string
+  invitationCode?: string,
+  customRegisterData?: Record<string, any>
 ): Promise<string> => {
-  const token = await createMagicLinkToken(email, "login", createUserIfMissing, invitationCode);
+  const token = await createMagicLinkToken(
+    email,
+    "login",
+    createUserIfMissing,
+    invitationCode,
+    customRegisterData
+  );
   const magicLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.magicLoginVerifyUrl}?token=${encodeURIComponent(token)}&redirectUrl=${encodeURIComponent(redirectUrl || "")}`;
 
   return magicLink;
@@ -138,13 +158,15 @@ export const sendMagicLink = async (
   email: string,
   redirectUrl?: string,
   createUserIfMissing: boolean = false,
-  invitationCode?: string
+  invitationCode?: string,
+  customRegisterData?: Record<string, any>
 ): Promise<void> => {
   const magicLink = await createMagicLoginLink(
     email,
     redirectUrl,
     createUserIfMissing,
-    invitationCode
+    invitationCode,
+    customRegisterData
   );
 
   const { html, subject } =

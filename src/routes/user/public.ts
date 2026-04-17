@@ -150,6 +150,9 @@ export function definePublicUserRoutes(
         email: v.string(),
         createUserIfMissing: v.optional(v.string()),
         invitationCode: v.optional(v.string()),
+        // JSON-stringified object. Persisted on the newly created user as
+        // `users.meta.customRegisterData` and forwarded to post-register actions.
+        customRegisterData: v.optional(v.string()),
       })
     ),
     async (c) => {
@@ -157,12 +160,31 @@ export function definePublicUserRoutes(
       const email = query.email;
       const createUserIfMissing = query.createUserIfMissing === "true";
       const invitationCode = query.invitationCode;
+      let customRegisterData: Record<string, any> | undefined;
+      if (query.customRegisterData) {
+        try {
+          const parsed = JSON.parse(query.customRegisterData);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            customRegisterData = parsed;
+          }
+        } catch {
+          throw new HTTPException(400, {
+            message: "Invalid customRegisterData: must be JSON object",
+          });
+        }
+      }
       if (!email) {
         throw new HTTPException(400, { message: "?email=... is required" });
       }
       try {
         console.log("createUserIfMissing", createUserIfMissing);
-        await LocalAuth.sendMagicLink(email, undefined, createUserIfMissing, invitationCode);
+        await LocalAuth.sendMagicLink(
+          email,
+          undefined,
+          createUserIfMissing,
+          invitationCode,
+          customRegisterData
+        );
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
         const errorMessage = err + "";

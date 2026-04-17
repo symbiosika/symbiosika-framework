@@ -10,6 +10,8 @@ import { users } from "../../lib/db/db-schema";
 import { eq } from "drizzle-orm";
 
 const TEST_EMAIL_USER = "test-user@symbiosika.de";
+const TEST_EMAIL_CUSTOM_REGISTER = "test-register-custom@symbiosika.de";
+const TEST_EMAIL_MAGIC_CUSTOM = "test-magic-custom@symbiosika.de";
 
 describe("User API Endpoints", () => {
   const app: SymbiosikaFrameworkHonoApp = new Hono();
@@ -21,6 +23,12 @@ describe("User API Endpoints", () => {
 
     // Delete any existing test user
     await getDb().delete(users).where(eq(users.email, TEST_EMAIL_USER));
+    await getDb()
+      .delete(users)
+      .where(eq(users.email, TEST_EMAIL_CUSTOM_REGISTER));
+    await getDb()
+      .delete(users)
+      .where(eq(users.email, TEST_EMAIL_MAGIC_CUSTOM));
 
     defineSecuredUserRoutes(app, "/api");
     definePublicUserRoutes(app, "/api");
@@ -162,6 +170,74 @@ describe("User API Endpoints", () => {
       },
     });
     expect(unauthorizedResponse.status).toBe(401);
+  });
+
+  // Register endpoint persists customRegisterData on users.meta
+  it("POST /user/register persists meta.customRegisterData on the new user", async () => {
+    const response = await app.request("/api/user/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: TEST_EMAIL_CUSTOM_REGISTER,
+        password: TEST_ADMIN_USER.password,
+        sendVerificationEmail: false,
+        meta: {
+          customRegisterData: { adviceCenterNumber: "0042", source: "test" },
+        },
+      }),
+    });
+    expect(response.status).toBe(200);
+    const data: any = await response.json();
+    expect(data.id).toBeDefined();
+
+    const [row] = await getDb()
+      .select()
+      .from(users)
+      .where(eq(users.email, TEST_EMAIL_CUSTOM_REGISTER));
+    expect(row?.meta).toBeTruthy();
+    expect((row?.meta as any)?.customRegisterData?.adviceCenterNumber).toBe(
+      "0042"
+    );
+    expect((row?.meta as any)?.customRegisterData?.source).toBe("test");
+  });
+
+  // send-magic-link endpoint accepts customRegisterData as JSON-string query param
+  it("GET /user/send-magic-link persists meta.customRegisterData when creating a new user", async () => {
+    const customRegisterData = JSON.stringify({ adviceCenterNumber: "0007" });
+    const url =
+      "/api/user/send-magic-link" +
+      "?email=" +
+      encodeURIComponent(TEST_EMAIL_MAGIC_CUSTOM) +
+      "&createUserIfMissing=true" +
+      "&customRegisterData=" +
+      encodeURIComponent(customRegisterData);
+
+    const response = await app.request(url, { method: "GET" });
+    // 500 would mean the server couldn't send the mail (SMTP) — in test env
+    // SMTP_HOST=console.localhost, so this should succeed.
+    expect(response.status).toBe(200);
+
+    const [row] = await getDb()
+      .select()
+      .from(users)
+      .where(eq(users.email, TEST_EMAIL_MAGIC_CUSTOM));
+    expect(row).toBeDefined();
+    expect((row?.meta as any)?.customRegisterData?.adviceCenterNumber).toBe(
+      "0007"
+    );
+  });
+
+  it("GET /user/send-magic-link rejects malformed customRegisterData with 400", async () => {
+    const url =
+      "/api/user/send-magic-link" +
+      "?email=" +
+      encodeURIComponent("does-not-matter@symbiosika.de") +
+      "&createUserIfMissing=true" +
+      "&customRegisterData=" +
+      encodeURIComponent("this-is-not-json");
+
+    const response = await app.request(url, { method: "GET" });
+    expect(response.status).toBe(400);
   });
 
   // Test available scopes endpoint
