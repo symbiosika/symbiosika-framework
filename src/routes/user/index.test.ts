@@ -7,6 +7,7 @@ import { initTests } from "../../test/init.test";
 import { TEST_ADMIN_USER } from "../../test/init.test";
 import { getDb } from "../../lib/db/db-connection";
 import { users } from "../../lib/db/db-schema";
+import { smtpService } from "../../lib/email";
 import { eq, inArray } from "drizzle-orm";
 
 const TEST_EMAIL_USER = "test-user@symbiosika.de";
@@ -22,10 +23,22 @@ const ALL_TEST_EMAILS = [
 describe("User API Endpoints", () => {
   const app: SymbiosikaFrameworkHonoApp = new Hono();
   let jwt: string;
+  // Remember the original SMTP mode so we can restore it after the test run
+  // (other tests running in the same Bun process might rely on the real
+  // transporter, even though we want console-mode for this suite).
+  let originalConsoleMode: boolean;
 
   beforeAll(async () => {
     const { adminToken } = await initTests();
     jwt = adminToken;
+
+    // Force SMTP into console-only mode for this suite so the magic-link
+    // registration test below does NOT send a real email via the configured
+    // SMTP host. The singleton has already been constructed at import time,
+    // so we flip its internal flag instead of relying on env variables.
+    const svc = smtpService as unknown as { consoleMode: boolean };
+    originalConsoleMode = svc.consoleMode;
+    svc.consoleMode = true;
 
     // Clean slate for all test users this suite creates.
     await getDb().delete(users).where(inArray(users.email, ALL_TEST_EMAILS));
@@ -36,6 +49,8 @@ describe("User API Endpoints", () => {
 
   afterAll(async () => {
     try {
+      const svc = smtpService as unknown as { consoleMode: boolean };
+      svc.consoleMode = originalConsoleMode;
       await getDb().delete(users).where(inArray(users.email, ALL_TEST_EMAILS));
     } catch (err) {
       console.warn("[routes/user index.test] cleanup failed:", err);
@@ -221,8 +236,8 @@ describe("User API Endpoints", () => {
       encodeURIComponent(customRegisterData);
 
     const response = await app.request(url, { method: "GET" });
-    // 500 would mean the server couldn't send the mail (SMTP) — in test env
-    // SMTP_HOST=console.localhost, so this should succeed.
+    // SMTP is forced into console-mode in `beforeAll`, so the magic link is
+    // "delivered" locally only and the request must succeed with 200.
     expect(response.status).toBe(200);
 
     const [row] = await getDb()
