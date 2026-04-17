@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { LocalAuth } from "./index";
 import {
   createDatabaseClient,
   getDb,
   waitForDbConnection,
 } from "../db/db-connection";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { invitationCodes, users } from "../db/db-schema";
 import { createMagicLinkToken } from "./magic-link";
 import { getUserByEmail } from "../usermanagement/user";
@@ -15,10 +15,20 @@ const TEST_PASSWORD = "test-password";
 const TEST_OVERWRITE_PASSWORD = "test-overwrite-password";
 const TEST_INVITATION_CODE = "test-code";
 
+// All emails the auth tests may create / touch. Kept in one place so both the
+// pre-test cleanup and the post-test cleanup stay in sync.
+const ALL_TEST_EMAILS = [
+  TEST_EMAIL,
+  "test-magic-register@symbiosika.de",
+  "test-magic-register-plain@symbiosika.de",
+  "test-custom-register@symbiosika.de",
+];
+
 beforeAll(async () => {
   await createDatabaseClient();
   await waitForDbConnection();
-  await getDb().delete(users).where(eq(users.email, TEST_EMAIL));
+  // Start from a clean slate for all users this test suite may create.
+  await getDb().delete(users).where(inArray(users.email, ALL_TEST_EMAILS));
   await getDb()
     .insert(invitationCodes)
     .values({
@@ -29,6 +39,21 @@ beforeAll(async () => {
       target: [invitationCodes.code],
       set: { isActive: true },
     });
+});
+
+// IMPORTANT: Without this cleanup an active invitation code would remain in the
+// DB after the test run, which in turn causes
+// `checkIfInvitationCodeIsNeededToRegister()` to return `true` globally and
+// breaks interactive registration in the dev environment.
+afterAll(async () => {
+  try {
+    await getDb()
+      .delete(invitationCodes)
+      .where(eq(invitationCodes.code, TEST_INVITATION_CODE));
+    await getDb().delete(users).where(inArray(users.email, ALL_TEST_EMAILS));
+  } catch (err) {
+    console.warn("[auth.test] cleanup failed:", err);
+  }
 });
 
 describe("LocalAuth", async () => {

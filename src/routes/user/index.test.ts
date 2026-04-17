@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { Hono } from "hono";
 import { definePublicUserRoutes } from "./public";
 import { defineSecuredUserRoutes } from "./protected";
@@ -7,11 +7,17 @@ import { initTests } from "../../test/init.test";
 import { TEST_ADMIN_USER } from "../../test/init.test";
 import { getDb } from "../../lib/db/db-connection";
 import { users } from "../../lib/db/db-schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 const TEST_EMAIL_USER = "test-user@symbiosika.de";
 const TEST_EMAIL_CUSTOM_REGISTER = "test-register-custom@symbiosika.de";
 const TEST_EMAIL_MAGIC_CUSTOM = "test-magic-custom@symbiosika.de";
+
+const ALL_TEST_EMAILS = [
+  TEST_EMAIL_USER,
+  TEST_EMAIL_CUSTOM_REGISTER,
+  TEST_EMAIL_MAGIC_CUSTOM,
+];
 
 describe("User API Endpoints", () => {
   const app: SymbiosikaFrameworkHonoApp = new Hono();
@@ -21,17 +27,19 @@ describe("User API Endpoints", () => {
     const { adminToken } = await initTests();
     jwt = adminToken;
 
-    // Delete any existing test user
-    await getDb().delete(users).where(eq(users.email, TEST_EMAIL_USER));
-    await getDb()
-      .delete(users)
-      .where(eq(users.email, TEST_EMAIL_CUSTOM_REGISTER));
-    await getDb()
-      .delete(users)
-      .where(eq(users.email, TEST_EMAIL_MAGIC_CUSTOM));
+    // Clean slate for all test users this suite creates.
+    await getDb().delete(users).where(inArray(users.email, ALL_TEST_EMAILS));
 
     defineSecuredUserRoutes(app, "/api");
     definePublicUserRoutes(app, "/api");
+  });
+
+  afterAll(async () => {
+    try {
+      await getDb().delete(users).where(inArray(users.email, ALL_TEST_EMAILS));
+    } catch (err) {
+      console.warn("[routes/user index.test] cleanup failed:", err);
+    }
   });
 
   // Test user authentication
