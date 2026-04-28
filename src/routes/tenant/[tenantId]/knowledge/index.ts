@@ -11,6 +11,7 @@ import {
   extractKnowledgeInOneStep,
 } from "../../../../lib/knowledge/add-knowledge";
 import { parseDocument } from "../../../../lib/knowledge/parsing";
+import { urlToMarkdown } from "../../../../lib/knowledge/parsing/url";
 import {
   getFullSourceDocumentsForKnowledgeEntry,
   getKnowledgeEntries,
@@ -734,6 +735,88 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
           sourceType: "external",
           sourceFileBucket: "default",
           sourceUrl: data.meta?.sourceUri ?? data.title,
+          includesLocalImages: false,
+        });
+
+        return c.json(r);
+      } catch (e) {
+        throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Add a knowledge entry from a URL (HTML page)
+   * Fetches the URL, extracts the readable article using Mozilla Readability
+   * and converts it to markdown via Turndown (with GFM tables/strikethrough/task-lists).
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/from-url",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Add a knowledge entry from a URL (HTML → markdown)",
+      responses: {
+        200: {
+          description: "Successful response",
+          content: {
+            "application/json": {
+              schema: resolver(knowledgeEntrySchema),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator("json", addFromUrlValidation),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const data = c.req.valid("json");
+        const { tenantId } = c.req.valid("param");
+        validateOrganisationId(data, tenantId);
+
+        if (
+          !data.url.startsWith("http://") &&
+          !data.url.startsWith("https://")
+        ) {
+          throw new Error("URL must start with http:// or https://");
+        }
+
+        const parsed = await urlToMarkdown(data.url);
+
+        if (!parsed.markdown || parsed.markdown.trim().length === 0) {
+          throw new Error(
+            `No readable content could be extracted from ${data.url}`
+          );
+        }
+
+        const text = await applyPostProcessors(
+          parsed.markdown,
+          tenantId,
+          data.usePostProcessors
+        );
+
+        const r = await extractKnowledgeFromText({
+          userId: c.get("usersId"),
+          tenantId: data.tenantId,
+          title: parsed.title,
+          text,
+          filters: data.filters,
+          teamId: data.teamId,
+          workspaceId: data.workspaceId,
+          knowledgeGroupId: data.knowledgeGroupId,
+          userOwned: data.userOwned,
+          sourceType: "url",
+          sourceUrl: data.url,
+          sourceFileBucket: "default",
+          metadata: {
+            ...(parsed.excerpt ? { excerpt: parsed.excerpt } : {}),
+            ...(parsed.byline ? { byline: parsed.byline } : {}),
+            ...(parsed.siteName ? { siteName: parsed.siteName } : {}),
+          },
           includesLocalImages: false,
         });
 

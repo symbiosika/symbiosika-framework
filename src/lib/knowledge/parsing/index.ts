@@ -8,6 +8,7 @@ import { getDb } from "../../../lib/db/db-connection";
 import { eq } from "drizzle-orm";
 import type { PageContent } from "./pdf/types";
 import { applyPostProcessors } from "./pre-processors";
+import { urlToMarkdown } from "./url";
 
 /**
  * Helper function to parse a file and return the text content and pages if available
@@ -152,9 +153,13 @@ export const parseDocument = async (data: {
     title = file.name;
     docIncludesImages = includesImages;
   } else if (data.sourceType === "url" && data.sourceUrl) {
-    log.debug(`Get file from URL: ${data.sourceUrl}`);
-    content = "";
-    title = "";
+    log.debug(`Fetch and parse content from URL: ${data.sourceUrl}`);
+    const result = await urlToMarkdown(data.sourceUrl);
+    content = result.markdown;
+    title = result.title || data.sourceUrl;
+    log.debug(
+      `URL parsed. title="${title}" markdown length=${content.length}`
+    );
   } else if (data.sourceType === "text") {
     log.debug(`Get file from TEXT`);
     const dbResults = await getDb()
