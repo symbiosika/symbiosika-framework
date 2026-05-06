@@ -32,10 +32,25 @@ export const parseFile = async (
 }> => {
   log.debug(`Parse file: ${file.name} from type ${file.type}`);
 
+  const mime = file.type.trim().toLowerCase();
+  /** Windows / some browsers send "" or octet-stream for .pdf / .PDF */
+  const pdfByExtension =
+    /\.pdf$/i.test(file.name) &&
+    (mime === "" ||
+      mime === "application/octet-stream" ||
+      mime === "application/x-download" ||
+      mime === "binary/octet-stream");
+  const fileForPdf =
+    mime === "application/pdf"
+      ? file
+      : pdfByExtension
+        ? new File([file], file.name, { type: "application/pdf" })
+        : null;
+
   // PDF
-  if (file.type === "application/pdf") {
+  if (fileForPdf) {
     // try to parse the content
-    const result = await parsePdfFileAsMardown(file, context, options);
+    const result = await parsePdfFileAsMardown(fileForPdf, context, options);
 
     // Create a combined text from all pages if available
     let fullText = "";
