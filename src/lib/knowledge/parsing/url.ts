@@ -3,7 +3,7 @@
  *
  * Pipeline:
  *   1. fetch() → HTML string (with a polite User-Agent)
- *   2. JSDOM   → DOM
+ *   2. linkedom → DOM
  *   3. Mozilla Readability → article (title, excerpt, byline, content HTML)
  *   4. Turndown + GFM (tables, strikethrough, task lists) → markdown
  *
@@ -11,7 +11,7 @@
  * the entire body innerHTML is converted as fallback.
  */
 
-import { JSDOM } from "jsdom";
+import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
@@ -33,6 +33,26 @@ export type UrlToMarkdownResult = {
   byline: string | null;
   siteName: string | null;
   markdown: string;
+};
+
+/**
+ * linkedom (unlike JSDOM) does not accept a document URL, so relative URLs in
+ * the parsed HTML have no base to resolve against. We inject a <base href>
+ * into <head> so Readability and downstream consumers see absolute links.
+ */
+const injectBaseHref = (html: string, url: string): string => {
+  if (/<base\s[^>]*href=/i.test(html)) return html;
+  const baseTag = `<base href="${url.replace(/"/g, "&quot;")}">`;
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
+  }
+  if (/<html[^>]*>/i.test(html)) {
+    return html.replace(
+      /<html([^>]*)>/i,
+      `<html$1><head>${baseTag}</head>`
+    );
+  }
+  return `<head>${baseTag}</head>${html}`;
 };
 
 const fetchHtml = async (url: string, opts?: UrlToMarkdownOptions) => {
@@ -85,11 +105,13 @@ export const urlToMarkdown = async (
 ): Promise<UrlToMarkdownResult> => {
   const html = await fetchHtml(url, opts);
 
-  const dom = new JSDOM(html, { url });
+  // Inject <base href> so Readability can resolve relative links/images.
+  const htmlWithBase = injectBaseHref(html, url);
+  const { document } = parseHTML(htmlWithBase);
 
   // Readability mutates the document; clone first so we still have a fallback body.
-  const docClone = dom.window.document.cloneNode(true) as Document;
-  const article = new Readability(docClone).parse();
+  const docClone = document.cloneNode(true) as unknown as Document;
+  const article = new Readability(docClone as any).parse();
 
   const td = new TurndownService({
     headingStyle: "atx",
@@ -97,7 +119,7 @@ export const urlToMarkdown = async (
   });
   td.use(gfm);
 
-  const fallbackHtml = dom.window.document.body?.innerHTML ?? html;
+  const fallbackHtml = document.body?.innerHTML ?? html;
   const sourceHtml =
     article?.content && article.content.length > 0
       ? article.content
@@ -107,7 +129,7 @@ export const urlToMarkdown = async (
 
   const title =
     (article?.title && article.title.trim()) ||
-    dom.window.document.title?.trim() ||
+    document.title?.trim() ||
     url;
 
   return {
