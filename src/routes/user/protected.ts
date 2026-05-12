@@ -20,6 +20,7 @@ import {
   authAndSetUsersInfo,
   checkUserPermission,
 } from "../../lib/utils/hono-middlewares";
+import { setAuthCookies } from "../../lib/auth/auth-cookies";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import {
   addTenantMember,
@@ -733,6 +734,7 @@ export function defineSecuredUserRoutes(
         const userId = c.get("usersId");
         // require a new token. Only a valid logged in user can get this endpoint
         const newTokenData = await LocalAuth.refreshToken(userId);
+        setAuthCookies(c, newTokenData.token);
         return c.json(newTokenData);
       } catch (error) {
         throw new HTTPException(401, {

@@ -11,8 +11,10 @@
         if (parts.length === 2) return parts.pop().split(";").shift();
         return null;
       }
-      const jwtToken = getCookie("jwt");
-      if (jwtToken) {
+      // The `jwt` cookie is HttpOnly; we use the non-HttpOnly `jwt_present`
+      // marker the backend sets alongside it to detect a logged-in state.
+      const jwtMarker = getCookie("jwt_present");
+      if (jwtMarker) {
         (async () => {
           try {
             const u = await fetch("/api/v1/user/me");
