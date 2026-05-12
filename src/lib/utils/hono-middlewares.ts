@@ -141,7 +141,9 @@ export const authOrRedirectToLogin = async (c: Context, next: Function) => {
     addScopesToContext(c, ["all"]);
   } catch (error) {
     return c.redirect(
-      _GLOBAL_SERVER_CONFIG.loginUrl + "?redirect=" + c.req.url
+      _GLOBAL_SERVER_CONFIG.loginUrl +
+        "?redirectUrl=" +
+        encodeURIComponent(c.req.url)
     );
   }
   await next();
@@ -162,7 +164,9 @@ export const authAndSetUsersInfoOrRedirectToLogin = async (
     addScopesToContext(c, scopes);
   } catch (error) {
     return c.redirect(
-      _GLOBAL_SERVER_CONFIG.loginUrl + "?redirect=" + c.req.url
+      _GLOBAL_SERVER_CONFIG.loginUrl +
+        "?redirectUrl=" +
+        encodeURIComponent(c.req.url)
     );
   }
   await next();

@@ -21,6 +21,7 @@ import {
   passkeyAuthenticationOptions,
   passkeyAuthenticationVerify,
 } from "../../lib/auth/passkeys";
+import { setAuthCookies, clearAuthCookies } from "../../lib/auth/auth-cookies";
 
 /**
  * Define the payment routes
@@ -117,6 +118,7 @@ export function definePublicUserRoutes(
 
         if (data.magicLinkToken) {
           const r = await LocalAuth.loginWithMagicLink(data.magicLinkToken);
+          setAuthCookies(c, r.token);
           return c.json({ ...r, redirectUrl: data.redirectUrl });
         } else {
           const r = await LocalAuth.login(
@@ -124,11 +126,31 @@ export function definePublicUserRoutes(
             data.password,
             sendVerificationEmail
           );
+          setAuthCookies(c, r.token);
           return c.json({ ...r, redirectUrl: data.redirectUrl });
         }
       } catch (err) {
         throw new HTTPException(401, { message: "Invalid login: " + err });
       }
+    }
+  );
+
+  /**
+   * Logout endpoint - clears the auth cookies.
+   * Public so it succeeds even with an already-expired token.
+   */
+  app.post(
+    API_BASE_PATH + "/user/logout",
+    describeRoute({
+      tags: ["user"],
+      summary: "Logout - clears auth cookies",
+      responses: {
+        200: { description: "Successful response" },
+      },
+    }),
+    async (c) => {
+      clearAuthCookies(c);
+      return c.json(RESPONSES.SUCCESS);
     }
   );
 
@@ -501,6 +523,7 @@ export function definePublicUserRoutes(
           challengeToken: body.challengeToken,
           credential: body.credential,
         });
+        setAuthCookies(c, r.token);
         return c.json({
           token: r.token,
           expiresAt: r.expiresAt.toISOString(),
