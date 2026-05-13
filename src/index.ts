@@ -396,10 +396,27 @@ export const defineServer = (config: ServerSpecificConfig) => {
     }
   });
 
+  const tlsCertPath = process.env.TLS_CERT_PATH;
+  const tlsKeyPath = process.env.TLS_KEY_PATH;
+  let tls: { cert: ReturnType<typeof Bun.file>; key: ReturnType<typeof Bun.file> } | undefined;
+  if (tlsCertPath && tlsKeyPath) {
+    const certFile = Bun.file(tlsCertPath);
+    const keyFile = Bun.file(tlsKeyPath);
+    if (certFile.size > 0 && keyFile.size > 0) {
+      tls = { cert: certFile, key: keyFile };
+      console.log(`HTTPS enabled (cert=${tlsCertPath}, key=${tlsKeyPath})`);
+    } else {
+      console.error(
+        `TLS_CERT_PATH/TLS_KEY_PATH set but files missing or empty (cert=${tlsCertPath}, key=${tlsKeyPath}) — falling back to HTTP`
+      );
+    }
+  }
+
   return {
     idleTimeout: 255,
     port: config.port ?? 3000,
     fetch: app.fetch,
+    ...(tls ? { tls } : {}),
   };
 };
 
