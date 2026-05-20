@@ -1,4 +1,5 @@
 import type {
+  EmailTemplateFunction,
   ServerSpecificConfig,
   WhatsAppIncomingWebhookHandler,
 } from "../types";
@@ -40,6 +41,7 @@ export const _GLOBAL_SERVER_CONFIG = {
     inviteToOrganization: stdTemplateInviteToOrganization,
     inviteToOrganizationWhenUserExists:
       stdTemplateInviteToOrganizationWhenUserExists,
+    custom: {} as Record<string, EmailTemplateFunction>,
   },
   useWhatsApp: false,
   whatsAppIncomingWebhookHandler: undefined as
@@ -104,6 +106,12 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
   if (config.emailTemplates?.resetPasswordWelcome) {
     _GLOBAL_SERVER_CONFIG.emailTemplates.resetPasswordWelcome =
       config.emailTemplates.resetPasswordWelcome;
+  }
+  if (config.emailTemplates?.custom) {
+    _GLOBAL_SERVER_CONFIG.emailTemplates.custom = {
+      ..._GLOBAL_SERVER_CONFIG.emailTemplates.custom,
+      ...config.emailTemplates.custom,
+    };
   }
 
   // URLS

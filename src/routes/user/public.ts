@@ -175,6 +175,10 @@ export function definePublicUserRoutes(
         // JSON-stringified object. Persisted on the newly created user as
         // `users.meta.customRegisterData` and forwarded to post-register actions.
         customRegisterData: v.optional(v.string()),
+        // Key of a custom email template registered via
+        // `emailTemplates.custom` in the server config. Falls back to the
+        // default magic link template when missing.
+        template: v.optional(v.string()),
       })
     ),
     async (c) => {
@@ -182,6 +186,7 @@ export function definePublicUserRoutes(
       const email = query.email;
       const createUserIfMissing = query.createUserIfMissing === "true";
       const invitationCode = query.invitationCode;
+      const template = query.template;
       let customRegisterData: Record<string, any> | undefined;
       if (query.customRegisterData) {
         try {
@@ -205,7 +210,8 @@ export function definePublicUserRoutes(
           undefined,
           createUserIfMissing,
           invitationCode,
-          customRegisterData
+          customRegisterData,
+          template
         );
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {

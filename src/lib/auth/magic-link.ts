@@ -153,13 +153,18 @@ export const createMagicLoginLink = async (
 
 /**
  * Send Magic Link to the users Email address
+ *
+ * @param template Optional key of a custom template defined via
+ *   `emailTemplates.custom` in the server config. Falls back to the default
+ *   `magicLink` template when the key is missing or not registered.
  */
 export const sendMagicLink = async (
   email: string,
   redirectUrl?: string,
   createUserIfMissing: boolean = false,
   invitationCode?: string,
-  customRegisterData?: Record<string, any>
+  customRegisterData?: Record<string, any>,
+  template?: string
 ): Promise<void> => {
   const magicLink = await createMagicLoginLink(
     email,
@@ -169,13 +174,18 @@ export const sendMagicLink = async (
     customRegisterData
   );
 
-  const { html, subject } =
-    await _GLOBAL_SERVER_CONFIG.emailTemplates.magicLink({
-      appName: _GLOBAL_SERVER_CONFIG.appName,
-      logoUrl: _GLOBAL_SERVER_CONFIG.logoUrl,
-      baseUrl: _GLOBAL_SERVER_CONFIG.baseUrl,
-      link: magicLink,
-    });
+  const customTemplate = template
+    ? _GLOBAL_SERVER_CONFIG.emailTemplates.custom?.[template]
+    : undefined;
+  const templateFn =
+    customTemplate ?? _GLOBAL_SERVER_CONFIG.emailTemplates.magicLink;
+
+  const { html, subject } = await templateFn({
+    appName: _GLOBAL_SERVER_CONFIG.appName,
+    logoUrl: _GLOBAL_SERVER_CONFIG.logoUrl,
+    baseUrl: _GLOBAL_SERVER_CONFIG.baseUrl,
+    link: magicLink,
+  });
 
   await smtpService.sendMail({
     sender: process.env.SMTP_FROM,

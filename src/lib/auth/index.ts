@@ -407,14 +407,16 @@ export const LocalAuth = {
     redirectUrl?: string,
     createUserIfMissing: boolean = false,
     invitationCode?: string,
-    customRegisterData?: Record<string, any>
+    customRegisterData?: Record<string, any>,
+    template?: string
   ) {
     return await sendMagicLinkImpl(
       email,
       redirectUrl,
       createUserIfMissing,
       invitationCode,
-      customRegisterData
+      customRegisterData,
+      template
     );
   },
 

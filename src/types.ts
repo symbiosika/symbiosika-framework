@@ -104,6 +104,7 @@ export interface ServerSpecificConfig {
     resetPasswordWelcome?: EmailTemplateFunction;
     inviteToOrganization?: EmailTemplateFunction;
     inviteToOrganizationWhenUserExists?: EmailTemplateFunction;
+    custom?: Record<string, EmailTemplateFunction>;
   };
 }
 
