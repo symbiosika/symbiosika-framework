@@ -179,6 +179,10 @@ export function definePublicUserRoutes(
         // `emailTemplates.custom` in the server config. Falls back to the
         // default magic link template when missing.
         template: v.optional(v.string()),
+        // Optional firstname/surname applied when a new user is created
+        // (only used together with createUserIfMissing=true).
+        firstname: v.optional(v.string()),
+        surname: v.optional(v.string()),
       })
     ),
     async (c) => {
@@ -187,6 +191,8 @@ export function definePublicUserRoutes(
       const createUserIfMissing = query.createUserIfMissing === "true";
       const invitationCode = query.invitationCode;
       const template = query.template;
+      const firstname = query.firstname;
+      const surname = query.surname;
       let customRegisterData: Record<string, any> | undefined;
       if (query.customRegisterData) {
         try {
@@ -211,7 +217,9 @@ export function definePublicUserRoutes(
           createUserIfMissing,
           invitationCode,
           customRegisterData,
-          template
+          template,
+          firstname,
+          surname
         );
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {

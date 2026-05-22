@@ -23,7 +23,9 @@ export const createMagicLinkToken = async (
   purpose: "login" | "email_verification" | "password_reset",
   createUserIfMissing: boolean = false,
   invitationCode?: string,
-  customRegisterData?: Record<string, any>
+  customRegisterData?: Record<string, any>,
+  firstname?: string,
+  surname?: string
 ): Promise<string> => {
   // Check if user exists
   let userResult = await getDb()
@@ -72,8 +74,8 @@ export const createMagicLinkToken = async (
       .insert(users)
       .values({
         email: email,
-        firstname: "",
-        surname: "",
+        firstname: firstname ?? "",
+        surname: surname ?? "",
         extUserId: "",
         salt: "",
         password: null,
@@ -137,14 +139,18 @@ export const createMagicLoginLink = async (
   redirectUrl?: string,
   createUserIfMissing: boolean = false,
   invitationCode?: string,
-  customRegisterData?: Record<string, any>
+  customRegisterData?: Record<string, any>,
+  firstname?: string,
+  surname?: string
 ): Promise<string> => {
   const token = await createMagicLinkToken(
     email,
     "login",
     createUserIfMissing,
     invitationCode,
-    customRegisterData
+    customRegisterData,
+    firstname,
+    surname
   );
   const magicLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.magicLoginVerifyUrl}?token=${encodeURIComponent(token)}&redirectUrl=${encodeURIComponent(redirectUrl || "")}`;
 
@@ -164,14 +170,18 @@ export const sendMagicLink = async (
   createUserIfMissing: boolean = false,
   invitationCode?: string,
   customRegisterData?: Record<string, any>,
-  template?: string
+  template?: string,
+  firstname?: string,
+  surname?: string
 ): Promise<void> => {
   const magicLink = await createMagicLoginLink(
     email,
     redirectUrl,
     createUserIfMissing,
     invitationCode,
-    customRegisterData
+    customRegisterData,
+    firstname,
+    surname
   );
 
   const customTemplate = template

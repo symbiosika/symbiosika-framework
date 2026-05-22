@@ -408,7 +408,9 @@ export const LocalAuth = {
     createUserIfMissing: boolean = false,
     invitationCode?: string,
     customRegisterData?: Record<string, any>,
-    template?: string
+    template?: string,
+    firstname?: string,
+    surname?: string
   ) {
     return await sendMagicLinkImpl(
       email,
@@ -416,7 +418,9 @@ export const LocalAuth = {
       createUserIfMissing,
       invitationCode,
       customRegisterData,
-      template
+      template,
+      firstname,
+      surname
     );
   },
 
