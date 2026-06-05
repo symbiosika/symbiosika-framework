@@ -5,8 +5,8 @@ import {
   generateRegistrationOptions,
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
+  type AuthenticatorTransportFuture,
 } from "@simplewebauthn/server";
-import type { AuthenticatorTransportFuture } from "@simplewebauthn/types";
 import type { Context } from "hono";
 import { getDb } from "../db/db-connection";
 import { users, webauthnCredentials } from "../db/db-schema";
@@ -67,7 +67,7 @@ export function isPasskeysEnabledForLocalAuth(): boolean {
   );
 }
 
-function uuidToUserHandleBytes(userUuid: string): Uint8Array {
+function uuidToUserHandleBytes(userUuid: string): Uint8Array<ArrayBuffer> {
   const hex = userUuid.replace(/-/g, "");
   return Uint8Array.from(Buffer.from(hex, "hex"));
 }
@@ -157,8 +157,7 @@ export async function passkeyRegistrationOptions(c: Context, userId: string) {
   const options = await generateRegistrationOptions({
     rpName: cfg.rpName,
     rpID: cfg.rpID,
-    // Bun/TS: Uint8Array backing buffer typing vs SimpleWebAuthn's strict Uint8Array<ArrayBuffer>
-    userID: uuidToUserHandleBytes(user.id) as any,
+    userID: uuidToUserHandleBytes(user.id),
     userName: user.email,
     userDisplayName: `${user.firstname} ${user.surname}`.trim() || user.email,
     attestationType: "none",
