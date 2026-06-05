@@ -12,6 +12,7 @@ import {
   stdTemplateVerifyEmail,
   stdTemplateEmailLoginCode,
 } from "./email-templates";
+import { defaultOAuthViews } from "../lib/oauth2/views";
 
 /**
  * The global server config object
@@ -59,6 +60,7 @@ export const _GLOBAL_SERVER_CONFIG = {
     requireConsentScreen: true,
     emailLoginCodeTtl: 60 * 10, // 10 minutes
     emailLoginCodeMaxAttempts: 5,
+    views: defaultOAuthViews,
   },
 };
 
@@ -167,5 +169,6 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
     requireConsentScreen: o.requireConsentScreen ?? true,
     emailLoginCodeTtl: o.emailLoginCodeTtl ?? 60 * 10,
     emailLoginCodeMaxAttempts: o.emailLoginCodeMaxAttempts ?? 5,
+    views: { ...defaultOAuthViews, ...(o.views ?? {}) },
   };
 };

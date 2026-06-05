@@ -57,12 +57,13 @@ export const generateIdToken = async (params: {
   if (params.nonce) {
     claims.nonce = params.nonce;
   }
+  // `sub` is already part of `claims` (from buildClaims) — do not also pass the
+  // `subject` option, jsonwebtoken rejects setting it twice.
   return jwt.sign(claims, privatePem, {
     algorithm: "RS256",
     expiresIn: ttl,
     issuer: issuer(),
     audience: params.clientId,
-    subject: params.user.id,
     keyid: kid,
   });
 };

@@ -49,11 +49,20 @@ const getTokenFromJwt = async (token: string) => {
       throw new Error("Invalid token");
     }
     const claims = decoded as any;
+    const isOauth = claims.oauth === true;
     email = decoded.email;
     sub = decoded.sub;
-    scopes = claims.scopes;
+    // OAuth access tokens carry a space-separated `scope` string (OAuth/OIDC
+    // convention); framework/api tokens carry a `scopes` array.
+    scopes =
+      isOauth && typeof claims.scope === "string"
+        ? claims.scope.split(" ").filter(Boolean)
+        : claims.scopes;
     sid = claims.sid;
-    service = claims.apiToken === true || claims.type === "connection";
+    // OAuth access tokens are stateless like service tokens → no `sid` session
+    // check (they are revocable via their refresh token instead).
+    service =
+      claims.apiToken === true || claims.type === "connection" || isOauth;
 
     await setCachedToken(token, {
       usersEmail: email,

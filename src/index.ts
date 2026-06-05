@@ -32,6 +32,7 @@ import {
 // Routes
 import { definePublicUserRoutes } from "./routes/user/public";
 import { defineSecuredUserRoutes } from "./routes/user/protected";
+import { defineOAuth2Routes } from "./lib/oauth2";
 import { defineFilesRoutes } from "./routes/tenant/[tenantId]/files";
 
 import aiKnowledgeRoutes from "./routes/tenant/[tenantId]/knowledge";
@@ -197,6 +198,13 @@ export const defineServer = (config: ServerSpecificConfig) => {
       definePublicUserRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineSecuredUserRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineNotificationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+
+      /**
+       * OAuth2 / OIDC Authorization Server (opt-in via config.oauth2.enabled).
+       * Registers discovery (.well-known), the public flow (/oauth/*) and the
+       * tenant-admin client management routes. No-op when disabled.
+       */
+      defineOAuth2Routes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
        * Adds tenant routes
