@@ -156,7 +156,7 @@ export function defineFilesRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH
         if (rangeHeader) {
           const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
           if (match) {
-            const start = parseInt(match[1]);
+            const start = parseInt(match[1]!);
             const end = match[2] ? parseInt(match[2]) : totalSize - 1;
             const chunkSize = end - start + 1;
             return new Response(fileBuffer.slice(start, end + 1), {

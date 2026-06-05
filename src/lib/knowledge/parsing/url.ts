@@ -110,7 +110,7 @@ export const urlToMarkdown = async (
   const { document } = parseHTML(htmlWithBase);
 
   // Readability mutates the document; clone first so we still have a fallback body.
-  const docClone = document.cloneNode(true) as unknown as Document;
+  const docClone = document.cloneNode(true) as unknown as typeof document;
   const article = new Readability(docClone as any).parse();
 
   const td = new TurndownService({
