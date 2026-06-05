@@ -61,6 +61,21 @@ export interface ServerSpecificConfig {
   authType?: "local" | "auth0" | "hanko";
   jwtExpiresAfter?: number;
 
+  // OAuth2 / OIDC Authorization Server (opt-in).
+  // When enabled, the app acts as an OAuth2/OIDC provider so third-party
+  // clients can authenticate users and call the API on their behalf.
+  // See docs/framework/16_OAuth2_OIDC_Provider.md
+  oauth2?: {
+    enabled?: boolean; // default false
+    issuer?: string; // default = baseUrl (used for metadata + JWT `iss`)
+    accessTokenTtl?: number; // seconds, default 900 (15m)
+    refreshTokenTtl?: number; // seconds, default 2592000 (30d)
+    authCodeTtl?: number; // seconds, default 60
+    requireConsentScreen?: boolean; // default true
+    emailLoginCodeTtl?: number; // seconds, default 600 (10m)
+    emailLoginCodeMaxAttempts?: number; // default 5
+  };
+
   jobHandlers?: JobHandlerRegister[];
 
   customEnvVariablesToCheckOnStartup?: string[];

@@ -13,6 +13,11 @@ import * as webhooks from "./schema/webhooks";
 import * as server from "./schema/server";
 import * as apiTokens from "./schema/api-tokens";
 import * as connections from "./schema/connections";
+import * as oauthClients from "./schema/oauth-clients";
+import * as oauthCodes from "./schema/oauth-codes";
+import * as oauthRefreshTokens from "./schema/oauth-refresh-tokens";
+import * as oauthConsents from "./schema/oauth-consents";
+import * as emailLoginCodes from "./schema/email-login-codes";
 
 // export all tables for drizzle-kit
 export * from "./schema/users";
@@ -26,6 +31,11 @@ export * from "./schema/webhooks";
 export * from "./schema/server";
 export * from "./schema/api-tokens";
 export * from "./schema/connections";
+export * from "./schema/oauth-clients";
+export * from "./schema/oauth-codes";
+export * from "./schema/oauth-refresh-tokens";
+export * from "./schema/oauth-consents";
+export * from "./schema/email-login-codes";
 
 const baseDbSchema = {
   ...userTables,
@@ -39,6 +49,11 @@ const baseDbSchema = {
   ...server,
   ...apiTokens,
   ...connections,
+  ...oauthClients,
+  ...oauthCodes,
+  ...oauthRefreshTokens,
+  ...oauthConsents,
+  ...emailLoginCodes,
 };
 
 let validTableNames: string[] = [];

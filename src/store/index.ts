@@ -47,6 +47,17 @@ export const _GLOBAL_SERVER_CONFIG = {
   whatsAppIncomingWebhookHandler: undefined as
     | WhatsAppIncomingWebhookHandler
     | undefined,
+  // OAuth2 / OIDC Authorization Server (opt-in, default off)
+  oauth2: {
+    enabled: false,
+    issuer: "" as string, // resolved to baseUrl when empty
+    accessTokenTtl: 60 * 15, // 15 minutes
+    refreshTokenTtl: 60 * 60 * 24 * 30, // 30 days
+    authCodeTtl: 60, // 60 seconds
+    requireConsentScreen: true,
+    emailLoginCodeTtl: 60 * 10, // 10 minutes
+    emailLoginCodeMaxAttempts: 5,
+  },
 };
 
 /**
@@ -137,4 +148,18 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
     _GLOBAL_SERVER_CONFIG.whatsAppIncomingWebhookHandler =
       config.whatsAppIncomingWebhookHandler;
   }
+
+  // OAuth2 / OIDC
+  const o = config.oauth2 ?? {};
+  _GLOBAL_SERVER_CONFIG.oauth2 = {
+    enabled: o.enabled ?? false,
+    // issuer defaults to baseUrl (already resolved above)
+    issuer: o.issuer?.trim() || _GLOBAL_SERVER_CONFIG.baseUrl,
+    accessTokenTtl: o.accessTokenTtl ?? 60 * 15,
+    refreshTokenTtl: o.refreshTokenTtl ?? 60 * 60 * 24 * 30,
+    authCodeTtl: o.authCodeTtl ?? 60,
+    requireConsentScreen: o.requireConsentScreen ?? true,
+    emailLoginCodeTtl: o.emailLoginCodeTtl ?? 60 * 10,
+    emailLoginCodeMaxAttempts: o.emailLoginCodeMaxAttempts ?? 5,
+  };
 };
