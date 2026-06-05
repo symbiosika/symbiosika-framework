@@ -26,10 +26,10 @@ export const _GLOBAL_SERVER_CONFIG = {
   logoUrl: undefined as string | undefined,
   allowedOrigins: <string[]>[],
   authType: <"local" | "auth0" | "hanko">"local",
-  loginUrl: "/manage/#/login",
-  magicLoginVerifyUrl: "/manage/#/magic-login",
+  loginUrl: "/login.html",
+  magicLoginVerifyUrl: "/magic-login-verify.html",
   verifyEmailUrl: "/manage/#/verify-email",
-  resetPasswordUrl: "/manage/#/reset-password",
+  resetPasswordUrl: "/reset-password.html",
   oauthCallbackUrl: "/manage/#/oauth-callback",
   jwtExpiresAfter: 60 * 60 * 24 * 30, // 30 days
   useConsoleLogger: true,
