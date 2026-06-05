@@ -48,6 +48,7 @@ import {
   buildAuthServerMetadata,
   buildOpenIdConfiguration,
   buildJwks,
+  issuerUrl,
 } from "./metadata";
 
 type App = Hono<{ Variables: SFContextVariables }>;
@@ -429,6 +430,56 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
       await revokeRefreshToken(body.token);
     }
     return c.json({ ok: true }); // always 200 per spec
+  });
+
+  // ---- Dynamic Client Registration (RFC 7591) ---------------------------
+  app.post("/oauth/register", async (c) => {
+    type RegBody = {
+      client_name?: string;
+      redirect_uris?: string[];
+      grant_types?: string[];
+      response_types?: string[];
+      scope?: string;
+      token_endpoint_auth_method?: string;
+      client_id?: string; // client-suggested id (accepted for compatibility)
+    };
+    const body = await c.req.json<RegBody>().catch(() => ({}) as RegBody);
+    if (!body.redirect_uris || body.redirect_uris.length === 0) {
+      return c.json(
+        { error: "invalid_client_metadata", error_description: "redirect_uris required" },
+        400
+      );
+    }
+    try {
+      const result = await createOAuthClient({
+        tenantId: null,
+        clientName: body.client_name || "Dynamic Client",
+        redirectUris: body.redirect_uris,
+        scopes: body.scope ? body.scope.split(/\s+/).filter(Boolean) : [],
+        clientType: "public",
+        clientId: body.client_id || undefined,
+      });
+      const issuer = issuerUrl();
+      return c.json(
+        {
+          client_id: result.clientId,
+          client_name: body.client_name || "Dynamic Client",
+          redirect_uris: body.redirect_uris,
+          grant_types: body.grant_types ?? ["authorization_code", "refresh_token"],
+          response_types: body.response_types ?? ["code"],
+          token_endpoint_auth_method: "none",
+          scope: body.scope ?? "",
+          client_id_issued_at: Math.floor(Date.now() / 1000),
+          registration_client_uri: `${issuer}/oauth/register/${result.clientId}`,
+        },
+        201
+      );
+    } catch (err) {
+      return c.json(
+        { error: "invalid_client_metadata", error_description: err instanceof Error ? err.message : String(err) },
+        400
+      );
+    }
   });
 
   // ---- Introspect (RFC 7662) --------------------------------------------

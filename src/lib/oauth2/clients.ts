@@ -15,12 +15,14 @@ import { sha256hex } from "./util";
 export type OAuthClientType = "public" | "confidential";
 
 export type CreateClientParams = {
-  tenantId: string;
+  tenantId: string | null;
   clientName: string;
   redirectUris: string[];
   scopes: string[];
   clientType?: OAuthClientType;
   createdBy?: string;
+  /** Accept a client-supplied ID (for RFC 7591 dynamic registration). */
+  clientId?: string;
 };
 
 const genClientId = () => "oc_" + nanoid(24);
@@ -57,7 +59,7 @@ export const createOAuthClient = async (
   validateRedirectUris(params.redirectUris);
 
   const clientType: OAuthClientType = params.clientType ?? "confidential";
-  const clientId = genClientId();
+  const clientId = params.clientId || genClientId();
 
   let clientSecret: string | undefined;
   let clientSecretHash: string | null = null;

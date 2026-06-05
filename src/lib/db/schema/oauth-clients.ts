@@ -31,8 +31,7 @@ export const oauthClients = pgBaseTable(
       .primaryKey()
       .default(sql`gen_random_uuid()`),
     tenantId: uuid("tenant_id")
-      .references(() => tenants.id, { onDelete: "cascade" })
-      .notNull(), // owner tenant
+      .references(() => tenants.id, { onDelete: "cascade" }), // NULL = dynamically registered client
     clientId: text("client_id").notNull(), // public identifier
     clientSecretHash: text("client_secret_hash"), // SHA-256; NULL = public client (PKCE only)
     clientName: varchar("client_name", { length: 255 }).notNull(),
