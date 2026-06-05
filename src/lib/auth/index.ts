@@ -2,7 +2,6 @@ import { eq, and, isNull } from "drizzle-orm";
 import {
   invitationCodes,
   tenantMembers,
-  sessions,
   users,
   type UserSelectBasic,
 } from "../db/db-schema";
@@ -179,19 +178,6 @@ export const createJwtSessionForUserId = async (userId: string) => {
     user[0],
     _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
   );
-  await getDb()
-    .insert(sessions)
-    .values({
-      sessionToken: "",
-      userId: user[0].id,
-      expires: expiresAt.toISOString(),
-    })
-    .onConflictDoUpdate({
-      target: sessions.sessionToken,
-      set: {
-        expires: expiresAt.toISOString(),
-      },
-    });
   return {
     token,
     expiresAt,
@@ -213,20 +199,6 @@ const checkAndCreateSession = async (
     user,
     _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
   );
-  const session = await getDb()
-    .insert(sessions)
-    .values({
-      sessionToken: "",
-      userId: user.id,
-      expires: expiresAt.toISOString(),
-    })
-    .onConflictDoUpdate({
-      target: sessions.sessionToken,
-      set: {
-        expires: expiresAt.toISOString(),
-      },
-    })
-    .returning();
   return { token, expiresAt };
 };
 
