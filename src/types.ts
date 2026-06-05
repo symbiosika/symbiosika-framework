@@ -34,6 +34,8 @@ export type EmailTemplateFunction = (data: {
   baseUrl: string;
   logoUrl?: string;
   link?: string;
+  /** One-time login code (OTP), e.g. for the OAuth email-login flow. */
+  code?: string;
   user?: UserInfo;
   tenant?: {
     id: string;
@@ -121,6 +123,7 @@ export interface ServerSpecificConfig {
     resetPasswordWelcome?: EmailTemplateFunction;
     inviteToOrganization?: EmailTemplateFunction;
     inviteToOrganizationWhenUserExists?: EmailTemplateFunction;
+    emailLoginCode?: EmailTemplateFunction;
     custom?: Record<string, EmailTemplateFunction>;
   };
 }

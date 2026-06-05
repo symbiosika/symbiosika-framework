@@ -10,6 +10,7 @@ import {
   stdTemplatePasswordReset,
   stdTemplatePasswordResetWelcome,
   stdTemplateVerifyEmail,
+  stdTemplateEmailLoginCode,
 } from "./email-templates";
 
 /**
@@ -41,6 +42,7 @@ export const _GLOBAL_SERVER_CONFIG = {
     inviteToOrganization: stdTemplateInviteToOrganization,
     inviteToOrganizationWhenUserExists:
       stdTemplateInviteToOrganizationWhenUserExists,
+    emailLoginCode: stdTemplateEmailLoginCode,
     custom: {} as Record<string, EmailTemplateFunction>,
   },
   useWhatsApp: false,
@@ -117,6 +119,10 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
   if (config.emailTemplates?.resetPasswordWelcome) {
     _GLOBAL_SERVER_CONFIG.emailTemplates.resetPasswordWelcome =
       config.emailTemplates.resetPasswordWelcome;
+  }
+  if (config.emailTemplates?.emailLoginCode) {
+    _GLOBAL_SERVER_CONFIG.emailTemplates.emailLoginCode =
+      config.emailTemplates.emailLoginCode;
   }
   if (config.emailTemplates?.custom) {
     _GLOBAL_SERVER_CONFIG.emailTemplates.custom = {
