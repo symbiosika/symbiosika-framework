@@ -39,6 +39,7 @@ import {
   issueRefreshToken,
   rotateRefreshToken,
   revokeRefreshToken,
+  introspectAccessToken,
 } from "./tokens";
 import { generateIdToken, OIDC_SCOPES, type OidcUser } from "./oidc";
 import { hasConsentForScopes, saveConsent } from "./consents";
@@ -428,6 +429,24 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
       await revokeRefreshToken(body.token);
     }
     return c.json({ ok: true }); // always 200 per spec
+  });
+
+  // ---- Introspect (RFC 7662) --------------------------------------------
+  app.post("/oauth/introspect", async (c) => {
+    const secret = oauthCfg().introspectionSecret;
+    if (secret) {
+      const auth = c.req.header("authorization") ?? "";
+      if (auth !== `Bearer ${secret}`) {
+        return c.json({ error: "unauthorized" }, 401);
+      }
+    }
+    const body = (await c.req.parseBody().catch(() => ({}))) as Record<
+      string,
+      string
+    >;
+    const token = body.token ?? "";
+    if (!token) return c.json({ active: false });
+    return c.json(introspectAccessToken(token));
   });
 
   // ---- UserInfo (OIDC) --------------------------------------------------

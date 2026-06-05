@@ -20,6 +20,47 @@ import { sha256hex, isExpired } from "./util";
 const issuer = () =>
   _GLOBAL_SERVER_CONFIG.oauth2?.issuer || _GLOBAL_SERVER_CONFIG.baseUrl;
 
+export type IntrospectResponse =
+  | { active: false }
+  | {
+      active: true;
+      sub: string;
+      scope: string;
+      client_id: string;
+      tenant: string | null;
+      aud: string | string[];
+      exp: number;
+      iat: number;
+      iss: string;
+    };
+
+/**
+ * Verify an access token and return its claims in RFC 7662 introspection shape.
+ * Signature + expiry are checked; audience is NOT re-verified (the caller is
+ * already authorised by the introspection secret if one is configured).
+ */
+export const introspectAccessToken = (token: string): IntrospectResponse => {
+  try {
+    const decoded = jwt.verify(token, JWT_HS256_SECRET, {
+      algorithms: ["HS256"],
+    }) as jwt.JwtPayload;
+    if (!decoded.oauth) return { active: false };
+    return {
+      active: true,
+      sub: decoded.sub ?? "",
+      scope: decoded.scope ?? "",
+      client_id: decoded.client_id ?? "",
+      tenant: decoded.tenant ?? null,
+      aud: decoded.aud as string | string[],
+      exp: decoded.exp!,
+      iat: decoded.iat!,
+      iss: decoded.iss ?? "",
+    };
+  } catch {
+    return { active: false };
+  }
+};
+
 export type AccessTokenClaims = {
   userId: string;
   email?: string;

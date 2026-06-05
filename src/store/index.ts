@@ -60,6 +60,7 @@ export const _GLOBAL_SERVER_CONFIG = {
     requireConsentScreen: true,
     emailLoginCodeTtl: 60 * 10, // 10 minutes
     emailLoginCodeMaxAttempts: 5,
+    introspectionSecret: "",
     views: defaultOAuthViews,
   },
 };
@@ -169,6 +170,7 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
     requireConsentScreen: o.requireConsentScreen ?? true,
     emailLoginCodeTtl: o.emailLoginCodeTtl ?? 60 * 10,
     emailLoginCodeMaxAttempts: o.emailLoginCodeMaxAttempts ?? 5,
+    introspectionSecret: o.introspectionSecret ?? "",
     views: { ...defaultOAuthViews, ...(o.views ?? {}) },
   };
 };

@@ -26,6 +26,7 @@ export const buildAuthServerMetadata = () => {
     authorization_endpoint: `${issuer}/oauth/authorize`,
     token_endpoint: `${issuer}/oauth/token`,
     revocation_endpoint: `${issuer}/oauth/revoke`,
+    introspection_endpoint: `${issuer}/oauth/introspect`,
     userinfo_endpoint: `${issuer}/oauth/userinfo`,
     jwks_uri: `${issuer}/.well-known/jwks.json`,
     response_types_supported: ["code"],

@@ -76,6 +76,8 @@ export interface ServerSpecificConfig {
     requireConsentScreen?: boolean; // default true
     emailLoginCodeTtl?: number; // seconds, default 600 (10m)
     emailLoginCodeMaxAttempts?: number; // default 5
+    // Shared secret for RFC 7662 token introspection (resource servers send this as Bearer).
+    introspectionSecret?: string;
     // Override the default login/consent/tenant-select HTML (like emailTemplates).
     views?: Partial<import("./lib/oauth2/views").OAuthViews>;
   };
