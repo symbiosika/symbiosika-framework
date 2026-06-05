@@ -733,7 +733,10 @@ export function defineSecuredUserRoutes(
       try {
         const userId = c.get("usersId");
         // require a new token. Only a valid logged in user can get this endpoint
-        const newTokenData = await LocalAuth.refreshToken(userId);
+        const newTokenData = await LocalAuth.refreshToken(
+          userId,
+          c.get("sessionId")
+        );
         setAuthCookies(c, newTokenData.token);
         return c.json(newTokenData);
       } catch (error) {

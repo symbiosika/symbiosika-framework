@@ -16,6 +16,8 @@ export type SFContextVariables = {
   usersEmail: string;
   usersRoles: string[];
   scopes: string[];
+  /** Server-side session id (sid claim) for interactive logins; undefined for service/external tokens. */
+  sessionId?: string;
 };
 
 export interface SymbiosikaFrameworkHonoApp

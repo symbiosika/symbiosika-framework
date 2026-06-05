@@ -21,7 +21,14 @@ import {
   passkeyAuthenticationOptions,
   passkeyAuthenticationVerify,
 } from "../../lib/auth/passkeys";
-import { setAuthCookies, clearAuthCookies } from "../../lib/auth/auth-cookies";
+import {
+  setAuthCookies,
+  clearAuthCookies,
+  JWT_COOKIE_NAME,
+} from "../../lib/auth/auth-cookies";
+import { getCookie } from "hono/cookie";
+import { revokeSessionByToken } from "../../lib/auth/sessions";
+import { deleteCachedToken } from "../../lib/utils/redis-cache";
 
 /**
  * Define the payment routes
@@ -149,6 +156,17 @@ export function definePublicUserRoutes(
       },
     }),
     async (c) => {
+      // Revoke the server-side session so the token cannot be reused after
+      // logout. Public route: read the token directly from cookie/header.
+      const authHeader = c.req.header("Authorization");
+      const jwtToken =
+        authHeader && authHeader.startsWith("Bearer ")
+          ? authHeader.substring(7)
+          : getCookie(c, JWT_COOKIE_NAME) || "";
+      if (jwtToken) {
+        await revokeSessionByToken(jwtToken);
+        await deleteCachedToken(jwtToken);
+      }
       clearAuthCookies(c);
       return c.json(RESPONSES.SUCCESS);
     }

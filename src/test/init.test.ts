@@ -1,10 +1,9 @@
-import { generateJwt, saltAndHashPassword } from "../lib/auth";
+import { generateUserSessionJwt, saltAndHashPassword } from "../lib/auth";
 import { createDatabaseClient, getDb } from "../lib/db/db-connection";
 import { waitForDbConnection } from "../lib/db/db-connection";
 import {
   users,
   tenants,
-  type UsersSelect,
   teamMembers,
   tenantMembers,
   invitationCodes,
@@ -278,11 +277,13 @@ const getJwtTokenForTesting = async (email: string) => {
     throw new Error("User not found");
   }
 
-  const { token } = await generateJwt(
+  const { token } = await generateUserSessionJwt(
     {
       email: user.email,
       id: user.id,
-    } as UsersSelect,
+      firstname: "",
+      surname: "",
+    },
     86400
   );
   return token;

@@ -1,7 +1,7 @@
 import { getDb } from "../db/db-connection";
 import { and, eq } from "drizzle-orm";
 import { users } from "../db/db-schema";
-import { generateJwt } from "./index";
+import { generateUserSessionJwt } from "./index";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { postRegisterActions } from "./actions";
 import log from "../log";
@@ -132,11 +132,8 @@ export const OAuthAuth = {
       throw new Error("Failed to find or create user");
     }
 
-    // Generate JWT
-    const { token, expiresAt } = await generateJwt(
-      user,
-      _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-    );
+    // Generate JWT backed by a server-side session
+    const { token, expiresAt } = await generateUserSessionJwt(user);
 
     return { token, expiresAt, user };
   },
@@ -186,11 +183,8 @@ export const OAuthAuth = {
       throw new Error("Failed to find or create user");
     }
 
-    // Generate JWT
-    const { token, expiresAt } = await generateJwt(
-      user,
-      _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-    );
+    // Generate JWT backed by a server-side session
+    const { token, expiresAt } = await generateUserSessionJwt(user);
 
     return { token, expiresAt, user };
   },

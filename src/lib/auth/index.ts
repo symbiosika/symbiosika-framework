@@ -6,6 +6,11 @@ import {
   type UserSelectBasic,
 } from "../db/db-schema";
 import { getDb } from "../db/db-connection";
+import {
+  createUserSession,
+  revokeSession,
+  revokeAllSessionsForUser,
+} from "./sessions";
 import jwt from "jsonwebtoken";
 import {
   sendMagicLink as sendMagicLinkImpl,
@@ -159,7 +164,30 @@ export const generateJwt = async (
 };
 
 /**
- * Creates a JWT and session row for an existing user (e.g. passkey login).
+ * Issues a JWT for a user login and creates a matching server-side session.
+ *
+ * The session id is embedded as the `sid` claim; the middleware validates it on
+ * every request, which is what makes the token revocable (logout / password
+ * reset) before it expires. Use this for every interactive login flow
+ * (password, passkey, magic link, OAuth). Stateless service tokens (API tokens,
+ * server connections) must keep using `generateJwt` directly.
+ */
+export const generateUserSessionJwt = async (
+  user: {
+    id: string;
+    email: string;
+    firstname: string;
+    surname: string;
+  },
+  expiresIn: number = _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
+) => {
+  const { sid, expiresAt } = await createUserSession(user.id, expiresIn);
+  const { token } = await generateJwt(user, expiresIn, { sid });
+  return { token, expiresAt, sid };
+};
+
+/**
+ * Creates a JWT and session for an existing user (e.g. passkey login).
  */
 export const createJwtSessionForUserId = async (userId: string) => {
   const user = await getDb()
@@ -174,10 +202,7 @@ export const createJwtSessionForUserId = async (userId: string) => {
   if (!user[0]) {
     throw new Error("User not found");
   }
-  const { token, expiresAt } = await generateJwt(
-    user[0],
-    _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-  );
+  const { token, expiresAt } = await generateUserSessionJwt(user[0]);
   return {
     token,
     expiresAt,
@@ -195,10 +220,7 @@ const checkAndCreateSession = async (
 ) => {
   const user = await getUserFromDb(email, password, sendVerificationEmail);
 
-  const { token, expiresAt } = await generateJwt(
-    user,
-    _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-  );
+  const { token, expiresAt } = await generateUserSessionJwt(user);
   return { token, expiresAt };
 };
 
@@ -217,6 +239,11 @@ const setNewPassword = async (userId: string, newPassword: string) => {
   if (updatedUser.length === 0) {
     throw "User not found";
   }
+
+  // Security: a password change invalidates every existing login session, so a
+  // leaked/forgotten token can no longer be used (covers forgot-password reset
+  // and "log out everywhere" on change).
+  await revokeAllSessionsForUser(userId);
 
   return updatedUser[0];
 };
@@ -416,7 +443,7 @@ export const LocalAuth = {
     return await changePassword(email, oldPassword, newPassword);
   },
 
-  async refreshToken(userId: string) {
+  async refreshToken(userId: string, currentSid?: string) {
     const user = await getDb()
       .select({
         id: users.id,
@@ -429,10 +456,12 @@ export const LocalAuth = {
     if (!user[0]) {
       throw "User not found";
     }
-    const { token, expiresAt } = await generateJwt(
-      user[0],
-      _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-    );
+    // Rotate the session: the refreshed token gets a new session and the old
+    // one is revoked, so a refresh truly replaces the previous token.
+    const { token, expiresAt } = await generateUserSessionJwt(user[0]);
+    if (currentSid) {
+      await revokeSession(currentSid);
+    }
     return { token, expiresAt };
   },
 

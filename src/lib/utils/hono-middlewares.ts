@@ -6,6 +6,7 @@ import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { generateTemporaryJwtFromToken } from "../auth/token-auth";
 import { verifyHankoToken } from "../auth/hanko";
 import { getCachedToken, setCachedToken } from "./redis-cache";
+import { isSessionValid } from "../auth/sessions";
 
 const JWT_PUBLIC_KEY = process.env.JWT_PUBLIC_KEY || "";
 
@@ -13,35 +14,64 @@ const JWT_PUBLIC_KEY = process.env.JWT_PUBLIC_KEY || "";
 // https://github.com/honojs/hono/issues/672
 
 /**
- * Helper function to verify JWT token with caching
+ * Verify a JWT and enforce server-side session validity.
+ *
+ * The signature check is cached (keyed by token) to keep the RSA verify off the
+ * hot path. Independently, interactive user-login tokens carry a `sid` claim
+ * that is validated against the session store on EVERY request (cache hit or
+ * not) — this is what makes logout / password-reset revocation effective.
+ *
+ * Exempt from the session check:
+ *  - service tokens (`apiToken` / `type: "connection"`) — stateless by design
+ *  - non-local auth (auth0 issues and manages its own tokens; hanko is handled
+ *    in a separate branch before this function)
  */
 const getTokenFromJwt = async (token: string) => {
-  // Check cache first
+  let email: string;
+  let sub: string;
+  let scopes: string[] | undefined;
+  let sid: string | undefined;
+  let service: boolean;
+
   const cached = await getCachedToken(token);
   if (cached) {
-    return {
-      email: cached.usersEmail,
-      sub: cached.usersId,
-      scopes: cached.scopes,
-    };
-  }
+    email = cached.usersEmail;
+    sub = cached.usersId;
+    scopes = cached.scopes;
+    sid = cached.sid;
+    service = cached.service ?? false;
+  } else {
+    const decoded = jwtlib.verify(token, JWT_PUBLIC_KEY, {
+      algorithms:
+        _GLOBAL_SERVER_CONFIG.authType === "auth0" ? ["RS256"] : undefined,
+    });
+    if (typeof decoded !== "object" || !decoded.email || !decoded.sub) {
+      throw new Error("Invalid token");
+    }
+    const claims = decoded as any;
+    email = decoded.email;
+    sub = decoded.sub;
+    scopes = claims.scopes;
+    sid = claims.sid;
+    service = claims.apiToken === true || claims.type === "connection";
 
-  // Verify token
-  const decoded = jwtlib.verify(token, JWT_PUBLIC_KEY, {
-    algorithms:
-      _GLOBAL_SERVER_CONFIG.authType === "auth0" ? ["RS256"] : undefined,
-  });
-
-  // Cache the validated token
-  if (typeof decoded === "object" && decoded.email && decoded.sub) {
     await setCachedToken(token, {
-      usersEmail: decoded.email ?? "",
-      usersId: decoded.sub ?? "",
-      scopes: (decoded as any).scopes,
+      usersEmail: email,
+      usersId: sub,
+      scopes,
+      sid,
+      service,
     });
   }
 
-  return decoded;
+  // Stateful session enforcement for interactive logins on local auth.
+  if (_GLOBAL_SERVER_CONFIG.authType === "local" && !service) {
+    if (!sid || !(await isSessionValid(sid))) {
+      throw new Error("Session is no longer valid");
+    }
+  }
+
+  return { email, sub, scopes, sid };
 };
 
 /**
@@ -77,6 +107,7 @@ export const checkToken = async (c: Context) => {
       usersEmail: usersEmail,
       usersId: usersId,
       scopes: ["all"], // Hanko tokens always have full access
+      sessionId: undefined as string | undefined,
     };
   } else {
     // get existing params
@@ -103,17 +134,14 @@ export const checkToken = async (c: Context) => {
     }
 
     const decoded = await getTokenFromJwt(jwtToken);
-    if (typeof decoded === "object") {
-      // Extract scopes from JWT, default to ["all"] if not present (normal session)
-      const scopes = (decoded as any).scopes || ["all"];
-      return {
-        usersEmail: decoded.email ?? "",
-        usersId: decoded.sub ?? "",
-        scopes: Array.isArray(scopes) ? scopes : ["all"],
-      };
-    } else {
-      throw new Error("Invalid token");
-    }
+    // Extract scopes from JWT, default to ["all"] if not present (normal session)
+    const scopes = decoded.scopes || ["all"];
+    return {
+      usersEmail: decoded.email ?? "",
+      usersId: decoded.sub ?? "",
+      scopes: Array.isArray(scopes) ? scopes : ["all"],
+      sessionId: decoded.sid,
+    };
   }
 };
 
@@ -122,9 +150,10 @@ export const checkToken = async (c: Context) => {
  */
 export const authAndSetUsersInfo = async (c: Context, next: Function) => {
   try {
-    const { usersEmail, usersId, scopes } = await checkToken(c);
+    const { usersEmail, usersId, scopes, sessionId } = await checkToken(c);
     c.set("usersEmail", usersEmail);
     c.set("usersId", usersId);
+    c.set("sessionId", sessionId);
     addScopesToContext(c, scopes);
   } catch (error) {
     throw new HTTPException(401, { message: "Unauthorized" });
@@ -158,9 +187,10 @@ export const authAndSetUsersInfoOrRedirectToLogin = async (
   next: Function
 ) => {
   try {
-    const { usersEmail, usersId, scopes } = await checkToken(c);
+    const { usersEmail, usersId, scopes, sessionId } = await checkToken(c);
     c.set("usersEmail", usersEmail);
     c.set("usersId", usersId);
+    c.set("sessionId", sessionId);
     addScopesToContext(c, scopes);
   } catch (error) {
     return c.redirect(

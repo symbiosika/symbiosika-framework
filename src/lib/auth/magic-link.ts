@@ -7,7 +7,7 @@ import {
 } from "../db/db-schema";
 import { nanoid } from "nanoid";
 import { smtpService } from "../email";
-import { generateJwt } from ".";
+import { generateUserSessionJwt } from ".";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { postRegisterActions } from "./actions";
 import { checkIfInvitationCodeIsNeededToRegister, getPendingInvitationsForEmail } from "../usermanagement/invitations";
@@ -297,11 +297,8 @@ export const verifyMagicLink = async (
   // Verify the email token
   const { user, tokenId } = await verifyEmailToken(token);
 
-  // Generate a session token (JWT)
-  const { token: sessionToken } = await generateJwt(
-    user,
-    _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-  );
+  // Generate a session token (JWT) backed by a server-side session
+  const { token: sessionToken } = await generateUserSessionJwt(user);
   await deleteMagicLinkToken(tokenId);
 
   return { user, token: sessionToken };
@@ -322,11 +319,8 @@ export const verifyEmail = async (
     .set({ emailVerified: true })
     .where(eq(users.id, user.id));
 
-  // Generate a session token (JWT)
-  const { token: sessionToken } = await generateJwt(
-    user,
-    _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-  );
+  // Generate a session token (JWT) backed by a server-side session
+  const { token: sessionToken } = await generateUserSessionJwt(user);
   await deleteMagicLinkToken(tokenId);
 
   return { user, token: sessionToken };
