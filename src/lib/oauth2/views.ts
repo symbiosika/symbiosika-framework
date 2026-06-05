@@ -97,11 +97,25 @@ const shell = (appName: string, logoUrl: string | undefined, body: string) => `<
 ${body}
 </div></body></html>`;
 
+/** HTML-attribute / text escaping (entities). */
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+/**
+ * Safe escaping for embedding a value inside a double-quoted JS string literal.
+ * Crucially does NOT touch `&` — the authorize query is reused verbatim as a URL,
+ * so HTML-entity-escaping it (`&` → `&amp;`) would corrupt the query parameters.
+ * Escapes only what could break out of the JS string / <script> context.
+ */
+const jsStr = (s: string) =>
+  s
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/</g, "\\x3C")
+    .replace(/\r?\n/g, "");
+
 export const defaultLoginView = (d: OAuthViewData): string => {
-  const q = esc(d.authorizeQuery);
+  const q = jsStr(d.authorizeQuery);
   const body = `
   <h1>Sign in</h1>
   <p>Continue to ${esc(d.appName)}. Enter your email to receive a login code.</p>
@@ -165,7 +179,7 @@ export const defaultConsentView = (d: ConsentViewData): string => {
 };
 
 export const defaultTenantSelectView = (d: TenantSelectViewData): string => {
-  const q = esc(d.authorizeQuery);
+  const q = jsStr(d.authorizeQuery);
   const opts = d.tenants
     .map(
       (t) =>
