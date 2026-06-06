@@ -202,3 +202,35 @@ test("Cross-tenant access rejected", async () => {
   expect(response.status).toBe(403);
 });
 ```
+
+## Workaound for hanging postgre tasks
+
+Bun has problems with hanging postgre tasks!
+
+https://github.com/oven-sh/bun/issues/19130
+
+This will fail hang forever:
+```ts
+import { test, expect } from 'bun:test';
+import { SQL } from 'bun';
+
+const sql = new SQL('postgres://user@localhost:5432/db', { prepare: false });
+
+test('hangs forever', async () => {
+  await expect(
+    sql.unsafe(`SELECT * FROM table_that_does_not_exist`)
+  ).rejects.toThrow();
+});
+
+```
+
+This is a workaround(!):
+```ts
+let threw = false;
+try {
+  await sql.unsafe(`SELECT * FROM table_that_does_not_exist`);
+} catch {
+  threw = true;
+}
+expect(threw).toBe(true);
+```

@@ -4,7 +4,8 @@
  */
 import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { HTTPException } from "hono/http-exception";
-import { LocalAuth } from "../../lib/auth";
+import { LocalAuth, createJwtSessionForUserId } from "../../lib/auth";
+import { sendEmailLoginCode, verifyEmailLoginCode } from "../../lib/auth/email-otp";
 import log from "../../lib/log";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { describeRoute } from "hono-openapi";
@@ -138,6 +139,38 @@ export function definePublicUserRoutes(
         }
       } catch (err) {
         throw new HTTPException(401, { message: "Invalid login: " + err });
+      }
+    }
+  );
+
+  /**
+   * Request an email login code (OTP) for server-to-server use.
+   * Counterpart to /user/login-with-code.
+   */
+  app.post(
+    API_BASE_PATH + "/user/request-login-code",
+    async (c) => {
+      const { email } = await c.req.json<{ email?: string }>().catch(() => ({}) as any);
+      if (email) await sendEmailLoginCode(email);
+      return c.json({ ok: true });
+    }
+  );
+
+  /**
+   * Verify an email login code and return a JWT in the response body.
+   * Designed for server-to-server use (e.g. connection onboarding from a robot).
+   * Unlike /oauth/login/verify, this returns the token instead of setting a cookie.
+   */
+  app.post(
+    API_BASE_PATH + "/user/login-with-code",
+    async (c) => {
+      const { email, code } = await c.req.json<{ email?: string; code?: string }>().catch(() => ({}) as any);
+      try {
+        const { userId } = await verifyEmailLoginCode(email ?? "", code ?? "");
+        const session = await createJwtSessionForUserId(userId);
+        return c.json({ token: session.token, expiresAt: session.expiresAt });
+      } catch {
+        return c.json({ ok: false, error: "invalid_code" }, 400);
       }
     }
   );

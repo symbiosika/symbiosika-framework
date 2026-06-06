@@ -35,6 +35,7 @@ export async function setSecret(data: {
       label: data.name,
       value: encrypted.value,
       type: encrypted.algorithm,
+      keyVersion: encrypted.keyVersion,
       tenantId: data.tenantId,
     })
     .onConflictDoUpdate({
@@ -42,6 +43,7 @@ export async function setSecret(data: {
       set: {
         value: encrypted.value,
         type: encrypted.algorithm,
+        keyVersion: encrypted.keyVersion,
       },
     })
     .returning();
@@ -75,8 +77,8 @@ export async function getSecret(
     return null;
   }
   const secret = result[0];
-  // Decrypt the value before returning
-  const decrypted = decryptAes(secret.value);
+  // Decrypt the value before returning, using the key version it was encrypted with
+  const decrypted = decryptAes(secret.value, secret.type, secret.keyVersion);
 
   return decrypted.value;
 }

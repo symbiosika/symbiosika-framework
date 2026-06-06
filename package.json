@@ -1,5 +1,5 @@
 {
-  "name": "kinaut-webserver",
+  "name": "symbiosika-framework",
   "version": "0.12.8",
   "author": "Symbiosika GmbH",
   "main": "./lib/index.js",

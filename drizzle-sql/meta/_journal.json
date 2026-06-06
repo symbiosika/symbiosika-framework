@@ -64,6 +64,27 @@
       "when": 1774010582359,
       "tag": "0008_closed_lifeguard",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780647473117,
+      "tag": "0009_ambitious_triton",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1780681741660,
+      "tag": "0010_little_puma",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1780753863249,
+      "tag": "0011_add_secret_key_version",
+      "breakpoints": true
     }
   ]
 }

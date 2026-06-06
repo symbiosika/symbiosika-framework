@@ -11,10 +11,11 @@
         if (parts.length === 2) return parts.pop().split(";").shift();
         return null;
       }
-      // The `jwt` cookie is HttpOnly; we use the non-HttpOnly `jwt_present`
-      // marker the backend sets alongside it to detect a logged-in state.
-      const jwtMarker = getCookie("jwt_present");
-      if (jwtMarker) {
+      // The real `jwt` cookie is HttpOnly (not readable from JS). The server
+      // also sets a non-secret `jwt_present` marker so the SPA can detect a
+      // logged-in state.
+      const hasJwt = getCookie("jwt_present");
+      if (hasJwt) {
         (async () => {
           try {
             const u = await fetch("/api/v1/user/me");

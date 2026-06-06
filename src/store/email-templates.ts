@@ -143,6 +143,45 @@ export const stdTemplateMagicLink: EmailTemplateFunction = async (data) => {
   };
 };
 
+export const stdTemplateEmailLoginCode: EmailTemplateFunction = async (
+  data
+) => {
+  const codeBlock = `
+    <p style="text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 6px; margin: 24px 0;">${
+      data.code ?? ""
+    }</p>`;
+
+  const englishContent = `
+    <h2>Your login code for ${data.appName}</h2>
+    <p>Hello,</p>
+    <p>Use the following code to continue signing in:</p>
+    ${codeBlock}
+    <p style="text-align: center;">The code is valid for 10 minutes.</p>
+    <p>If you didn't request this code, you can safely ignore this email.</p>
+    <p>Best regards,<br>The ${data.appName} Team</p>
+  `;
+
+  const germanContent = `
+    <h2>Ihr Login-Code für ${data.appName}</h2>
+    <p>Hallo,</p>
+    <p>Verwenden Sie den folgenden Code, um die Anmeldung fortzusetzen:</p>
+    ${codeBlock}
+    <p style="text-align: center;">Der Code ist 10 Minuten gültig.</p>
+    <p>Falls Sie diesen Code nicht angefordert haben, können Sie diese E-Mail ignorieren.</p>
+    <p>Viele Grüße,<br>Ihr ${data.appName}-Team</p>
+  `;
+
+  return {
+    html: htmlEmailWrapper({
+      appName: data.appName,
+      logoUrl: data.logoUrl,
+      englishContent,
+      germanContent,
+    }),
+    subject: `Your login code for ${data.appName} / Ihr Login-Code für ${data.appName}`,
+  };
+};
+
 export const stdTemplateVerifyEmail: EmailTemplateFunction = async (data) => {
   // English content for the verify email
   const englishContent = `

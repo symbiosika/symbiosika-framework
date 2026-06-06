@@ -16,6 +16,15 @@ import * as v from "valibot";
  * Define the plugin management routes
  */
 export default function definePingRoute(app: SymbiosikaFrameworkHonoApp, basePath: string) {
+  app.get(basePath + "/version", async (c) => {
+    try {
+      const pkg = await Bun.file("./package.json").json() as { version?: string };
+      return c.json({ version: pkg.version ?? "unknown" });
+    } catch {
+      return c.json({ version: "unknown" });
+    }
+  });
+
   /**
    * Ping and internet check endpoint
    */

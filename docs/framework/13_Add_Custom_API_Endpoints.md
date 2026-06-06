@@ -15,7 +15,7 @@ Routes are registered in `defineServer()` using two options:
 Routes registered here are **automatically protected** by the global `authAndSetUsersInfo` middleware. You do NOT need to add it manually to each route.
 
 ```typescript
-import { defineServer } from "kinaut-webserver";
+import { defineServer } from "@framework/index";
 
 const server = defineServer({
   appName: "My Application",
@@ -54,10 +54,10 @@ import {
   HTTPException,
   secretsService,
   log,
-} from "kinaut-webserver";
+} from "@framework/index";
 import { resolver, validator } from "hono-openapi/valibot";
 import * as v from "valibot";
-import { getDb } from "kinaut-webserver/dbSchema";
+import { getDb } from "@framework/dbSchema";
 
 export function defineMyCustomRoutes(app: SymbiosikaFrameworkHonoApp) {
   // Your routes will be defined here
@@ -247,7 +247,7 @@ app.get(
 Access the database using the framework's Drizzle instance:
 
 ```typescript
-import { getDb } from "kinaut-webserver/dbSchema";
+import { getDb } from "@framework/dbSchema";
 import { and, eq, desc, asc } from "drizzle-orm";
 import { myTable } from "../db-schema"; // Your custom schema
 
@@ -317,7 +317,7 @@ const updateMyData = async (userId: string, id: string, updates: any) => {
 Use the framework's encryption service for sensitive data:
 
 ```typescript
-import { secretsService } from "kinaut-webserver";
+import { secretsService } from "@framework/index";
 
 const storeSensitiveData = async (userId: string, sensitiveData: any) => {
   // Encrypt the data
@@ -364,7 +364,7 @@ const getSensitiveData = async (userId: string) => {
 Use `HTTPException` for proper error responses:
 
 ```typescript
-import { HTTPException } from "kinaut-webserver";
+import { HTTPException } from "@framework/index";
 
 // Client errors (4xx)
 throw new HTTPException(400, { message: "Invalid request data" });
@@ -399,7 +399,7 @@ app.post("/endpoint", async (c) => {
 Use the framework's logging service:
 
 ```typescript
-import { log } from "kinaut-webserver";
+import { log } from "@framework/index";
 
 app.post("/endpoint", async (c) => {
   const userId = c.get("usersId");
