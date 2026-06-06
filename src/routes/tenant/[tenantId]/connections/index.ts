@@ -28,6 +28,7 @@ import { validator } from "hono-openapi";
 import * as v from "valibot";
 import log from "../../../../lib/log";
 import { validateScope } from "../../../../lib/utils/validate-scope";
+import { isTenantAdmin, isTenantMember } from "../../../tenant/index";
 
 /**
  * Define connections routes
@@ -43,6 +44,7 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     `${baseRoute}/validate-credentials`,
     authAndSetUsersInfo,
     checkUserPermission,
+    isTenantAdmin,
     validator(
       "json",
       v.object({
@@ -94,6 +96,7 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     `${baseRoute}/init`,
     authAndSetUsersInfo,
     checkUserPermission,
+    isTenantAdmin,
     validator(
       "json",
       v.object({
@@ -156,6 +159,7 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     `${baseRoute}/exchange-keys`,
     authAndSetUsersInfo,
     checkUserPermission,
+    isTenantAdmin,
     validator(
       "json",
       v.object({
@@ -287,6 +291,7 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     `${baseRoute}/:connectionId/verify`,
     authAndSetUsersInfo,
     checkUserPermission,
+    isTenantMember,
     validator("param", v.object({ connectionId: v.string() })),
     validateScope("connections:read"),
     describeRoute({
@@ -325,6 +330,7 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     `${baseRoute}`,
     authAndSetUsersInfo,
     checkUserPermission,
+    isTenantMember,
     validator("param", v.object({ tenantId: v.string() })),
     validateScope("connections:read"),
     describeRoute({
@@ -362,6 +368,7 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     `${baseRoute}/list`,
     authAndSetUsersInfo,
     checkUserPermission,
+    isTenantMember,
     validator("param", v.object({ tenantId: v.string() })),
     validator(
       "query",
@@ -412,6 +419,7 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     `${baseRoute}/:connectionId`,
     authAndSetUsersInfo,
     checkUserPermission,
+    isTenantMember,
     validator("param", v.object({ connectionId: v.string() })),
     validateScope("connections:read"),
     describeRoute({
@@ -455,6 +463,7 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     `${baseRoute}/:connectionId/refresh`,
     authAndSetUsersInfo,
     checkUserPermission,
+    isTenantAdmin,
     validator("param", v.object({ connectionId: v.string() })),
     validateScope("connections:write"),
     describeRoute({
@@ -494,6 +503,7 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     `${baseRoute}/:connectionId`,
     authAndSetUsersInfo,
     checkUserPermission,
+    isTenantAdmin,
     validator("param", v.object({ connectionId: v.string() })),
     validateScope("connections:write"),
     describeRoute({
