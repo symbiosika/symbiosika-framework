@@ -1,19 +1,19 @@
 # symbiosika-framework Webserver - Get Started
 
-This guide explains how to quickly set up a webserver using the `kinaut-webserver`.
+This guide explains how to quickly set up a webserver using the `symbiosika-framework`.
 
 ## Quick Start
 
 1. **Install dependencies** (if not already):
 
    ```sh
-   bun install kinaut-webserver
+   git submodule add https://github.com/symbiosika/symbiosika-framework backend/framework
    ```
 
 2. **Create your server entry file** (e.g., `src/index.ts`):
 
    ```typescript
-   import { defineServer } from "kinaut-webserver";
+   import { defineServer } from "@framework/index";
    import fs from "fs";
 
    const server = defineServer({

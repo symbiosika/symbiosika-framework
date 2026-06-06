@@ -1,6 +1,6 @@
 # Adding Custom Database Schema
 
-The kinaut-webserver provides many built-in database tables (see [Built-in DB Schema](./11_BuildIn_DB_Schema.md)), but your application can also define custom tables with its own prefix.
+The symbiosika-framework provides many built-in database tables (see [Built-in DB Schema](./11_BuildIn_DB_Schema.md)), but your application can also define custom tables with its own prefix.
 
 ## Overview
 

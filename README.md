@@ -78,13 +78,13 @@ The framework includes:
 1. Install the framework:
 
 ```bash
-npm install kinaut-webserver
+git submodule add https://github.com/symbiosika/symbiosika-framework backend/framework
 ```
 
 2. Create your application entry point:
 
 ```typescript
-import { defineServer } from "kinaut-webserver";
+import { defineServer } from "@framework/index";
 
 const server = defineServer({
   // Your configuration here
