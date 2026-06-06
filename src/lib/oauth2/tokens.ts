@@ -67,6 +67,8 @@ export type AccessTokenClaims = {
   tenantId: string | null;
   clientId: string;
   scopes: string[];
+  /** RFC 8707 resource indicator — sets the token audience. Defaults to the issuer. */
+  resource?: string;
 };
 
 /** Issue a signed access-token JWT. Returns the token and its lifetime (s). */
@@ -89,7 +91,7 @@ export const generateAccessToken = (
     {
       expiresIn: ttl,
       issuer: issuer(),
-      audience: issuer(),
+      audience: params.resource ?? issuer(),
     }
   );
   return { token, expiresIn: ttl };
