@@ -953,6 +953,138 @@ export async function cleanupStaleConnections(
 }
 
 // ============================================================================
+// Code-based (OTP) remote authentication helpers
+// ============================================================================
+
+/**
+ * Request a login code to be sent to the given email on the remote server.
+ * Calls the remote's POST /api/v1/user/request-login-code.
+ */
+export async function requestRemoteLoginCode(
+  remoteUrl: string,
+  email: string
+): Promise<void> {
+  const res = await fetch(`${remoteUrl}/api/v1/user/request-login-code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to request login code: ${res.status}`);
+  }
+}
+
+/**
+ * Verify an OTP code with the remote server and retrieve available tenants.
+ * Calls the remote's POST /api/v1/user/login-with-code, then GET /api/v1/user/tenants.
+ * Returns the remote JWT token (to be used for initializeConnectionWithToken).
+ */
+export async function validateRemoteCredentialsWithCode(
+  remoteUrl: string,
+  email: string,
+  code: string
+): Promise<{ token: string; tenants: RemoteTenantInfo[] }> {
+  const loginRes = await fetch(`${remoteUrl}/api/v1/user/login-with-code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code }),
+  });
+
+  if (!loginRes.ok) {
+    const body = await loginRes.json().catch(() => ({})) as any;
+    throw new Error(body?.error === "invalid_code" ? "Ungültiger oder abgelaufener Code." : `Login fehlgeschlagen: ${loginRes.status}`);
+  }
+
+  const { token } = await loginRes.json() as { token: string };
+  if (!token) throw new Error("No token received from remote server");
+
+  const tenantsRes = await fetch(`${remoteUrl}/api/v1/user/tenants`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!tenantsRes.ok) throw new Error(`Failed to fetch remote tenants: ${tenantsRes.status}`);
+
+  const tenants = await tenantsRes.json() as RemoteTenantInfo[];
+  return { token, tenants: tenants || [] };
+}
+
+/**
+ * Initialize a connection using a pre-obtained remote JWT token (from OTP flow).
+ * Equivalent to initializeConnection but skips credential validation.
+ */
+export async function initializeConnectionWithToken(
+  localTenantId: string,
+  remoteUrl: string,
+  remoteToken: string,
+  remoteTenantId: string,
+  remoteTenantName: string,
+  name: string
+): Promise<ConnectionInitResult> {
+  const db = getDb();
+
+  const serverKey = await getServerKeys();
+  if (!serverKey) throw new Error("Server keys not found.");
+
+  const localTenant = await getTenant(localTenantId);
+  if (!localTenant) throw new Error(`Local tenant ${localTenantId} not found`);
+
+  // Upsert remote tenant locally
+  await db.insert(tenants).values({ id: remoteTenantId, name: remoteTenantName })
+    .onConflictDoUpdate({
+      target: [tenants.id],
+      set: { name: remoteTenantName, updatedAt: new Date().toISOString() },
+    });
+
+  const remoteConnectionId = randomUUID();
+
+  const result = await db.insert(connections).values({
+    tenantId: localTenantId,
+    remoteUrl,
+    name,
+    initiatedBy: "local",
+    remoteConnectionId,
+    remotePublicKey: null,
+  }).onConflictDoUpdate({
+    target: [connections.tenantId, connections.remoteConnectionId, connections.initiatedBy],
+    set: { remoteUrl, name, updatedAt: new Date().toISOString() },
+  }).returning();
+
+  if (!result[0]) throw new Error("Failed to create connection record");
+  const connectionId = result[0].id;
+
+  const localServerUrl = _GLOBAL_SERVER_CONFIG.baseUrl;
+  if (!localServerUrl) throw new Error("Local server URL not configured");
+
+  try {
+    const exchangeResult = await exchangePublicKeys(
+      remoteUrl,
+      remoteToken,
+      remoteTenantId,
+      serverKey.publicKey,
+      remoteConnectionId,
+      localServerUrl,
+      name,
+      localTenantId,
+      localTenant.name
+    );
+
+    await db.update(connections)
+      .set({ remotePublicKey: exchangeResult.remotePublicKey, updatedAt: new Date().toISOString() })
+      .where(eq(connections.id, connectionId));
+
+    return {
+      connectionId,
+      remoteConnectionId,
+      localPublicKey: serverKey.publicKey,
+      remotePublicKey: exchangeResult.remotePublicKey,
+      status: "active",
+    };
+  } catch (error) {
+    await db.delete(connections).where(eq(connections.id, connectionId)).catch(() => {});
+    throw error;
+  }
+}
+
+// ============================================================================
 // Service Export
 // ============================================================================
 
@@ -964,9 +1096,12 @@ export const connectionsService = {
 
   // Remote server communication
   validateRemoteCredentials,
+  requestRemoteLoginCode,
+  validateRemoteCredentialsWithCode,
 
   // Connection management
   initializeConnection,
+  initializeConnectionWithToken,
   acceptConnection,
   authenticateConnection,
   verifyConnection,

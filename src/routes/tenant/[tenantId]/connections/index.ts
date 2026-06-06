@@ -231,6 +231,113 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
   );
 
   /**
+   * POST /request-remote-code
+   * Request an OTP login code to be sent to the given email on the remote server.
+   */
+  app.post(
+    `${baseRoute}/request-remote-code`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    isTenantAdmin,
+    validator(
+      "json",
+      v.object({
+        remoteUrl: v.string("Remote URL is required"),
+        email: v.string("Email is required"),
+      })
+    ),
+    validateScope("connections:write"),
+    async (c) => {
+      try {
+        const { remoteUrl, email } = c.req.valid("json");
+        await connectionsService.requestRemoteLoginCode(remoteUrl, email);
+        return c.json({ ok: true });
+      } catch (error) {
+        log.error("Error requesting remote login code:", error as object);
+        throw new HTTPException(400, {
+          message: error instanceof Error ? error.message : "Failed to request code",
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /validate-credentials-with-code
+   * Verify an OTP code against the remote server and return the available tenants.
+   * Returns the remote JWT token for use in init-with-token.
+   */
+  app.post(
+    `${baseRoute}/validate-credentials-with-code`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    isTenantAdmin,
+    validator(
+      "json",
+      v.object({
+        remoteUrl: v.string("Remote URL is required"),
+        email: v.string("Email is required"),
+        code: v.string("Code is required"),
+      })
+    ),
+    validateScope("connections:write"),
+    async (c) => {
+      try {
+        const { remoteUrl, email, code } = c.req.valid("json");
+        const result = await connectionsService.validateRemoteCredentialsWithCode(remoteUrl, email, code);
+        return c.json({ token: result.token, tenants: result.tenants });
+      } catch (error) {
+        log.error("Error validating remote code:", error as object);
+        throw new HTTPException(400, {
+          message: error instanceof Error ? error.message : "Code validation failed",
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /init-with-token
+   * Initialize a connection using a pre-obtained remote JWT token (from OTP flow).
+   */
+  app.post(
+    `${baseRoute}/init-with-token`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    isTenantAdmin,
+    validator(
+      "json",
+      v.object({
+        remoteUrl: v.string("Remote URL is required"),
+        remoteToken: v.string("Remote token is required"),
+        remoteTenantId: v.string("Remote tenant ID is required"),
+        remoteTenantName: v.string("Remote tenant name is required"),
+        name: v.string("Connection name is required"),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string() })),
+    validateScope("connections:write"),
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const { remoteUrl, remoteToken, remoteTenantId, remoteTenantName, name } = c.req.valid("json");
+        const result = await connectionsService.initializeConnectionWithToken(
+          tenantId,
+          remoteUrl,
+          remoteToken,
+          remoteTenantId,
+          remoteTenantName,
+          name
+        );
+        return c.json(result, 201);
+      } catch (error) {
+        log.error("Error initializing connection with token:", error as object);
+        throw new HTTPException(400, {
+          message: error instanceof Error ? error.message : "Connection failed",
+        });
+      }
+    }
+  );
+
+  /**
    * POST /authenticate
    * Authenticate connection using key signature
    * Public endpoint, signature verified by public key
