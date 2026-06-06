@@ -22,6 +22,7 @@ import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { generateJwt } from "../auth";
 import { getServerKeys } from "./init-server-keys";
 import { getTenant, updateTenant } from "../usermanagement/tenants";
+import { runPostConnectionActions } from "./actions";
 
 // ============================================================================
 // Types
@@ -406,6 +407,15 @@ export async function initializeConnection(
         `Connection initialized successfully: ${connectionId} with remote public key`
       );
 
+      await runPostConnectionActions({
+        connectionId,
+        localTenantId,
+        remoteTenantId,
+        remoteUrl,
+        name,
+        initiatedBy: "local",
+      });
+
       return {
         connectionId,
         remoteConnectionId,
@@ -563,6 +573,15 @@ export async function acceptConnection(
         `Failed to accept connection: ${error?.message || "Unknown error"}`
       );
     }
+
+    await runPostConnectionActions({
+      connectionId,
+      localTenantId,
+      remoteTenantId,
+      remoteUrl,
+      name: connectionName,
+      initiatedBy: "remote",
+    });
 
     return {
       connectionId,
@@ -1070,6 +1089,15 @@ export async function initializeConnectionWithToken(
     await db.update(connections)
       .set({ remotePublicKey: exchangeResult.remotePublicKey, updatedAt: new Date().toISOString() })
       .where(eq(connections.id, connectionId));
+
+    await runPostConnectionActions({
+      connectionId,
+      localTenantId,
+      remoteTenantId,
+      remoteUrl,
+      name,
+      initiatedBy: "local",
+    });
 
     return {
       connectionId,
