@@ -32,6 +32,8 @@ const getTokenFromJwt = async (token: string) => {
   let scopes: string[] | undefined;
   let sid: string | undefined;
   let service: boolean;
+  let type: string | undefined;
+  let tenantId: string | undefined;
 
   const cached = await getCachedToken(token);
   if (cached) {
@@ -40,6 +42,8 @@ const getTokenFromJwt = async (token: string) => {
     scopes = cached.scopes;
     sid = cached.sid;
     service = cached.service ?? false;
+    type = cached.type;
+    tenantId = cached.tenantId;
   } else {
     const decoded = jwtlib.verify(token, JWT_PUBLIC_KEY, {
       algorithms:
@@ -63,6 +67,8 @@ const getTokenFromJwt = async (token: string) => {
     // check (they are revocable via their refresh token instead).
     service =
       claims.apiToken === true || claims.type === "connection" || isOauth;
+    type = claims.type;
+    tenantId = claims.tenantId;
 
     await setCachedToken(token, {
       usersEmail: email,
@@ -70,6 +76,8 @@ const getTokenFromJwt = async (token: string) => {
       scopes,
       sid,
       service,
+      type,
+      tenantId,
     });
   }
 
@@ -80,7 +88,7 @@ const getTokenFromJwt = async (token: string) => {
     }
   }
 
-  return { email, sub, scopes, sid };
+  return { email, sub, scopes, sid, type, tenantId };
 };
 
 /**
@@ -117,6 +125,8 @@ export const checkToken = async (c: Context) => {
       usersId: usersId,
       scopes: ["all"], // Hanko tokens always have full access
       sessionId: undefined as string | undefined,
+      tokenType: undefined as string | undefined,
+      tokenTenantId: undefined as string | undefined,
     };
   } else {
     // get existing params
@@ -150,6 +160,8 @@ export const checkToken = async (c: Context) => {
       usersId: decoded.sub ?? "",
       scopes: Array.isArray(scopes) ? scopes : ["all"],
       sessionId: decoded.sid,
+      tokenType: decoded.type,
+      tokenTenantId: decoded.tenantId,
     };
   }
 };
@@ -159,10 +171,13 @@ export const checkToken = async (c: Context) => {
  */
 export const authAndSetUsersInfo = async (c: Context, next: Function) => {
   try {
-    const { usersEmail, usersId, scopes, sessionId } = await checkToken(c);
+    const { usersEmail, usersId, scopes, sessionId, tokenType, tokenTenantId } =
+      await checkToken(c);
     c.set("usersEmail", usersEmail);
     c.set("usersId", usersId);
     c.set("sessionId", sessionId);
+    c.set("tokenType", tokenType);
+    c.set("tokenTenantId", tokenTenantId);
     addScopesToContext(c, scopes);
   } catch (error) {
     throw new HTTPException(401, { message: "Unauthorized" });

@@ -18,6 +18,10 @@ export type SFContextVariables = {
   scopes: string[];
   /** Server-side session id (sid claim) for interactive logins; undefined for service/external tokens. */
   sessionId?: string;
+  /** Token `type` claim (e.g. "connection" for server-to-server tokens). */
+  tokenType?: string;
+  /** Token `tenantId` claim — for connection tokens, the tenant they may act for. */
+  tokenTenantId?: string;
 };
 
 export interface SymbiosikaFrameworkHonoApp

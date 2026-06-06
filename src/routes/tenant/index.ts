@@ -42,6 +42,16 @@ export const isTenantMember: MiddlewareHandler = async (c, next) => {
   const userId = c.get("usersId");
   const tenantId = c.req.param("tenantId")!;
 
+  // A connection token (cert-authenticated server-to-server link) may act for
+  // the tenant named in its own claim — no tenant membership row required.
+  if (
+    c.get("tokenType") === "connection" &&
+    c.get("tokenTenantId") === tenantId
+  ) {
+    await next();
+    return;
+  }
+
   try {
     await getTenantMemberRole(tenantId, userId);
     await next();

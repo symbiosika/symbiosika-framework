@@ -14,6 +14,10 @@ type CachedTokenData = {
   sid?: string;
   /** true for stateless service tokens (API tokens, server connections). */
   service?: boolean;
+  /** Token `type` claim (e.g. "connection"). */
+  type?: string;
+  /** Token `tenantId` claim (e.g. the tenant a connection token may act for). */
+  tenantId?: string;
 };
 
 // Fallback in-memory cache if Redis is not available
@@ -104,6 +108,8 @@ export async function getCachedToken(
       scopes: cached.scopes,
       sid: cached.sid,
       service: cached.service,
+      type: cached.type,
+      tenantId: cached.tenantId,
     };
   }
 
