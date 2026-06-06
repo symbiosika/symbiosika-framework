@@ -48,4 +48,21 @@ describe("AES Encryption/Decryption", () => {
 
     expect(decrypted.value).toBe(originalText);
   });
+
+  it("should stamp and round-trip the key version", () => {
+    const originalText = "rotate-me";
+
+    // New secrets are stamped with the current key version (default 1)
+    const encrypted = encryptAes(originalText);
+    expect(encrypted.keyVersion).toBe(1);
+
+    // Decrypting with the stamped version returns the original value
+    const decrypted = decryptAes(
+      encrypted.value,
+      encrypted.algorithm,
+      encrypted.keyVersion
+    );
+    expect(decrypted.keyVersion).toBe(1);
+    expect(decrypted.value).toBe(originalText);
+  });
 });

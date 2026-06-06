@@ -19,17 +19,48 @@ const checkSecrets = async () => {
   }
 };
 
-class AESCipher {
-  key: Buffer;
+/**
+ * The key version that new secrets are encrypted with.
+ * Override via SECRETS_AES_KEY_VERSION once a rotation has happened.
+ * Version 1 always maps to the legacy SECRETS_AES_KEY env var.
+ */
+export const CURRENT_KEY_VERSION = Number(
+  process.env.SECRETS_AES_KEY_VERSION ?? 1
+);
 
+/**
+ * Resolve the AES master key for a given key version.
+ * - version 1  -> SECRETS_AES_KEY (legacy / current)
+ * - version N  -> SECRETS_AES_KEY_V{N}
+ *
+ * This lets us rotate the master key in the future: new secrets are stamped
+ * with CURRENT_KEY_VERSION, while old secrets keep decrypting with the key
+ * version stored alongside them.
+ */
+function getKey(version: number): Buffer {
+  const envName = version === 1 ? "SECRETS_AES_KEY" : `SECRETS_AES_KEY_V${version}`;
+  const raw = process.env[envName];
+  if (!raw) {
+    throw new Error(
+      `Missing AES key for version ${version} (expected env var ${envName})`
+    );
+  }
+  return Buffer.from(raw, "hex");
+}
+
+class AESCipher {
   constructor() {
     checkSecrets();
-    this.key = Buffer.from(process.env.SECRETS_AES_KEY!, "hex");
   }
 
-  encrypt(text: string, algorithm = "aes-256-cbc") {
+  encrypt(
+    text: string,
+    algorithm = "aes-256-cbc",
+    keyVersion = CURRENT_KEY_VERSION
+  ) {
+    const key = getKey(keyVersion);
     const iv = randomBytes(16);
-    const cipher = createCipheriv(algorithm, this.key, iv);
+    const cipher = createCipheriv(algorithm, key, iv);
     let encrypted = cipher.update(text, "utf8", "hex");
     encrypted += cipher.final("hex");
     const authTag = algorithm.includes("gcm")
@@ -40,14 +71,15 @@ class AESCipher {
     );
   }
 
-  decrypt(encryptedData: string, algorithm = "aes-256-cbc") {
+  decrypt(encryptedData: string, algorithm = "aes-256-cbc", keyVersion = 1) {
+    const key = getKey(keyVersion);
     const parts = encryptedData.split(":");
     const [ivHex, encryptedText, authTag] = parts;
     if (!ivHex || !encryptedText) {
       throw new Error("Invalid encrypted data");
     }
     const iv = Buffer.from(ivHex, "hex");
-    const decipher = createDecipheriv(algorithm, this.key, iv) as any;
+    const decipher = createDecipheriv(algorithm, key, iv) as any;
     if (algorithm.includes("gcm") && authTag) {
       decipher.setAuthTag(Buffer.from(authTag, "hex"));
     }
@@ -62,19 +94,22 @@ const aesCipher = new AESCipher();
 export function encryptAes(
   text: string,
   algorithm = "aes-256-cbc"
-): { value: string; algorithm: string } {
+): { value: string; algorithm: string; keyVersion: number } {
   return {
-    value: aesCipher.encrypt(text, algorithm),
+    value: aesCipher.encrypt(text, algorithm, CURRENT_KEY_VERSION),
     algorithm: algorithm,
+    keyVersion: CURRENT_KEY_VERSION,
   };
 }
 
 export function decryptAes(
   text: string,
-  algorithm = "aes-256-cbc"
-): { value: string; algorithm: string } {
+  algorithm = "aes-256-cbc",
+  keyVersion = 1
+): { value: string; algorithm: string; keyVersion: number } {
   return {
-    value: aesCipher.decrypt(text, algorithm),
+    value: aesCipher.decrypt(text, algorithm, keyVersion),
     algorithm: algorithm,
+    keyVersion,
   };
 }
