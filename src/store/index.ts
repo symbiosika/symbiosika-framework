@@ -28,9 +28,9 @@ export const _GLOBAL_SERVER_CONFIG = {
   authType: <"local" | "auth0" | "hanko">"local",
   loginUrl: "/login.html",
   magicLoginVerifyUrl: "/magic-login-verify.html",
-  verifyEmailUrl: "/manage/#/verify-email",
+  verifyEmailUrl: "/verify-email.html",
   resetPasswordUrl: "/reset-password.html",
-  oauthCallbackUrl: "/manage/#/oauth-callback",
+  oauthCallbackUrl: "/oauth-callback.html",
   jwtExpiresAfter: 60 * 60 * 24 * 30, // 30 days
   useConsoleLogger: true,
   useLicenseSystem: false,

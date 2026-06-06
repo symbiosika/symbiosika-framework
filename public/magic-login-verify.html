@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Magic Login Verifizierung</title>
+    <link rel="icon" href="/favicon.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="min-h-screen flex items-center justify-center px-6 py-12">
+      <div class="w-full max-w-md">
+        <!-- Token Verification (Loading) -->
+        <div id="verification" class="card p-8">
+          <div class="text-center mb-8">
+            <img class="mx-auto w-48 mb-6" src="/favicon.png" alt="Logo" />
+            <h1 class="text-2xl font-bold text-primary mb-2">Anmeldung</h1>
+            <p class="text-muted">Bitte warten Sie, während wir Sie anmelden...</p>
+          </div>
+          <div class="flex justify-center items-center py-8">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="error-message" class="card p-8 hidden">
+          <div class="error-message">
+            <img class="mx-auto w-48 mb-6" src="/favicon.png" alt="Logo" />
+            <h1 class="text-2xl font-bold text-primary mb-2">Fehler bei der Anmeldung</h1>
+            <p class="text-muted mb-4" id="error-text">Ein Fehler ist aufgetreten</p>
+            <button onclick="window.location.href='/login.html'" class="btn btn-inline btn-secondary">
+              Zurück zur Anmeldung
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script>
+      function parseQueryString() {
+        const params = new URLSearchParams(window.location.search);
+        return { token: params.get('token'), redirect: params.get('redirectUrl') || '/static/app/' };
+      }
+
+      function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => {
+          toast.style.animation = 'slideDown 0.3s ease-out reverse';
+          setTimeout(() => { if (container.contains(toast)) container.removeChild(toast); }, 300);
+        }, type === 'success' ? 2000 : 4000);
+      }
+
+      function showElement(id) { document.getElementById(id).classList.remove('hidden'); }
+      function hideElement(id) { document.getElementById(id).classList.add('hidden'); }
+
+      async function loginWithToken(token) {
+        try {
+          const response = await fetch('/api/v1/user/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: '', password: '', magicLinkToken: token }),
+          });
+          if (!response.ok) throw new Error(await response.text() || 'Anmeldung fehlgeschlagen');
+          const data = await response.json();
+          // The server sets the HttpOnly `jwt` cookie + `jwt_present` marker itself.
+          if (data.token) return { login: true, redirectUrl: data.redirectUrl };
+          throw new Error('Kein Token erhalten');
+        } catch (error) {
+          return { login: false, message: error.message || 'Ein Fehler ist aufgetreten' };
+        }
+      }
+
+      (async () => {
+        const { token, redirect } = parseQueryString();
+        if (!token) {
+          hideElement('verification');
+          showElement('error-message');
+          document.getElementById('error-text').textContent = 'Kein Token gefunden. Bitte verwenden Sie den Link aus der E-Mail.';
+          showToast('Fehler: Kein Token gefunden', 'error');
+          return;
+        }
+        const result = await loginWithToken(token);
+        if (result.login) {
+          showToast('Anmeldung erfolgreich', 'success');
+          setTimeout(() => { window.location.href = result.redirectUrl || redirect || '/static/app/'; }, 2000);
+        } else {
+          hideElement('verification');
+          showElement('error-message');
+          document.getElementById('error-text').textContent = result.message || 'Anmeldung fehlgeschlagen';
+          showToast(result.message || 'Anmeldung fehlgeschlagen', 'error');
+        }
+      })();
+    </script>
+  </body>
+</html>
