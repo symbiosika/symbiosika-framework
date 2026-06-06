@@ -29,6 +29,7 @@ import {
   registerPostRegisterAction,
   registerPreRegisterCustomVerification,
 } from "./lib/auth/actions";
+import { registerPostConnectionAction } from "./lib/connections/actions";
 // Routes
 import { definePublicUserRoutes } from "./routes/user/public";
 import { defineSecuredUserRoutes } from "./routes/user/protected";
@@ -140,6 +141,16 @@ export const defineServer = (config: ServerSpecificConfig) => {
   if (config.customPostRegisterActions) {
     config.customPostRegisterActions.forEach((action) => {
       registerPostRegisterAction(action);
+    });
+  }
+
+  /**
+   * Register custom post-connection actions
+   * Fired after a server-to-server connection has been established.
+   */
+  if (config.customPostConnectionActions) {
+    config.customPostConnectionActions.forEach((action) => {
+      registerPostConnectionAction(action);
     });
   }
 

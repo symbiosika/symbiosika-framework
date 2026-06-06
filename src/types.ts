@@ -101,6 +101,7 @@ export interface ServerSpecificConfig {
   // Registration Flow
   customPreRegisterCustomVerifications?: CustomPreRegisterVerification[];
   customPostRegisterActions?: CustomPostRegisterAction[];
+  customPostConnectionActions?: CustomPostConnectionAction[];
 
   // CRON
   customCronJobs?: Task[];
@@ -163,6 +164,32 @@ export type CustomPostRegisterAction = (
     [key: string]: any;
   }
 ) => Promise<void>;
+
+/**
+ * Context handed to post-connection actions after a server-to-server
+ * connection has been established (cert exchange complete).
+ */
+export type ConnectionEstablishedContext = {
+  connectionId: string;
+  /** The local tenant the connection was stored under. */
+  localTenantId: string;
+  /** The remote tenant id (mirrored locally with the same id). */
+  remoteTenantId: string;
+  remoteUrl: string;
+  name: string;
+  initiatedBy: "local" | "remote";
+};
+
+/**
+ * Custom post-connection action. Fired once a connection is fully established
+ * (both `initializeConnection`/`initializeConnectionWithToken` on the initiating
+ * side and `acceptConnection` on the accepting side). Lets an app react to
+ * onboarding — e.g. a robot reducing itself to the connected tenant — without
+ * wrapping the framework's connection routes.
+ */
+export type CustomPostConnectionAction = (
+  ctx: ConnectionEstablishedContext
+) => Promise<void> | void;
 
 export type RenderTypeText = {
   type: "text";
