@@ -709,11 +709,12 @@ export async function authenticateConnection(
  * @param connectionId - Local connection ID
  */
 export async function verifyConnection(
-  connectionId: string
+  connectionId: string,
+  tenantId?: string
 ): Promise<{ token: string }> {
   try {
-    // Get connection
-    const connection = await getConnection(connectionId);
+    // Get connection (scoped to the tenant when called from a request)
+    const connection = await getConnection(connectionId, tenantId);
     if (!connection) {
       throw new Error(`Connection ${connectionId} not found`);
     }
@@ -779,14 +780,21 @@ export async function verifyConnection(
  * Get connection by ID
  */
 export async function getConnection(
-  connectionId: string
+  connectionId: string,
+  tenantId?: string
 ): Promise<ConnectionsSelect | null> {
   try {
     const db = getDb();
+    // When a tenantId is supplied (request-facing calls), scope the lookup to
+    // that tenant so connections of other tenants cannot be read by guessing
+    // their id (IDOR — connection rows contain key material).
+    const where = tenantId
+      ? and(eq(connections.id, connectionId), eq(connections.tenantId, tenantId))
+      : eq(connections.id, connectionId);
     const result = await db
       .select()
       .from(connections)
-      .where(eq(connections.id, connectionId))
+      .where(where)
       .limit(1);
 
     return result[0] || null;
@@ -886,12 +894,15 @@ export async function getConnectionByLocalTenant(
 /**
  * Drop connection
  */
-export async function dropConnection(connectionId: string): Promise<void> {
+export async function dropConnection(
+  connectionId: string,
+  tenantId?: string
+): Promise<void> {
   try {
     const db = getDb();
 
-    // Verify connection exists
-    const connection = await getConnection(connectionId);
+    // Verify connection exists (and belongs to the tenant, when scoped)
+    const connection = await getConnection(connectionId, tenantId);
     if (!connection) {
       throw new Error("Connection not found");
     }
@@ -910,12 +921,15 @@ export async function dropConnection(connectionId: string): Promise<void> {
 /**
  * Refresh connection - update lastConnectedAt timestamp
  */
-export async function refreshConnection(connectionId: string): Promise<void> {
+export async function refreshConnection(
+  connectionId: string,
+  tenantId?: string
+): Promise<void> {
   try {
     const db = getDb();
 
-    // Verify connection exists
-    const connection = await getConnection(connectionId);
+    // Verify connection exists (and belongs to the tenant, when scoped)
+    const connection = await getConnection(connectionId, tenantId);
     if (!connection) {
       throw new Error("Connection not found");
     }

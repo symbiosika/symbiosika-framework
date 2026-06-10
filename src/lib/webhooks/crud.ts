@@ -4,11 +4,18 @@ import type { WebhookInsert, WebhookSelect } from "../db/schema/webhooks";
 import { webhooks } from "../db/schema/webhooks";
 
 /**
- * Helper to check if user has access to webhook
- * as a direct owner or part of a team that owns the webhook
+ * Returns the webhook only if it belongs to the given tenant. All by-id
+ * operations go through this so a webhook of another tenant cannot be read,
+ * modified, or deleted by guessing its id (IDOR — webhook rows hold the target
+ * URL and custom headers).
  */
-export const hasAccessToWebhook = async (webhookId: string, userId: string) => {
-  return true;
+const getWebhookForTenant = async (
+  id: string,
+  tenantId: string
+): Promise<WebhookSelect | undefined> => {
+  return await getDb().query.webhooks.findFirst({
+    where: and(eq(webhooks.id, id), eq(webhooks.tenantId, tenantId)),
+  });
 };
 
 /**
@@ -31,16 +38,14 @@ export const createWebhook = async (userId: string, input: WebhookInsert) => {
 };
 
 /**
- * Get webhook by its ID
- * will check if user has access to webhook
+ * Get webhook by its ID, scoped to the tenant.
  */
-export const getWebhookById = async (id: string, userId: string) => {
-  if (!(await hasAccessToWebhook(id, userId))) {
-    throw new Error("User does not have permission to access webhook");
-  }
-  return await getDb().query.webhooks.findFirst({
-    where: eq(webhooks.id, id),
-  });
+export const getWebhookById = async (
+  id: string,
+  userId: string,
+  tenantId: string
+) => {
+  return await getWebhookForTenant(id, tenantId);
 };
 
 /**
@@ -77,18 +82,22 @@ export const getAllOrganisationWebhooks = async (tenantId: string) => {
 export const updateWebhook = async (
   id: string,
   input: Partial<WebhookSelect>,
-  userId: string
+  userId: string,
+  tenantId: string
 ) => {
-  if (!(await hasAccessToWebhook(id, userId))) {
-    throw new Error("User does not have permission to update webhook");
+  const existing = await getWebhookForTenant(id, tenantId);
+  if (!existing) {
+    throw new Error("Webhook not found");
   }
   const [updated] = await getDb()
     .update(webhooks)
     .set({
       ...input,
+      // never allow moving a webhook to another tenant via the update payload
+      tenantId,
       updatedAt: new Date().toISOString(),
     })
-    .where(eq(webhooks.id, id))
+    .where(and(eq(webhooks.id, id), eq(webhooks.tenantId, tenantId)))
     .returning();
 
   return updated;
@@ -98,9 +107,12 @@ export const updateWebhook = async (
  * Delete a webhook by its ID
  * will check if user has access to webhook
  */
-export const deleteWebhook = async (id: string, userId: string) => {
-  if (!(await hasAccessToWebhook(id, userId))) {
-    throw new Error("User does not have permission to delete webhook");
-  }
-  await getDb().delete(webhooks).where(eq(webhooks.id, id));
+export const deleteWebhook = async (
+  id: string,
+  userId: string,
+  tenantId: string
+) => {
+  await getDb()
+    .delete(webhooks)
+    .where(and(eq(webhooks.id, id), eq(webhooks.tenantId, tenantId)));
 };

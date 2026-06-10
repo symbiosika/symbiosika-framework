@@ -23,6 +23,7 @@ import { describeRoute } from "hono-openapi";
 import { resolver, validator } from "hono-openapi";
 import { RESPONSES } from "../../../../lib/responses";
 import { validateScope } from "../../../../lib/utils/validate-scope";
+import { isTenantAdmin, isTenantMember } from "../../../tenant/index";
 import log from "../../../../lib/log";
 
 /**
@@ -43,6 +44,7 @@ export default function defineWebhookRoutes(
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/webhooks",
     authAndSetUsersInfo,
+    isTenantMember,
     describeRoute({
       tags: ["webhooks"],
       summary: "Create a new webhook",
@@ -87,6 +89,7 @@ export default function defineWebhookRoutes(
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/webhooks",
     authAndSetUsersInfo,
+    isTenantMember,
     describeRoute({
       tags: ["webhooks"],
       summary: "Get all webhooks for the user",
@@ -124,6 +127,7 @@ export default function defineWebhookRoutes(
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/webhooks/global",
     authAndSetUsersInfo,
+    isTenantMember,
     describeRoute({
       tags: ["webhooks"],
       summary: "Get all tenant webhooks",
@@ -161,6 +165,7 @@ export default function defineWebhookRoutes(
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/webhooks/:id",
     authAndSetUsersInfo,
+    isTenantMember,
     describeRoute({
       tags: ["webhooks"],
       summary: "Get a specific webhook by ID",
@@ -184,8 +189,8 @@ export default function defineWebhookRoutes(
     async (c) => {
       try {
         const userId = c.get("usersId");
-        const { id } = c.req.valid("param");
-        const webhook = await getWebhookById(id, userId);
+        const { id, tenantId } = c.req.valid("param");
+        const webhook = await getWebhookById(id, userId, tenantId);
         if (!webhook) {
           throw new HTTPException(404, { message: "Webhook not found" });
         }
@@ -205,6 +210,7 @@ export default function defineWebhookRoutes(
   app.put(
     API_BASE_PATH + "/tenant/:tenantId/webhooks/:id",
     authAndSetUsersInfo,
+    isTenantMember,
     describeRoute({
       tags: ["webhooks"],
       summary: "Update a webhook",
@@ -229,9 +235,9 @@ export default function defineWebhookRoutes(
     async (c) => {
       try {
         const userId = c.get("usersId");
-        const { id } = c.req.valid("param");
+        const { id, tenantId } = c.req.valid("param");
         const parsed = c.req.valid("json");
-        const webhook = await updateWebhook(id, parsed, userId);
+        const webhook = await updateWebhook(id, parsed, userId, tenantId);
         if (!webhook) {
           throw new HTTPException(404, { message: "Webhook not found" });
         }
@@ -251,6 +257,7 @@ export default function defineWebhookRoutes(
   app.delete(
     API_BASE_PATH + "/tenant/:tenantId/webhooks/:id",
     authAndSetUsersInfo,
+    isTenantMember,
     describeRoute({
       tags: ["webhooks"],
       summary: "Delete a webhook",
@@ -269,8 +276,8 @@ export default function defineWebhookRoutes(
     async (c) => {
       try {
         const userId = c.get("usersId");
-        const { id } = c.req.valid("param");
-        await deleteWebhook(id, userId);
+        const { id, tenantId } = c.req.valid("param");
+        await deleteWebhook(id, userId, tenantId);
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
         throw new HTTPException(500, {
@@ -287,6 +294,7 @@ export default function defineWebhookRoutes(
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/webhooks/register/n8n",
     authAndSetUsersInfo,
+    isTenantMember,
     describeRoute({
       tags: ["webhooks"],
       summary: "Register a webhook for n8n",
@@ -376,6 +384,7 @@ export default function defineWebhookRoutes(
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/webhooks/check",
     authAndSetUsersInfo,
+    isTenantMember,
     describeRoute({
       tags: ["webhooks"],
       summary: "Check if a webhook exists",
@@ -402,8 +411,9 @@ export default function defineWebhookRoutes(
       try {
         const userId = c.get("usersId");
         const { webhookId } = c.req.valid("json");
+        const { tenantId } = c.req.valid("param");
 
-        const webhook = await getWebhookById(webhookId, userId);
+        const webhook = await getWebhookById(webhookId, userId, tenantId);
         return c.json({
           exists: !!webhook,
         });
@@ -419,6 +429,7 @@ export default function defineWebhookRoutes(
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/webhooks/:id/trigger",
     authAndSetUsersInfo,
+    isTenantMember,
     describeRoute({
       tags: ["webhooks"],
       summary: "Trigger a webhook",

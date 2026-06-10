@@ -32,8 +32,12 @@ export async function generateJWTKeys(): Promise<{
 }
 
 /**
- * Checks if JWT keys exist and generates them if missing
- * Outputs keys to console for manual addition to .env file
+ * Checks if JWT keys exist and generates them if missing.
+ *
+ * The generated key material is written to a local file with owner-only
+ * permissions (0600) instead of being printed to stdout — printing private key
+ * material would leak it into terminal scrollback, CI logs, and aggregated log
+ * pipelines.
  */
 export async function ensureJWTKeys(): Promise<void> {
   const privateKey = process.env.JWT_PRIVATE_KEY;
@@ -46,11 +50,19 @@ export async function ensureJWTKeys(): Promise<void> {
     const { privateKey: newPrivateKey, publicKey: newPublicKey } =
       await generateJWTKeys();
 
-    console.log("📋 Add these keys to your .env file:\n");
-    console.log("JWT_PRIVATE_KEY=" + newPrivateKey);
-    console.log("JWT_PUBLIC_KEY=" + newPublicKey);
+    const { writeFile } = await import("node:fs/promises");
+    const outPath = "./jwt-keys.generated.env";
+    await writeFile(
+      outPath,
+      `JWT_PRIVATE_KEY=${newPrivateKey}\nJWT_PUBLIC_KEY=${newPublicKey}\n`,
+      { mode: 0o600 }
+    );
+
     console.log(
-      "\n⚠️  Keep these keys secure and never commit them to version control!\n"
+      `📋 New JWT keys written to ${outPath} (permissions 0600). Move them into your .env file and delete the generated file.`
+    );
+    console.log(
+      "⚠️  Keep these keys secret and never commit them to version control!\n"
     );
 
     process.exit(0);

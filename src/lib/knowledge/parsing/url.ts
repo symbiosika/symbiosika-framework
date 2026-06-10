@@ -16,6 +16,7 @@ import { Readability } from "@mozilla/readability";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import log from "../../log";
+import { fetchWithSsrfGuard } from "../../utils/url-guard";
 
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (compatible; SymbiosikaKnowledgeBot/1.0; +https://symbiosika.de)";
@@ -62,14 +63,15 @@ const fetchHtml = async (url: string, opts?: UrlToMarkdownOptions) => {
     opts?.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS
   );
   try {
-    const response = await fetch(url, {
+    // SSRF guard: validate the URL (and every redirect hop) so a user-supplied
+    // URL cannot reach internal services or the cloud metadata endpoint.
+    const response = await fetchWithSsrfGuard(url, {
       headers: {
         "User-Agent": opts?.userAgent ?? DEFAULT_USER_AGENT,
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en;q=0.9,de;q=0.8",
       },
-      redirect: "follow",
       signal: controller.signal,
     });
 
