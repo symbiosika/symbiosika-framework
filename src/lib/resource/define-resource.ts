@@ -52,6 +52,7 @@ export function defineResource<T extends PgTable<TableConfig>>(
     updateSchema: config.updateSchema,
     defaultOrderBy: config.defaultOrderBy,
     hooks: config.hooks,
+    relations: config.relations,
   });
 
   // 2. Create routes

@@ -16,11 +16,21 @@ export type {
   FilterOperator,
   QueryFilter,
   QueryOptions,
+  ResourceRelationsConfig,
   CrudHooks,
   CrudOperations,
   ResourceConfig,
   ResourceDefinition,
 } from "./types";
+
+// URL query parsing (filtering, pagination, sorting, relation expansion)
+export {
+  parseQueryOptions,
+  parseFilterParams,
+  parseExpandParam,
+  parseFilterValue,
+  RESERVED_QUERY_KEYS,
+} from "./query-params";
 
 // Schema utilities
 export {

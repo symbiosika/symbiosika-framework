@@ -36,7 +36,7 @@ export interface QueryFilter {
 }
 
 /**
- * Options for getAll queries - filtering, pagination, sorting
+ * Options for getAll queries - filtering, pagination, sorting, relation expansion
  */
 export interface QueryOptions {
   filters?: QueryFilter[];
@@ -44,6 +44,33 @@ export interface QueryOptions {
   offset?: number;
   orderBy?: string;
   orderDirection?: "asc" | "desc";
+  /**
+   * Names of relations to eager-load alongside each entry.
+   * Only relations declared in the resource's `relations.allowed` list are
+   * expanded; unknown names are ignored. Requires `relations` to be configured.
+   */
+  expand?: string[];
+}
+
+/**
+ * Relation expansion config for a resource.
+ *
+ * Expansion uses Drizzle's relational query API
+ * (`db.query.<queryKey>.findMany({ with })`), which requires the table's
+ * `relations()` to be registered in the schema.
+ */
+export interface ResourceRelationsConfig {
+  /**
+   * The table's key in the Drizzle schema as exposed on `db.query`.
+   * This is the JS property name the table is registered under, which may
+   * differ from the SQL table name (e.g. `knowledgeEntry`, not `knowledge`).
+   */
+  queryKey: string;
+  /**
+   * Relation names that callers may request via `?expand=`.
+   * Acts as an allow-list: any requested relation not in this list is ignored.
+   */
+  allowed: string[];
 }
 
 /**
@@ -101,6 +128,12 @@ export interface ResourceConfig<
   defaultOrderBy?: (table: T) => any[];
   /** Lifecycle hooks for business rules */
   hooks?: CrudHooks;
+  /**
+   * Relation expansion config. When set, callers can request related rows via
+   * `?expand=relationName` on the list endpoint. Requires the table's
+   * `relations()` to be registered in the Drizzle schema.
+   */
+  relations?: ResourceRelationsConfig;
   /** AI tool configuration */
   ai?: {
     enabled: boolean;

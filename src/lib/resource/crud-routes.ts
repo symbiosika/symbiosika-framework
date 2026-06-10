@@ -8,7 +8,8 @@ import { validator } from "hono-openapi";
 import * as v from "valibot";
 import { HTTPException } from "hono/http-exception";
 import type { SFContextVariables } from "../../types";
-import type { CrudOperations, QueryOptions } from "./types";
+import type { CrudOperations } from "./types";
+import { parseQueryOptions } from "./query-params";
 
 /**
  * Configuration for createCrudRoutes
@@ -22,36 +23,6 @@ export interface CrudRoutesConfig {
   markdown?: {
     renderer: (entries: any[]) => string;
   };
-}
-
-/**
- * Parse query parameters into QueryOptions for getAll
- */
-function parseQueryOptions(
-  query: Record<string, string | undefined>
-): QueryOptions {
-  const options: QueryOptions = {};
-
-  if (query.limit) {
-    const parsed = parseInt(query.limit, 10);
-    if (!isNaN(parsed) && parsed > 0) {
-      options.limit = parsed;
-    }
-  }
-  if (query.offset) {
-    const parsed = parseInt(query.offset, 10);
-    if (!isNaN(parsed) && parsed >= 0) {
-      options.offset = parsed;
-    }
-  }
-  if (query.orderBy) {
-    options.orderBy = query.orderBy;
-  }
-  if (query.orderDirection === "asc" || query.orderDirection === "desc") {
-    options.orderDirection = query.orderDirection;
-  }
-
-  return options;
 }
 
 /**
@@ -106,7 +77,9 @@ export function createCrudRoutes(
   const app = new Hono<{ Variables: SFContextVariables }>();
   const { entityName } = config;
 
-  // GET / - List all entries with optional pagination and sorting
+  // GET / - List entries with optional filtering, pagination, sorting and
+  // relation expansion. Filters use PostgREST-style query params, e.g.
+  //   ?status=eq.active&age=gte.18&name=like.john&expand=tenant&limit=20
   app.get(
     "/",
     validator("param", v.object({ tenantId: v.string() })),

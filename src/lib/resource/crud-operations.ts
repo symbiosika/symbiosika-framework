@@ -23,6 +23,7 @@ import type {
   CrudHooks,
   QueryOptions,
   QueryFilter,
+  ResourceRelationsConfig,
 } from "./types";
 
 /**
@@ -37,6 +38,11 @@ export interface CrudOperationsConfig<T extends PgTable<TableConfig>> {
   defaultOrderBy?: (table: T) => any[];
   /** Lifecycle hooks for business rules */
   hooks?: CrudHooks;
+  /**
+   * Relation expansion config. Enables `getAll(..., { expand })` via Drizzle's
+   * relational query API. Requires the table's `relations()` to be registered.
+   */
+  relations?: ResourceRelationsConfig;
 }
 
 /**
@@ -108,7 +114,31 @@ export function createCrudOperations<T extends PgTable<TableConfig>>(
   }
 
   /**
-   * Get all entries for a tenant with optional filtering, pagination, and sorting
+   * Resolve the ORDER BY clause as an array of column expressions, shared by
+   * the flat and relational query paths. An explicit `orderBy` field wins over
+   * the configured default; an unknown field falls back to the default.
+   */
+  function resolveOrderBy(
+    orderBy: string | undefined,
+    orderDirection: "asc" | "desc"
+  ): SQL[] | undefined {
+    if (orderBy) {
+      const orderCol = columns[orderBy as keyof typeof columns];
+      if (orderCol) {
+        return [orderDirection === "desc" ? desc(orderCol) : asc(orderCol)];
+      }
+    }
+    if (config.defaultOrderBy) {
+      return config.defaultOrderBy(table);
+    }
+    return undefined;
+  }
+
+  /**
+   * Get all entries for a tenant with optional filtering, pagination, sorting
+   * and relation expansion. When `expand` is requested and relations are
+   * configured, the query runs through Drizzle's relational query API so the
+   * requested relations are eager-loaded; otherwise a flat select is used.
    */
   async function getAll(
     tenantId: string,
@@ -120,32 +150,52 @@ export function createCrudOperations<T extends PgTable<TableConfig>>(
       offset,
       orderBy,
       orderDirection = "asc",
+      expand = [],
     } = options;
+
+    // Always filter by tenant, then add validated custom filters.
+    const conditions: SQL[] = [eq(tenantIdCol, tenantId)];
+    if (filters.length > 0) {
+      conditions.push(...buildFilterConditions(table, filters));
+    }
+    const whereClause = and(...conditions);
+    const orderByClause = resolveOrderBy(orderBy, orderDirection);
+
+    // Relation-aware path via the relational query API.
+    if (expand.length > 0 && config.relations) {
+      const { queryKey, allowed } = config.relations;
+      const queryApi = (getDb().query as Record<string, any>)[queryKey];
+      if (!queryApi) {
+        throw new Error(
+          `Cannot expand relations: table "${queryKey}" is not registered on db.query`
+        );
+      }
+
+      // Allow-list: only expose relations the resource opted into.
+      const withClause: Record<string, true> = {};
+      for (const relation of expand) {
+        if (allowed.includes(relation)) {
+          withClause[relation] = true;
+        }
+      }
+
+      return queryApi.findMany({
+        where: whereClause,
+        ...(Object.keys(withClause).length > 0 ? { with: withClause } : {}),
+        ...(orderByClause ? { orderBy: orderByClause } : {}),
+        ...(limit !== undefined ? { limit } : {}),
+        ...(offset !== undefined ? { offset } : {}),
+      });
+    }
 
     // @ts-expect-error - Drizzle's from() uses a deferred conditional type
     // that TypeScript cannot resolve with generic PgTable type params
     let query = getDb().select().from(table).$dynamic();
 
-    // Always filter by tenant
-    const conditions: SQL[] = [eq(tenantIdCol, tenantId)];
+    query = query.where(whereClause);
 
-    // Add custom filters
-    if (filters.length > 0) {
-      conditions.push(...buildFilterConditions(table, filters));
-    }
-
-    query = query.where(and(...conditions));
-
-    // Sorting
-    if (orderBy) {
-      const orderCol = columns[orderBy as keyof typeof columns];
-      if (orderCol) {
-        query = query.orderBy(
-          orderDirection === "desc" ? desc(orderCol) : asc(orderCol)
-        );
-      }
-    } else if (config.defaultOrderBy) {
-      query = query.orderBy(...config.defaultOrderBy(table));
+    if (orderByClause) {
+      query = query.orderBy(...orderByClause);
     }
 
     // Pagination
