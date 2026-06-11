@@ -15,6 +15,9 @@ let TEST_USER_1_TOKEN: string;
 let TEST_USER_2_TOKEN: string;
 
 beforeAll(async () => {
+  // The n8n simulation delivers to a local test server; allow private
+  // targets so the SSRF guard does not block the loopback address.
+  process.env.SSRF_ALLOW_PRIVATE_TARGETS = "true";
   await initTests();
   defineWebhookRoutes(app, "/api");
   const { user1Token, user2Token } = await initTests();
@@ -141,10 +144,10 @@ describe("Webhook API Endpoints", () => {
     response = await testFetcher.post(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/webhooks`,
-      TEST_USER_2_TOKEN,
+      TEST_USER_1_TOKEN,
       {
-        name: "Unauthorized Webhook",
-        // userId: TEST_ORG2_USER_1.id,
+        name: "Invalid Webhook",
+        // userId: TEST_ORG1_USER_1.id,
         // tenantId: TEST_ORGANISATION_1.id,
         type: "n8n",
         webhookUrl: "http://example.com",
@@ -154,6 +157,24 @@ describe("Webhook API Endpoints", () => {
     );
     console.log(response.textResponse);
     expect(response.status).toBe(400);
+
+    console.log("should reject a webhook creation by a non-member");
+    response = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/webhooks`,
+      TEST_USER_2_TOKEN,
+      {
+        name: "Unauthorized Webhook",
+        userId: TEST_ORG1_USER_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
+        type: "n8n",
+        webhookUrl: "http://example.com",
+        event: "chat-output",
+        tenantWide: true,
+      }
+    );
+    console.log(response.textResponse);
+    expect(response.status).toBe(403);
 
     console.log("should fail to get a non-existent webhook");
     response = await testFetcher.get(
