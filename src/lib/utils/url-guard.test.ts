@@ -1,9 +1,22 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   assertPublicHttpUrl,
   isBlockedAddress,
   SsrfBlockedError,
 } from "./url-guard";
+
+// Other test files (e.g. the webhook n8n simulation) enable the private-target
+// opt-out; pin it to off here so the guard's default behavior is what we test.
+let savedOptOut: string | undefined;
+beforeAll(() => {
+  savedOptOut = process.env.SSRF_ALLOW_PRIVATE_TARGETS;
+  delete process.env.SSRF_ALLOW_PRIVATE_TARGETS;
+});
+afterAll(() => {
+  if (savedOptOut !== undefined) {
+    process.env.SSRF_ALLOW_PRIVATE_TARGETS = savedOptOut;
+  }
+});
 
 describe("isBlockedAddress", () => {
   it("blocks loopback, private, link-local and metadata addresses", () => {
@@ -75,5 +88,19 @@ describe("assertPublicHttpUrl", () => {
     await expect(assertPublicHttpUrl("not a url")).rejects.toThrow(
       SsrfBlockedError
     );
+  });
+
+  it("allows private targets when SSRF_ALLOW_PRIVATE_TARGETS is set", async () => {
+    process.env.SSRF_ALLOW_PRIVATE_TARGETS = "true";
+    try {
+      const url = await assertPublicHttpUrl("http://localhost:3000/hook");
+      expect(url.hostname).toBe("localhost");
+      // non-http(s) schemes stay blocked even with the opt-out
+      await expect(assertPublicHttpUrl("file:///etc/passwd")).rejects.toThrow(
+        SsrfBlockedError
+      );
+    } finally {
+      delete process.env.SSRF_ALLOW_PRIVATE_TARGETS;
+    }
   });
 });

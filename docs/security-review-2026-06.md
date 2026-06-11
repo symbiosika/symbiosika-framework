@@ -221,6 +221,12 @@ link-local/ULA-Bereiche (IPv4 + IPv6, inkl. IPv4-mapped) und validiert **jeden**
 Redirect-Hop via manuellem Folgen. Verdrahtet in `url.ts` und `webhooks/trigger.ts`.
 Unit-Tests: `src/lib/utils/url-guard.test.ts`.
 
+**Opt-out für Self-Hosting:** `SSRF_ALLOW_PRIVATE_TARGETS=true` deaktiviert die
+Adressprüfung (Schema-Validierung bleibt aktiv). Gedacht für Installationen, bei
+denen Webhook-Ziele wie n8n legitim im lokalen/privaten Netz laufen. Standard: aus.
+Nur setzen, wenn das interne Netz keine schützenswerten Dienste (Cloud-Metadaten,
+interne Admin-APIs) erreichbar macht.
+
 ---
 
 ### SYM-009 — Path Traversal im lokalen File-Storage — **High** — *Behoben*

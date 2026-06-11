@@ -21,6 +21,16 @@ export class SsrfBlockedError extends Error {
   }
 }
 
+/**
+ * Self-hosted deployments may legitimately target services on the local or
+ * private network (e.g. an n8n instance on the same host). Setting
+ * SSRF_ALLOW_PRIVATE_TARGETS=true disables the internal-address checks while
+ * keeping scheme validation. Default is off; only enable this when the server
+ * runs in a trusted network without internal-only services to protect.
+ */
+const allowPrivateTargets = () =>
+  process.env.SSRF_ALLOW_PRIVATE_TARGETS === "true";
+
 const ipv4ToInt = (ip: string): number | null => {
   const parts = ip.split(".");
   if (parts.length !== 4) return null;
@@ -91,6 +101,10 @@ export const assertPublicHttpUrl = async (rawUrl: string): Promise<URL> => {
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new SsrfBlockedError(`Blocked URL scheme: ${url.protocol}`);
+  }
+
+  if (allowPrivateTargets()) {
+    return url;
   }
 
   const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
