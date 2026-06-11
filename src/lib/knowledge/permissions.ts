@@ -100,10 +100,13 @@ export const validateKnowledgeAccess = async (
 ) => {
   const userTeams = await getUserTeamIds(userId, tenantId);
 
-  // First check: user has direct access to the knowledge entry
+  // First check: user has direct access to the knowledge entry.
+  // The entry MUST belong to the requested tenant — without this filter any
+  // entry with a NULL teamId would be accessible across tenant boundaries.
   const directAccess = await getDb().query.knowledgeEntry.findFirst({
     where: and(
       eq(knowledgeEntry.id, knowledgeId),
+      eq(knowledgeEntry.tenantId, tenantId),
       or(
         eq(knowledgeEntry.userId, userId),
         // Include NULL teamId and entries with user's teams
@@ -120,9 +123,12 @@ export const validateKnowledgeAccess = async (
   }
 
   // Second check: access through knowledge group assignments
-  // First get the entry with its knowledge group
+  // First get the entry with its knowledge group (scoped to the tenant)
   const entryWithGroup = await getDb().query.knowledgeEntry.findFirst({
-    where: eq(knowledgeEntry.id, knowledgeId),
+    where: and(
+      eq(knowledgeEntry.id, knowledgeId),
+      eq(knowledgeEntry.tenantId, tenantId)
+    ),
     columns: {
       id: true,
       knowledgeGroupId: true,

@@ -26,7 +26,7 @@ import {
   tenantInvitationsSelectSchema,
 } from "../../../../lib/db/db-schema";
 import { RESPONSES } from "../../../../lib/responses";
-import { checkTenantIdInBody, isTenantAdmin } from "../..";
+import { checkTenantIdInBody, isTenantAdmin, isTenantMember } from "../..";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 
 export default function defineInvitationsRoutes(
@@ -149,7 +149,7 @@ export default function defineInvitationsRoutes(
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");
-        await dropTenantInvitation(id);
+        await dropTenantInvitation(id, tenantId);
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
         throw new HTTPException(500, {
@@ -214,6 +214,7 @@ export default function defineInvitationsRoutes(
     }),
     validateScope("tenants:write"),
     validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");
@@ -223,7 +224,7 @@ export default function defineInvitationsRoutes(
             tenantId
           );
         } else {
-          await declineTenantInvitation(id);
+          await declineTenantInvitation(id, tenantId);
         }
 
         return c.json(RESPONSES.SUCCESS);

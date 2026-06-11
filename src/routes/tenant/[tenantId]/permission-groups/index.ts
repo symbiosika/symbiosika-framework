@@ -33,6 +33,7 @@ import * as v from "valibot";
 import { describeRoute } from "hono-openapi";
 import { RESPONSES } from "../../../../lib/responses";
 import { validateScope } from "../../../../lib/utils/validate-scope";
+import { isTenantAdmin } from "../../../tenant/index";
 
 export default function definePermissionGroupRoutes(
   app: SymbiosikaFrameworkHonoApp,
@@ -44,6 +45,7 @@ export default function definePermissionGroupRoutes(
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/permission-groups",
     authAndSetUsersInfo,
+    isTenantAdmin,
     describeRoute({
       tags: ["permission-groups"],
       summary: "Create a new permission group",
@@ -79,6 +81,7 @@ export default function definePermissionGroupRoutes(
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/permission-groups",
     authAndSetUsersInfo,
+    isTenantAdmin,
     describeRoute({
       tags: ["permission-groups"],
       summary: "Get all permission groups of an tenant",
@@ -114,6 +117,7 @@ export default function definePermissionGroupRoutes(
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/permission-groups/:id",
     authAndSetUsersInfo,
+    isTenantAdmin,
     describeRoute({
       tags: ["permission-groups"],
       summary: "Get a single permission group",
@@ -152,6 +156,7 @@ export default function definePermissionGroupRoutes(
   app.put(
     API_BASE_PATH + "/tenant/:tenantId/permission-groups/:id",
     authAndSetUsersInfo,
+    isTenantAdmin,
     describeRoute({
       tags: ["permission-groups"],
       summary: "Update a permission group",
@@ -192,6 +197,7 @@ export default function definePermissionGroupRoutes(
   app.delete(
     API_BASE_PATH + "/tenant/:tenantId/permission-groups/:id",
     authAndSetUsersInfo,
+    isTenantAdmin,
     describeRoute({
       tags: ["permission-groups"],
       summary: "Delete a permission group",
@@ -226,6 +232,7 @@ export default function definePermissionGroupRoutes(
     API_BASE_PATH +
       "/tenant/:tenantId/permission-groups/:groupId/permissions/:permissionId",
     authAndSetUsersInfo,
+    isTenantAdmin,
     describeRoute({
       tags: ["permission-groups"],
       summary: "Assign a permission to a permission group",
@@ -274,6 +281,7 @@ export default function definePermissionGroupRoutes(
     API_BASE_PATH +
       "/tenant/:tenantId/permission-groups/:groupId/permissions/:permissionId",
     authAndSetUsersInfo,
+    isTenantAdmin,
     describeRoute({
       tags: ["permission-groups"],
       summary: "Remove a permission from a permission group",
@@ -311,6 +319,7 @@ export default function definePermissionGroupRoutes(
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/path-permissions",
     authAndSetUsersInfo,
+    isTenantAdmin,
     describeRoute({
       tags: ["permission-groups"],
       summary: "Create a new path permission",
@@ -346,6 +355,7 @@ export default function definePermissionGroupRoutes(
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/path-permissions/:id",
     authAndSetUsersInfo,
+    isTenantAdmin,
     describeRoute({
       tags: ["permission-groups"],
       summary: "Get a single path permission",
@@ -384,6 +394,7 @@ export default function definePermissionGroupRoutes(
   app.put(
     API_BASE_PATH + "/tenant/:tenantId/path-permissions/:id",
     authAndSetUsersInfo,
+    isTenantAdmin,
     describeRoute({
       tags: ["permission-groups"],
       summary: "Update a path permission",
@@ -424,6 +435,7 @@ export default function definePermissionGroupRoutes(
   app.delete(
     API_BASE_PATH + "/tenant/:tenantId/path-permissions/:id",
     authAndSetUsersInfo,
+    isTenantAdmin,
     describeRoute({
       tags: ["permission-groups"],
       summary: "Delete a path permission",

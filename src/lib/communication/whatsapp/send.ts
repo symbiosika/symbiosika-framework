@@ -8,7 +8,6 @@ export const sendWhatsAppMessage = async (
   log.debug(
     `Send whatsapp message to ${phoneNumber} with message ${message.slice(0, 10)}...`
   );
-  console.log(process.env.CLOUD_API_ACCESS_TOKEN?.slice(0, 3) + "...");
   const response = await fetch(url, {
     method: "POST",
     headers: {

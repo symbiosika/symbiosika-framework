@@ -9,12 +9,19 @@ const checkSecrets = async () => {
     process.env.SECRETS_AES_KEY = key;
     process.env.SECRETS_AES_IV = iv;
 
-    // write them out
-    console.log("Created new AES key and IV:");
-    console.log(`SECRETS_AES_KEY=${key}`);
-    console.log(`SECRETS_AES_IV=${iv}`);
-    console.log("Please add that to your .env file");
-    console.log("Then run the application again");
+    // Write the generated secret to a local file with owner-only permissions
+    // instead of printing it — the AES master key encrypts every tenant secret,
+    // so it must not end up in terminal scrollback or log pipelines.
+    const { writeFileSync } = await import("node:fs");
+    const outPath = "./aes-keys.generated.env";
+    writeFileSync(outPath, `SECRETS_AES_KEY=${key}\nSECRETS_AES_IV=${iv}\n`, {
+      mode: 0o600,
+    });
+    console.log(
+      `Created new AES key/IV and wrote them to ${outPath} (permissions 0600).`
+    );
+    console.log("Move them into your .env file, delete the generated file,");
+    console.log("then run the application again.");
     process.exit(0);
   }
 };

@@ -466,7 +466,9 @@ export const LocalAuth = {
   },
 
   async forgotPasswort(email: string, sendWelcomeText = false) {
-    // Check if user exists in DB (optional check for clarity)
+    // Look up the user but never reveal whether the address exists — returning
+    // a different result / error for unknown emails enables account
+    // enumeration. Only send the reset link when the user actually exists.
     const user = await getDb()
       .select({
         id: users.id,
@@ -474,11 +476,12 @@ export const LocalAuth = {
       })
       .from(users)
       .where(eq(users.email, email));
-    if (!user || user.length === 0) {
-      throw "User not found";
+    if (user && user.length > 0) {
+      await sendResetPasswordLink(email, sendWelcomeText).catch((err) => {
+        // Log server-side; do not surface to the caller (avoids enumeration).
+        log.error("Error sending reset password link: " + err);
+      });
     }
-    // Send password-reset link
-    await sendResetPasswordLink(email, sendWelcomeText);
     return { message: "Reset password link has been sent to your email." };
   },
 };

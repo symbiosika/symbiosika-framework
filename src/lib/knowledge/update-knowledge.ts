@@ -1,5 +1,5 @@
 import { getDb } from "../db/db-connection";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { knowledgeEntry, knowledgeChunks } from "../db/schema/knowledge";
 import { isUserPartOfTeam } from "../usermanagement/teams";
 import { validateKnowledgeAccess } from "./permissions";
@@ -26,7 +26,11 @@ export const deleteKnowledgeEntry = async (
     );
   }
 
-  await getDb().delete(knowledgeEntry).where(eq(knowledgeEntry.id, id));
+  await getDb()
+    .delete(knowledgeEntry)
+    .where(
+      and(eq(knowledgeEntry.id, id), eq(knowledgeEntry.tenantId, tenantId))
+    );
 };
 
 /**
@@ -63,7 +67,9 @@ export const updateKnowledgeEntry = async (
   const r = await getDb()
     .update(knowledgeEntry)
     .set(data)
-    .where(eq(knowledgeEntry.id, id))
+    .where(
+      and(eq(knowledgeEntry.id, id), eq(knowledgeEntry.tenantId, tenantId))
+    )
     .returning();
 
   return r[0];
@@ -99,10 +105,13 @@ export const updateKnowledgeEntryText = async (
     );
   }
 
-  // Get the existing entry to preserve metadata
+  // Get the existing entry to preserve metadata (scoped to the tenant)
   const existingEntry = await getDb()
     .query.knowledgeEntry.findFirst({
-      where: eq(knowledgeEntry.id, id),
+      where: and(
+        eq(knowledgeEntry.id, id),
+        eq(knowledgeEntry.tenantId, tenantId)
+      ),
     });
 
   if (!existingEntry) {

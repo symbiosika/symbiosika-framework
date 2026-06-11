@@ -58,10 +58,20 @@ export const getUsersTenantInvitations = async (userId: string) => {
 /**
  * Drop an invitation by its ID
  */
-export const dropTenantInvitation = async (invitationId: string) => {
+export const dropTenantInvitation = async (
+  invitationId: string,
+  tenantId: string
+) => {
+  // Scope to the tenant so an admin of one tenant cannot delete another
+  // tenant's invitations by guessing ids.
   await getDb()
     .delete(tenantInvitations)
-    .where(eq(tenantInvitations.id, invitationId));
+    .where(
+      and(
+        eq(tenantInvitations.id, invitationId),
+        eq(tenantInvitations.tenantId, tenantId)
+      )
+    );
 };
 
 /**
@@ -180,11 +190,19 @@ export const acceptAllPendingInvitationsForTenantMember = async (
 /**
  * Decline an invitation by its ID
  */
-export const declineTenantInvitation = async (invitationId: string) => {
+export const declineTenantInvitation = async (
+  invitationId: string,
+  tenantId: string
+) => {
   await getDb()
     .update(tenantInvitations)
     .set({ status: "declined" })
-    .where(eq(tenantInvitations.id, invitationId));
+    .where(
+      and(
+        eq(tenantInvitations.id, invitationId),
+        eq(tenantInvitations.tenantId, tenantId)
+      )
+    );
 };
 
 /**

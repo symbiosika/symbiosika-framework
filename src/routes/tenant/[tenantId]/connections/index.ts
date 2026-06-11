@@ -399,7 +399,10 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     authAndSetUsersInfo,
     checkUserPermission,
     isTenantMember,
-    validator("param", v.object({ connectionId: v.string() })),
+    validator(
+      "param",
+      v.object({ tenantId: v.string(), connectionId: v.string() })
+    ),
     validateScope("connections:read"),
     describeRoute({
       description: "Verify connection status",
@@ -414,9 +417,12 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     }),
     async (c) => {
       try {
-        const { connectionId } = c.req.valid("param");
+        const { tenantId, connectionId } = c.req.valid("param");
 
-        const result = await connectionsService.verifyConnection(connectionId);
+        const result = await connectionsService.verifyConnection(
+          connectionId,
+          tenantId
+        );
 
         return c.json(result);
       } catch (error) {
@@ -527,7 +533,10 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     authAndSetUsersInfo,
     checkUserPermission,
     isTenantMember,
-    validator("param", v.object({ connectionId: v.string() })),
+    validator(
+      "param",
+      v.object({ tenantId: v.string(), connectionId: v.string() })
+    ),
     validateScope("connections:read"),
     describeRoute({
       description: "Get a specific connection",
@@ -542,8 +551,11 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     }),
     async (c) => {
       try {
-        const { connectionId } = c.req.valid("param");
-        const connection = await connectionsService.getConnection(connectionId);
+        const { tenantId, connectionId } = c.req.valid("param");
+        const connection = await connectionsService.getConnection(
+          connectionId,
+          tenantId
+        );
 
         if (!connection) {
           throw new HTTPException(404, {
@@ -571,7 +583,10 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     authAndSetUsersInfo,
     checkUserPermission,
     isTenantAdmin,
-    validator("param", v.object({ connectionId: v.string() })),
+    validator(
+      "param",
+      v.object({ tenantId: v.string(), connectionId: v.string() })
+    ),
     validateScope("connections:write"),
     describeRoute({
       description: "Refresh connection timestamp",
@@ -586,8 +601,8 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     }),
     async (c) => {
       try {
-        const { connectionId } = c.req.valid("param");
-        await connectionsService.refreshConnection(connectionId);
+        const { tenantId, connectionId } = c.req.valid("param");
+        await connectionsService.refreshConnection(connectionId, tenantId);
 
         return c.json({
           message: "Connection refreshed successfully",
@@ -611,7 +626,10 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     authAndSetUsersInfo,
     checkUserPermission,
     isTenantAdmin,
-    validator("param", v.object({ connectionId: v.string() })),
+    validator(
+      "param",
+      v.object({ tenantId: v.string(), connectionId: v.string() })
+    ),
     validateScope("connections:write"),
     describeRoute({
       description: "Drop a connection",
@@ -626,8 +644,8 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     }),
     async (c) => {
       try {
-        const { connectionId } = c.req.valid("param");
-        await connectionsService.dropConnection(connectionId);
+        const { tenantId, connectionId } = c.req.valid("param");
+        await connectionsService.dropConnection(connectionId, tenantId);
 
         return c.json({
           message: "Connection dropped successfully",
