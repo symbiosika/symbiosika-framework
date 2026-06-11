@@ -138,6 +138,16 @@ export const tenantSpecificDataUpdateSchema = createUpdateSchema(
   tenantSpecificData
 );
 
+export const tenantSpecificDataRelations = relations(
+  tenantSpecificData,
+  ({ one }) => ({
+    tenant: one(tenants, {
+      fields: [tenantSpecificData.tenantId],
+      references: [tenants.id],
+    }),
+  })
+);
+
 // Table for team specific data
 
 export const teamSpecificData = pgBaseTable(
