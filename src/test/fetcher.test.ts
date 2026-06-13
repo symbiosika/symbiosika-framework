@@ -1,8 +1,9 @@
-import type { FastAppHono } from "../types";
+import type { HeadersInit } from "bun";
+import type { SymbiosikaFrameworkHonoApp } from "../types";
 
 export const testFetcher = {
   get: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined
   ): Promise<{
@@ -36,7 +37,7 @@ export const testFetcher = {
   },
 
   post: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined,
     body: any
@@ -73,7 +74,7 @@ export const testFetcher = {
   },
 
   postFormData: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined,
     body: FormData
@@ -109,7 +110,7 @@ export const testFetcher = {
   },
 
   postWithPlainResponse: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined,
     body: any
@@ -129,7 +130,7 @@ export const testFetcher = {
   },
 
   put: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined,
     body: any
@@ -165,8 +166,45 @@ export const testFetcher = {
     };
   },
 
+  patch: async (
+    app: SymbiosikaFrameworkHonoApp,
+    path: string,
+    token: string | undefined,
+    body: any
+  ): Promise<{
+    status: number;
+    jsonResponse: any | undefined;
+    textResponse: string;
+    headers: Headers;
+  }> => {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const response = await app.request(path, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(body),
+    });
+    const textResponse = await response.text();
+    let jsonResponse;
+    try {
+      jsonResponse = JSON.parse(textResponse);
+    } catch (error) {
+      // jsonResponse remains undefined if parsing fails
+    }
+    return {
+      status: response.status,
+      jsonResponse,
+      textResponse,
+      headers: response.headers,
+    };
+  },
+
   delete: async (
-    app: FastAppHono,
+    app: SymbiosikaFrameworkHonoApp,
     path: string,
     token: string | undefined
   ): Promise<{

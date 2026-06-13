@@ -18,12 +18,12 @@ import { storeKnowledgeEntry } from "../lib/knowledge/add-knowledge";
  * FOR TESTING PURPOSES ONLY. WILL NOT CHECK FOR PERMISSIONS.
  */
 export const testing_createTeamAndAddUsers = async (
-  organisationId: string,
+  tenantId: string,
   userIds: string[],
   role: "admin" | "member" = "member"
 ): Promise<{ teamId: string }> => {
   const team = await createTeam({
-    organisationId,
+    tenantId,
     name: nanoid(8),
   });
 
@@ -53,9 +53,9 @@ export const testing_deleteTeam = async (teamIds: string[]): Promise<void> => {
  * FOR TESTING PURPOSES ONLY. WILL NOT CHECK FOR PERMISSIONS.
  */
 export const testing_createKnowledgeGroup = async (data: {
-  organisationId: string;
+  tenantId: string;
   userId: string;
-  organisationWideAccess: boolean;
+  tenantWideAccess: boolean;
   teamId?: string;
 }): Promise<KnowledgeGroupSelect> => {
   const knowledgeGroup = await createKnowledgeGroup({
@@ -90,7 +90,7 @@ export const testing_deleteKnowledgeGroup = async (
  * FOR TESTING PURPOSES ONLY. WILL NOT CHECK FOR PERMISSIONS.
  */
 export const testing_createKnowledgeEntry = async (data: {
-  organisationId: string;
+  tenantId: string;
   userId: string;
   workspaceId?: string;
   teamId?: string;

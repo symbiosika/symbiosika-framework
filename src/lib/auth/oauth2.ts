@@ -1,7 +1,7 @@
 import { getDb } from "../db/db-connection";
 import { and, eq } from "drizzle-orm";
 import { users } from "../db/db-schema";
-import { generateJwt } from "./index";
+import { generateUserSessionJwt } from "./index";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { postRegisterActions } from "./actions";
 import log from "../log";
@@ -45,7 +45,7 @@ async function findOrCreateOAuthUser(profile: {
     .from(users)
     .where(and(eq(users.email, email), eq(users.provider, provider)));
 
-  if (existingUser.length > 0) {
+  if (existingUser[0]) {
     const updatedUser = await getDb()
       .update(users)
       .set({
@@ -71,6 +71,10 @@ async function findOrCreateOAuthUser(profile: {
       })
       .returning();
 
+    if (!newUser[0]) {
+      throw new Error("Failed to create new user");
+    }
+
     log.info(`New user registered via ${provider}: ${newUser[0].id}`);
 
     // Perform post-register actions
@@ -86,21 +90,24 @@ export const OAuthAuth = {
   // Google OAuth functions
   async handleGoogleCallback(code: string) {
     // Get token from Google (with axios or fetch)
-    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code,
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri:
-          _GLOBAL_SERVER_CONFIG.baseUrl + "/api/v1/user/auth/google/callback",
-        grant_type: "authorization_code",
-      }),
-    }).then((res) => res.json());
+    const tokenResponse: any = await fetch(
+      "https://oauth2.googleapis.com/token",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code,
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          redirect_uri:
+            _GLOBAL_SERVER_CONFIG.baseUrl + "/api/v1/user/auth/google/callback",
+          grant_type: "authorization_code",
+        }),
+      }
+    ).then((res) => res.json());
 
     // Get user data from Google
-    const userInfo = await fetch(
+    const userInfo: any = await fetch(
       "https://www.googleapis.com/oauth2/v3/userinfo",
       {
         headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
@@ -121,11 +128,12 @@ export const OAuthAuth = {
       surname: userInfo.family_name,
     });
 
-    // Generate JWT
-    const { token, expiresAt } = await generateJwt(
-      user,
-      _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-    );
+    if (!user) {
+      throw new Error("Failed to find or create user");
+    }
+
+    // Generate JWT backed by a server-side session
+    const { token, expiresAt } = await generateUserSessionJwt(user);
 
     return { token, expiresAt, user };
   },
@@ -133,7 +141,7 @@ export const OAuthAuth = {
   // Microsoft OAuth functions
   async handleMicrosoftCallback(code: string) {
     // Get token from Microsoft
-    const tokenResponse = await fetch(
+    const tokenResponse: any = await fetch(
       "https://login.microsoftonline.com/common/oauth2/v2.0/token",
       {
         method: "POST",
@@ -158,7 +166,7 @@ export const OAuthAuth = {
     }
 
     // Get user data from Microsoft Graph API
-    const userInfo = await fetch("https://graph.microsoft.com/v1.0/me", {
+    const userInfo: any = await fetch("https://graph.microsoft.com/v1.0/me", {
       headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
     }).then((res) => res.json());
 
@@ -171,11 +179,12 @@ export const OAuthAuth = {
       surname: userInfo.surname,
     });
 
-    // Generate JWT
-    const { token, expiresAt } = await generateJwt(
-      user,
-      _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-    );
+    if (!user) {
+      throw new Error("Failed to find or create user");
+    }
+
+    // Generate JWT backed by a server-side session
+    const { token, expiresAt } = await generateUserSessionJwt(user);
 
     return { token, expiresAt, user };
   },

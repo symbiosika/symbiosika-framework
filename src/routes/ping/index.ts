@@ -6,7 +6,7 @@
 //   authAndSetUsersInfo,
 //   checkUserPermission,
 // } from "../../lib/utils/hono-middlewares";
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { describeRoute } from "hono-openapi";
 import { resolver, validator } from "hono-openapi";
@@ -15,7 +15,16 @@ import * as v from "valibot";
 /**
  * Define the plugin management routes
  */
-export default function definePingRoute(app: FastAppHono, basePath: string) {
+export default function definePingRoute(app: SymbiosikaFrameworkHonoApp, basePath: string) {
+  app.get(basePath + "/version", async (c) => {
+    try {
+      const pkg = await Bun.file("./package.json").json() as { version?: string };
+      return c.json({ version: pkg.version ?? "unknown" });
+    } catch {
+      return c.json({ version: "unknown" });
+    }
+  });
+
   /**
    * Ping and internet check endpoint
    */

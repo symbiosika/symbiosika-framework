@@ -50,34 +50,34 @@ describe("Knowledge Groups", () => {
       const groupData = {
         name: "Test Group Create",
         description: "Test Description",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
-        organisationWideAccess: false,
+        tenantWideAccess: false,
       };
 
       const newGroup = await createKnowledgeGroup(groupData);
 
       expect(newGroup.name).toBe("Test Group Create");
       expect(newGroup.description).toBe("Test Description");
-      expect(newGroup.organisationId).toBe(TEST_ORGANISATION_1.id);
+      expect(newGroup.tenantId).toBe(TEST_ORGANISATION_1.id);
       expect(newGroup.userId).toBe(TEST_ORG1_USER_1.id);
-      expect(newGroup.organisationWideAccess).toBe(false);
+      expect(newGroup.tenantWideAccess).toBe(false);
     });
   });
 
   describe("getKnowledgeGroups", () => {
-    it("should return all knowledge groups for an organisation", async () => {
+    it("should return all knowledge groups for an tenant", async () => {
       // Create a test group
       await createKnowledgeGroup({
         name: "Test Group List",
         description: "Test Description",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
-        organisationWideAccess: false,
+        tenantWideAccess: false,
       });
 
       const groups = await getKnowledgeGroups({
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
       });
 
       expect(groups.length).toBeGreaterThan(0);
@@ -86,14 +86,14 @@ describe("Knowledge Groups", () => {
 
     it("should filter groups by user", async () => {
       const groups = await getKnowledgeGroups({
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
       });
 
       expect(
         groups.every(
           (group) =>
-            group.userId === TEST_ORG1_USER_1.id || group.organisationWideAccess
+            group.userId === TEST_ORG1_USER_1.id || group.tenantWideAccess
         )
       ).toBe(true);
     });
@@ -103,19 +103,19 @@ describe("Knowledge Groups", () => {
       const newGroup = await createKnowledgeGroup({
         name: "Test Group Team Assignments",
         description: "Test Description",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
-        organisationWideAccess: false,
+        tenantWideAccess: false,
       });
 
       // Assign a team
       await assignTeamToKnowledgeGroup(newGroup.id, TEST_TEAM_ID, {
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
       });
 
       const groups = (await getKnowledgeGroups({
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         includeTeamAssignments: true,
       })) as KnowledgeGroupWithTeams[];
 
@@ -132,13 +132,13 @@ describe("Knowledge Groups", () => {
       const newGroup = await createKnowledgeGroup({
         name: "Test Group Get By ID",
         description: "Test Description",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
-        organisationWideAccess: false,
+        tenantWideAccess: false,
       });
 
       const group = await getKnowledgeGroupById(newGroup.id, {
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
       });
 
@@ -149,7 +149,7 @@ describe("Knowledge Groups", () => {
     it("should return null for non-existent group", async () => {
       const nonExistentId = "00000000-0000-0000-0000-000000000000";
       const group = await getKnowledgeGroupById(nonExistentId, {
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
       });
 
@@ -163,9 +163,9 @@ describe("Knowledge Groups", () => {
       const newGroup = await createKnowledgeGroup({
         name: "Test Group Update",
         description: "Test Description",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
-        organisationWideAccess: false,
+        tenantWideAccess: false,
       });
 
       const updatedGroup = await updateKnowledgeGroup(
@@ -175,7 +175,7 @@ describe("Knowledge Groups", () => {
           description: "Updated Description",
         },
         {
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           userId: TEST_ORG1_USER_1.id,
         }
       );
@@ -191,7 +191,7 @@ describe("Knowledge Groups", () => {
           nonExistentId,
           { name: "Updated Group" },
           {
-            organisationId: TEST_ORGANISATION_1.id,
+            tenantId: TEST_ORGANISATION_1.id,
             userId: TEST_ORG1_USER_1.id,
           }
         )
@@ -205,18 +205,18 @@ describe("Knowledge Groups", () => {
       const newGroup = await createKnowledgeGroup({
         name: "Test Group Delete",
         description: "Test Description",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
-        organisationWideAccess: false,
+        tenantWideAccess: false,
       });
 
       await deleteKnowledgeGroup(newGroup.id, {
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
       });
 
       const deletedGroup = await getKnowledgeGroupById(newGroup.id, {
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
       });
 
@@ -227,7 +227,7 @@ describe("Knowledge Groups", () => {
       const nonExistentId = "00000000-0000-0000-0000-000000000000";
       await expect(
         deleteKnowledgeGroup(nonExistentId, {
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           userId: TEST_ORG1_USER_1.id,
         })
       ).rejects.toThrow();
@@ -240,18 +240,18 @@ describe("Knowledge Groups", () => {
       const newGroup = await createKnowledgeGroup({
         name: "Test Group Team Assignment",
         description: "Test Description",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
-        organisationWideAccess: false,
+        tenantWideAccess: false,
       });
 
       await assignTeamToKnowledgeGroup(newGroup.id, TEST_TEAM_ID, {
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
       });
 
       const teams = await getTeamsForKnowledgeGroup(newGroup.id, {
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
       });
 
@@ -264,25 +264,25 @@ describe("Knowledge Groups", () => {
       const newGroup = await createKnowledgeGroup({
         name: "Test Group Team Removal",
         description: "Test Description",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
-        organisationWideAccess: false,
+        tenantWideAccess: false,
       });
 
       // First assign the team
       await assignTeamToKnowledgeGroup(newGroup.id, TEST_TEAM_ID, {
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
       });
 
       // Then remove it
       await removeTeamFromKnowledgeGroup(newGroup.id, TEST_TEAM_ID, {
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
       });
 
       const teams = await getTeamsForKnowledgeGroup(newGroup.id, {
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
       });
 

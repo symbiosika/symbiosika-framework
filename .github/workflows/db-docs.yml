@@ -24,13 +24,11 @@ jobs:
           name: db-schema-doc
           path: docs/11_BuildIn_DB_Schema.md
       - name: Commit documentation
-            run: |
-              if [ -n "$(git status --porcelain docs/11_BuildIn_DB_Schema.md)" ]; then
-                git config user.name "github-actions[bot]"
-                git config user.email "github-actions[bot]@users.noreply.github.com"
-                git add docs/README_Jobs_API.md
-                git commit -m "chore: update job service docs"
-                git push
-              fi
-            env:
-              GITHUB_TOKEN: ${{ secrets.BE_GH_REPO_KEY }}
+        run: |
+          if [ -n "$(git status --porcelain docs/11_BuildIn_DB_Schema.md)" ]; then
+            git config user.name "${{ github.actor }}"
+            git config user.email "${{ github.actor }}@users.noreply.github.com"
+            git add docs/11_BuildIn_DB_Schema.md
+            git commit -m "chore: update db schema docs"
+            git push
+          fi

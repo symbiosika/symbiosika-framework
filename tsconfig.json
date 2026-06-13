@@ -1,12 +1,11 @@
 {
   "compilerOptions": {
     // Enable latest features
-    // "lib": ["ESNext", "DOM"],
+    "lib": ["ESNext", "DOM"],
     "target": "ESNext",
-    "module": "commonjs",
-    // "module": "commonjs",
-    // "moduleDetection": "force",
-    // "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
     "allowJs": true,
 
     // Output
@@ -15,10 +14,10 @@
     "rootDir": "./src",
     "esModuleInterop": true,
 
-    // Bundler mode
-    // "moduleResolution": "bundler",
-    // "allowImportingTsExtensions": true,
-    // "verbatimModuleSyntax": true,
+    // Bundler mode - Fixes VS Code & Drizzle Types
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": false,
+    "verbatimModuleSyntax": true,
     "noEmit": false,
     "forceConsistentCasingInFileNames": true,
 
@@ -27,15 +26,10 @@
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
 
-    // Some stricter flags (disabled by default)
+    // Stricter flags
     "noUnusedLocals": false,
-    // "noUnusedParameters": false,
-    // "emitDecoratorMetadata": true,
-    // "experimentalDecorators": true,
     "strictPropertyInitialization": false,
     "noPropertyAccessFromIndexSignature": false
-    // "baseUrl": ".",
-    // "paths": {}
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts"]

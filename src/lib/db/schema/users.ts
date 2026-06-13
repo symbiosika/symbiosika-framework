@@ -29,8 +29,8 @@ import {
 } from "drizzle-valibot";
 import * as v from "valibot";
 
-export const organisations = pgBaseTable(
-  "organisations",
+export const tenants = pgBaseTable(
+  "tenants",
   {
     id: uuid("id")
       .primaryKey()
@@ -44,15 +44,15 @@ export const organisations = pgBaseTable(
       .notNull()
       .defaultNow(),
   },
-  (organisations) => [unique("organisations_name_idx").on(organisations.name)]
+  (tenants) => [unique("tenants_name_idx").on(tenants.name)]
 );
 
-export type OrganisationsSelect = typeof organisations.$inferSelect;
-export type OrganisationsInsert = typeof organisations.$inferInsert;
+export type TenantsSelect = typeof tenants.$inferSelect;
+export type TenantsInsert = typeof tenants.$inferInsert;
 
-export const organisationsSelectSchema = createSelectSchema(organisations);
-export const organisationsInsertSchema = createInsertSchema(organisations);
-export const organisationsUpdateSchema = createUpdateSchema(organisations);
+export const tenantsSelectSchema = createSelectSchema(tenants);
+export const tenantsInsertSchema = createInsertSchema(tenants);
+export const tenantsUpdateSchema = createUpdateSchema(tenants);
 
 const bytea = customType<{
   data: Buffer;
@@ -67,6 +67,8 @@ export const userProviderEnum = pgEnum("user_provider", [
   "local",
   "google",
   "microsoft",
+  "auth0",
+  "hanko",
 ]);
 
 export const users = pgBaseTable(
@@ -102,12 +104,9 @@ export const users = pgBaseTable(
     profileImageContentType: varchar("profile_image_content_type", {
       length: 255,
     }),
-    lastOrganisationId: uuid("last_organisation_id").references(
-      () => organisations.id,
-      {
-        onDelete: "set null",
-      }
-    ),
+    lastTenantId: uuid("last_tenant_id").references(() => tenants.id, {
+      onDelete: "set null",
+    }),
   },
   (users) => [
     index("users_email_idx").on(users.email),
@@ -161,6 +160,49 @@ export const sessionsSelectSchema = createSelectSchema(sessions);
 export const sessionsInsertSchema = createInsertSchema(sessions);
 export const sessionsUpdateSchema = createUpdateSchema(sessions);
 
+/**
+ * WebAuthn / passkey credentials (FIDO2 discoverable credentials).
+ */
+export const webauthnCredentials = pgBaseTable(
+  "webauthn_credentials",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** base64url-encoded credential ID */
+    credentialId: text("credential_id").notNull(),
+    /** COSE-encoded public key */
+    publicKey: bytea("public_key").notNull(),
+    counter: bigint("counter", { mode: "number" }).notNull(),
+    transports: jsonb("transports").$type<string[]>(),
+    credentialDeviceType: varchar("credential_device_type", { length: 32 }),
+    credentialBackedUp: boolean("credential_backed_up"),
+    aaguid: varchar("aaguid", { length: 64 }),
+    nickname: varchar("nickname", { length: 255 }),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { mode: "string" }),
+  },
+  (t) => [
+    uniqueIndex("webauthn_credentials_credential_id_idx").on(t.credentialId),
+    index("webauthn_credentials_user_id_idx").on(t.userId),
+  ]
+);
+
+export type WebauthnCredentialsSelect = typeof webauthnCredentials.$inferSelect;
+export type WebauthnCredentialsInsert = typeof webauthnCredentials.$inferInsert;
+
+export const webauthnCredentialsSelectSchema =
+  createSelectSchema(webauthnCredentials);
+export const webauthnCredentialsInsertSchema =
+  createInsertSchema(webauthnCredentials);
+export const webauthnCredentialsUpdateSchema =
+  createUpdateSchema(webauthnCredentials);
+
 // User Permission Groups Table
 export const userPermissionGroups = pgBaseTable(
   "user_permission_groups",
@@ -176,7 +218,7 @@ export const userPermissionGroups = pgBaseTable(
     updatedAt: timestamp("updated_at", { mode: "string" })
       .notNull()
       .defaultNow(),
-    organisationId: uuid("organisation_id").references(() => organisations.id, {
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
       onDelete: "cascade",
     }),
   },
@@ -291,7 +333,7 @@ export const pathPermissions = pgBaseTable(
     updatedAt: timestamp("updated_at", { mode: "string" })
       .notNull()
       .defaultNow(),
-    organisationId: uuid("organisation_id").references(() => organisations.id, {
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
       onDelete: "cascade",
     }), // optional
   },
@@ -358,9 +400,9 @@ export const teams = pgBaseTable(
     updatedAt: timestamp("updated_at", { mode: "string" })
       .notNull()
       .defaultNow(),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
+      .references(() => tenants.id, { onDelete: "cascade" }),
   },
   (teams) => [unique("teams_name_idx").on(teams.name)]
 );
@@ -407,9 +449,10 @@ export const teamMembersUpdateSchema = createUpdateSchema(teamMembers);
 // RELATIONS
 export const usersRelations = relations(users, ({ many, one }) => ({
   sessions: many(sessions),
+  webauthnCredentials: many(webauthnCredentials),
   userGroupMembers: many(userGroupMembers),
   teamMembers: many(teamMembers),
-  organisationMembers: many(organisationMembers),
+  tenantMembers: many(tenantMembers),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -419,13 +462,23 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
   }),
 }));
 
+export const webauthnCredentialsRelations = relations(
+  webauthnCredentials,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [webauthnCredentials.userId],
+      references: [users.id],
+    }),
+  })
+);
+
 export const pathPermissionsRelations = relations(
   pathPermissions,
   ({ many, one }) => ({
     groupPermissions: many(groupPermissions),
-    organisation: one(organisations, {
-      fields: [pathPermissions.organisationId],
-      references: [organisations.id],
+    tenant: one(tenants, {
+      fields: [pathPermissions.tenantId],
+      references: [tenants.id],
     }),
   })
 );
@@ -435,9 +488,9 @@ export const userPermissionGroupsRelations = relations(
   ({ many, one }) => ({
     userGroupMembers: many(userGroupMembers),
     groupPermissions: many(groupPermissions),
-    organisation: one(organisations, {
-      fields: [userPermissionGroups.organisationId],
-      references: [organisations.id],
+    tenant: one(tenants, {
+      fields: [userPermissionGroups.tenantId],
+      references: [tenants.id],
     }),
   })
 );
@@ -472,9 +525,9 @@ export const groupPermissionsRelations = relations(
 
 export const teamsRelations = relations(teams, ({ many, one }) => ({
   teamMembers: many(teamMembers),
-  organisation: one(organisations, {
-    fields: [teams.organisationId],
-    references: [organisations.id],
+  tenant: one(tenants, {
+    fields: [teams.tenantId],
+    references: [tenants.id],
   }),
   teamSpecificData: many(teamSpecificData),
 }));
@@ -490,28 +543,29 @@ export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
   }),
 }));
 
-export const organisationInvitationStatusEnum = pgEnum(
-  "organisation_invitation_status",
-  ["pending", "accepted", "declined"]
-);
+export const tenantInvitationStatusEnum = pgEnum("tenant_invitation_status", [
+  "pending",
+  "accepted",
+  "declined",
+]);
 
-export const organisationMemberRoleEnum = pgEnum("organisation_member_role", [
+export const tenantMemberRoleEnum = pgEnum("tenant_member_role", [
   "owner",
   "admin",
   "member",
 ]);
 
-export const organisationInvitations = pgBaseTable(
-  "organisation_invitations",
+export const tenantInvitations = pgBaseTable(
+  "tenant_invitations",
   {
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
     email: text("email").notNull(), // cannot be the userId since a user is maybe not registered yet
-    role: organisationMemberRoleEnum("role").notNull().default("member"),
-    organisationId: uuid("organisation_id")
+    role: tenantMemberRoleEnum("role").notNull().default("member"),
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
+      .references(() => tenants.id, { onDelete: "cascade" }),
     status: varchar("status", { length: 50 }).notNull().default("pending"), // Status der Einladung: pending, accepted, declined
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
@@ -520,80 +574,65 @@ export const organisationInvitations = pgBaseTable(
       .notNull()
       .defaultNow(),
   },
-  (organisationInvitations) => [
+  (tenantInvitations) => [
     uniqueIndex("unique_invitation").on(
-      organisationInvitations.email,
-      organisationInvitations.organisationId
+      tenantInvitations.email,
+      tenantInvitations.tenantId
     ),
-    index("invitations_status_idx").on(organisationInvitations.status),
-    index("invitations_created_at_idx").on(organisationInvitations.createdAt),
-    index("invitations_email_idx").on(organisationInvitations.email),
+    index("invitations_status_idx").on(tenantInvitations.status),
+    index("invitations_created_at_idx").on(tenantInvitations.createdAt),
+    index("invitations_email_idx").on(tenantInvitations.email),
   ]
 );
 
-export type OrganisationInvitationsSelect =
-  typeof organisationInvitations.$inferSelect;
-export type OrganisationInvitationsInsert =
-  typeof organisationInvitations.$inferInsert;
+export type TenantInvitationsSelect = typeof tenantInvitations.$inferSelect;
+export type TenantInvitationsInsert = typeof tenantInvitations.$inferInsert;
 
-export const organisationInvitationsSelectSchema = createSelectSchema(
-  organisationInvitations
-);
-export const organisationInvitationsInsertSchema = createInsertSchema(
-  organisationInvitations
-);
-export const organisationInvitationsUpdateSchema = createUpdateSchema(
-  organisationInvitations
-);
+export const tenantInvitationsSelectSchema =
+  createSelectSchema(tenantInvitations);
+export const tenantInvitationsInsertSchema =
+  createInsertSchema(tenantInvitations);
+export const tenantInvitationsUpdateSchema =
+  createUpdateSchema(tenantInvitations);
 
-export const organisationMembers = pgBaseTable(
-  "organisation_members",
+export const tenantMembers = pgBaseTable(
+  "tenant_members",
   {
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
-    role: organisationMemberRoleEnum("role").notNull().default("member"),
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    role: tenantMemberRoleEnum("role").notNull().default("member"),
     joinedAt: timestamp("joined_at", { mode: "string" }).notNull().defaultNow(),
   },
-  (organisationMembers) => [
+  (tenantMembers) => [
     primaryKey({
-      columns: [organisationMembers.userId, organisationMembers.organisationId],
+      columns: [tenantMembers.userId, tenantMembers.tenantId],
     }),
-    index("organisation_members_user_id_idx").on(organisationMembers.userId),
-    index("organisation_members_organisation_id_idx").on(
-      organisationMembers.organisationId
-    ),
+    index("tenant_members_user_id_idx").on(tenantMembers.userId),
+    index("tenant_members_tenant_id_idx").on(tenantMembers.tenantId),
   ]
 );
 
-export type OrganisationMembersSelect = typeof organisationMembers.$inferSelect;
-export type OrganisationMembersInsert = typeof organisationMembers.$inferInsert;
+export type TenantMembersSelect = typeof tenantMembers.$inferSelect;
+export type TenantMembersInsert = typeof tenantMembers.$inferInsert;
 
-export const organisationMembersSelectSchema =
-  createSelectSchema(organisationMembers);
-export const organisationMembersInsertSchema =
-  createInsertSchema(organisationMembers);
-export const organisationMembersUpdateSchema =
-  createUpdateSchema(organisationMembers);
+export const tenantMembersSelectSchema = createSelectSchema(tenantMembers);
+export const tenantMembersInsertSchema = createInsertSchema(tenantMembers);
+export const tenantMembersUpdateSchema = createUpdateSchema(tenantMembers);
 
-// Neue Beziehungen für organisationMembers
-
-export const organisationMembersRelations = relations(
-  organisationMembers,
-  ({ one }) => ({
-    user: one(users, {
-      fields: [organisationMembers.userId],
-      references: [users.id],
-    }),
-    organisation: one(organisations, {
-      fields: [organisationMembers.organisationId],
-      references: [organisations.id],
-    }),
-  })
-);
+export const tenantMembersRelations = relations(tenantMembers, ({ one }) => ({
+  user: one(users, {
+    fields: [tenantMembers.userId],
+    references: [users.id],
+  }),
+  tenant: one(tenants, {
+    fields: [tenantMembers.tenantId],
+    references: [tenants.id],
+  }),
+}));
 
 // Invitation Codes Table
 export const invitationCodes = pgBaseTable(
@@ -604,7 +643,7 @@ export const invitationCodes = pgBaseTable(
       .default(sql`gen_random_uuid()`),
     isActive: boolean("is_active").notNull().default(true),
     code: text("code").notNull(), // unique invitation code
-    organisationId: uuid("organisation_id").references(() => organisations.id, {
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
       onDelete: "cascade",
     }),
     createdAt: timestamp("created_at", { mode: "string" })
@@ -616,9 +655,7 @@ export const invitationCodes = pgBaseTable(
   },
   (invitationCodes) => [
     uniqueIndex("unique_invitation_code").on(invitationCodes.code),
-    index("invitation_codes_organisation_id_idx").on(
-      invitationCodes.organisationId
-    ),
+    index("invitation_codes_tenant_id_idx").on(invitationCodes.tenantId),
     index("invitation_codes_expires_at_idx").on(invitationCodes.expiresAt),
   ]
 );
@@ -629,3 +666,49 @@ export type InvitationCodesInsert = typeof invitationCodes.$inferInsert;
 export const invitationCodesSelectSchema = createSelectSchema(invitationCodes);
 export const invitationCodesInsertSchema = createInsertSchema(invitationCodes);
 export const invitationCodesUpdateSchema = createUpdateSchema(invitationCodes);
+
+// Message type enum
+export const messageTypeEnum = pgEnum("message_type", [
+  "info",
+  "warning",
+  "error",
+]);
+
+// User messages table
+export const userMessages = pgBaseTable(
+  "user_messages",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    message: text("message").notNull(),
+    messageType: messageTypeEnum("message_type").notNull().default("info"),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+    confirmedAt: timestamp("confirmed_at", { mode: "string" }),
+  },
+  (table) => [
+    index("user_messages_user_id_idx").on(table.userId),
+    index("user_messages_confirmed_at_idx").on(table.confirmedAt),
+    index("user_messages_created_at_idx").on(table.createdAt),
+    index("user_messages_message_type_idx").on(table.messageType),
+  ]
+);
+
+export const userMessagesRelations = relations(userMessages, ({ one }) => ({
+  user: one(users, {
+    fields: [userMessages.userId],
+    references: [users.id],
+  }),
+}));
+
+export type UserMessagesSelect = typeof userMessages.$inferSelect;
+export type UserMessagesInsert = typeof userMessages.$inferInsert;
+
+export const userMessagesSelectSchema = createSelectSchema(userMessages);
+export const userMessagesInsertSchema = createInsertSchema(userMessages);
+export const userMessagesUpdateSchema = createUpdateSchema(userMessages);

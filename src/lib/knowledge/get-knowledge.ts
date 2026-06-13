@@ -5,7 +5,7 @@ import {
   knowledgeEntry,
   type KnowledgeEntrySelect,
   type KnowledgeChunksSelect,
-  KnowledgeGroupSelect,
+  type KnowledgeGroupSelect,
 } from "../db/schema/knowledge";
 import log from "../log";
 import {
@@ -48,7 +48,7 @@ export const extendKnowledgeEntriesWithTextChunks = async (
  */
 export const getKnowledgeEntries = async (query: {
   // Context
-  organisationId: string;
+  tenantId: string;
   userId: string;
   // Pagination
   limit?: number; // default: 100
@@ -56,7 +56,7 @@ export const getKnowledgeEntries = async (query: {
   // Filters. At least one filter must be provided.
   teamId?: string;
   workspaceId?: string;
-  knowledgeGroupId?: string;
+  knowledgeGroupId?: string | null;
   userOwned?: boolean;
   ids?: string[];
   filterIds?: string[];
@@ -69,11 +69,11 @@ export const getKnowledgeEntries = async (query: {
   })[]
 > => {
   // 2.) Get all access conditions
-  const userTeams = await getUserTeamIds(query.userId, query.organisationId);
+  const userTeams = await getUserTeamIds(query.userId, query.tenantId);
 
   const userKnowledgeGroupIds = await getUserKnowledgeGroupIds(
     query.userId,
-    query.organisationId,
+    query.tenantId,
     userTeams
   );
 
@@ -84,7 +84,8 @@ export const getKnowledgeEntries = async (query: {
   }
 
   if (
-    query.knowledgeGroupId &&
+    query.knowledgeGroupId != undefined &&
+    query.knowledgeGroupId != null &&
     !userKnowledgeGroupIds.includes(query.knowledgeGroupId)
   ) {
     throw new Error(
@@ -93,9 +94,9 @@ export const getKnowledgeEntries = async (query: {
   }
 
   // 4.) Add optional filters if provided
-  // always add the organisationId filter
+  // always add the tenantId filter
   const filterConditions: (SQL<unknown> | undefined)[] = [
-    eq(knowledgeEntry.organisationId, query.organisationId),
+    eq(knowledgeEntry.tenantId, query.tenantId),
   ];
   // check for team
   if (query.teamId) {
@@ -110,11 +111,16 @@ export const getKnowledgeEntries = async (query: {
   }
 
   // check for knowledge group
-  if (query.knowledgeGroupId) {
+  if (query.knowledgeGroupId + "" === "null") {
+    // Explicitly search for entries without a knowledge group
+    filterConditions.push(isNull(knowledgeEntry.knowledgeGroupId));
+  } else if (query.knowledgeGroupId != null) {
+    // Search for a specific knowledge group ID
     filterConditions.push(
       eq(knowledgeEntry.knowledgeGroupId, query.knowledgeGroupId)
     );
   } else {
+    // No filter specified: show all accessible knowledge groups or null
     filterConditions.push(
       or(
         isNull(knowledgeEntry.knowledgeGroupId),
@@ -166,11 +172,11 @@ export const getKnowledgeEntries = async (query: {
  */
 export const getFullSourceDocumentsForKnowledgeEntry = async (
   id: string,
-  organisationId: string,
+  tenantId: string,
   userId: string
 ) => {
   // Check user permissions first
-  const hasAccess = await validateKnowledgeAccess(id, userId, organisationId);
+  const hasAccess = await validateKnowledgeAccess(id, userId, tenantId);
   if (!hasAccess) {
     throw new Error(
       "User does not have permission to access this knowledge entry"
@@ -180,7 +186,7 @@ export const getFullSourceDocumentsForKnowledgeEntry = async (
   const entry = await getDb().query.knowledgeEntry.findFirst({
     where: and(
       eq(knowledgeEntry.id, id),
-      eq(knowledgeEntry.organisationId, organisationId)
+      eq(knowledgeEntry.tenantId, tenantId)
     ),
     with: {
       knowledgeGroup: true,

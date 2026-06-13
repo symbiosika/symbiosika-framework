@@ -11,15 +11,21 @@ export type { JobHandlerRegister };
 export { HTTPException } from "hono/http-exception";
 export type { ProcessedWhatsAppMessage };
 
-export type FastAppHonoContextVariables = {
+export type SFContextVariables = {
   usersId: string;
   usersEmail: string;
   usersRoles: string[];
   scopes: string[];
+  /** Server-side session id (sid claim) for interactive logins; undefined for service/external tokens. */
+  sessionId?: string;
+  /** Token `type` claim (e.g. "connection" for server-to-server tokens). */
+  tokenType?: string;
+  /** Token `tenantId` claim — for connection tokens, the tenant they may act for. */
+  tokenTenantId?: string;
 };
 
-export interface FastAppHono
-  extends Hono<{ Variables: FastAppHonoContextVariables }, BlankSchema, "/"> {}
+export interface SymbiosikaFrameworkHonoApp
+  extends Hono<{ Variables: SFContextVariables }, BlankSchema, "/"> {}
 
 type UserInfo = {
   firstname: string;
@@ -32,8 +38,10 @@ export type EmailTemplateFunction = (data: {
   baseUrl: string;
   logoUrl?: string;
   link?: string;
+  /** One-time login code (OTP), e.g. for the OAuth email-login flow. */
+  code?: string;
   user?: UserInfo;
-  organisation?: {
+  tenant?: {
     id: string;
     name: string;
   };
@@ -50,15 +58,44 @@ export interface ServerSpecificConfig {
   baseUrl?: string;
   logoUrl?: string;
 
-  authType?: "local" | "auth0";
+  loginUrl?: string;
+  magicLoginVerifyUrl?: string;
+  verifyEmailUrl?: string;
+  resetPasswordUrl?: string;
+  oauthCallbackUrl?: string;
+
+  authType?: "local" | "auth0" | "hanko";
   jwtExpiresAfter?: number;
+
+  // OAuth2 / OIDC Authorization Server (opt-in).
+  // When enabled, the app acts as an OAuth2/OIDC provider so third-party
+  // clients can authenticate users and call the API on their behalf.
+  // See docs/framework/16_OAuth2_OIDC_Provider.md
+  oauth2?: {
+    enabled?: boolean; // default false
+    issuer?: string; // default = baseUrl (used for metadata + JWT `iss`)
+    accessTokenTtl?: number; // seconds, default 900 (15m)
+    refreshTokenTtl?: number; // seconds, default 2592000 (30d)
+    authCodeTtl?: number; // seconds, default 60
+    requireConsentScreen?: boolean; // default true
+    emailLoginCodeTtl?: number; // seconds, default 600 (10m)
+    emailLoginCodeMaxAttempts?: number; // default 5
+    // Shared secret for RFC 7662 token introspection (resource servers send this as Bearer).
+    introspectionSecret?: string;
+    // Override the default login/consent/tenant-select HTML (like emailTemplates).
+    views?: Partial<import("./lib/oauth2/views").OAuthViews>;
+  };
 
   jobHandlers?: JobHandlerRegister[];
 
   customEnvVariablesToCheckOnStartup?: string[];
   customHonoApps?: {
     baseRoute: string;
-    app: (app: Hono<{ Variables: FastAppHonoContextVariables }>) => void;
+    app: (app: Hono<{ Variables: SFContextVariables }>) => void;
+  }[];
+  customHonoAppsWithAuth?: {
+    baseRoute: string;
+    app: (app: Hono<{ Variables: SFContextVariables }>) => void;
   }[];
   customDbSchema?: any; // Drizzle Schema
   customCollectionPermissions?: PermissionDefinitionPerTable;
@@ -68,6 +105,7 @@ export interface ServerSpecificConfig {
   // Registration Flow
   customPreRegisterCustomVerifications?: CustomPreRegisterVerification[];
   customPostRegisterActions?: CustomPostRegisterAction[];
+  customPostConnectionActions?: CustomPostConnectionAction[];
 
   // CRON
   customCronJobs?: Task[];
@@ -94,6 +132,8 @@ export interface ServerSpecificConfig {
     resetPasswordWelcome?: EmailTemplateFunction;
     inviteToOrganization?: EmailTemplateFunction;
     inviteToOrganizationWhenUserExists?: EmailTemplateFunction;
+    emailLoginCode?: EmailTemplateFunction;
+    custom?: Record<string, EmailTemplateFunction>;
   };
 }
 
@@ -109,10 +149,51 @@ export type CustomPreRegisterVerification = (
   meta: any
 ) => Promise<{ success: boolean; message?: string }>;
 
+/**
+ * Custom post-register action.
+ *
+ * The `meta` argument contains the same object passed to the register flow
+ * (for the local register endpoint this is the `meta` field of the request
+ * body, for the magic-link flow it is assembled from query parameters).
+ * A register flow may carry custom per-user data in `meta.customRegisterData`
+ * which will be persisted on the user row (`users.meta.customRegisterData`)
+ * and is available to post-register actions.
+ */
 export type CustomPostRegisterAction = (
   userId: string,
-  email: string
+  email: string,
+  meta?: {
+    invitationCode?: string;
+    customRegisterData?: Record<string, any>;
+    [key: string]: any;
+  }
 ) => Promise<void>;
+
+/**
+ * Context handed to post-connection actions after a server-to-server
+ * connection has been established (cert exchange complete).
+ */
+export type ConnectionEstablishedContext = {
+  connectionId: string;
+  /** The local tenant the connection was stored under. */
+  localTenantId: string;
+  /** The remote tenant id (mirrored locally with the same id). */
+  remoteTenantId: string;
+  remoteUrl: string;
+  name: string;
+  initiatedBy: "local" | "remote";
+};
+
+/**
+ * Custom post-connection action. Fired once a connection is fully established
+ * (both `initializeConnection`/`initializeConnectionWithToken` on the initiating
+ * side and `acceptConnection` on the accepting side). Lets an app react to
+ * onboarding — e.g. a robot reducing itself to the connected tenant — without
+ * wrapping the framework's connection routes.
+ */
+export type CustomPostConnectionAction = (
+  ctx: ConnectionEstablishedContext
+) => Promise<void> | void;
 
 export type RenderTypeText = {
   type: "text";

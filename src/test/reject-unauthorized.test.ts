@@ -1,5 +1,5 @@
 import { testFetcher } from "./fetcher.test";
-import type { FastAppHono } from "../types";
+import type { SymbiosikaFrameworkHonoApp } from "../types";
 import { expect } from "bun:test";
 
 /**
@@ -10,7 +10,7 @@ import { expect } from "bun:test";
  *
  */
 export const rejectUnauthorized = async (
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   requests: [string, string][]
 ) => {
   for (const [method, path] of requests) {

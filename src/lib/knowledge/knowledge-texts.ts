@@ -1,12 +1,25 @@
-import { and, asc, eq, or, isNull, type SQLWrapper, exists } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  or,
+  isNull,
+  type SQLWrapper,
+  exists,
+  sql,
+  getTableColumns,
+} from "drizzle-orm";
 import { getDb } from "../db/db-connection";
 import {
   knowledgeText,
+  knowledgeTextHistory,
   type KnowledgeTextInsert,
+  type KnowledgeTextHistoryInsert,
 } from "../db/schema/knowledge";
 import { RESPONSES } from "../responses";
 import { teamMembers } from "../db/schema/users";
-import { checkOrganisationMemberRole } from "../usermanagement/oganisations";
+import { checkTenantMemberRole } from "../usermanagement/tenants";
 import { checkTeamMemberRole } from "../usermanagement/teams";
 
 /**
@@ -16,43 +29,48 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
   // check permission
   if (data.userId && data.teamId) {
     await checkTeamMemberRole(data.teamId, data.userId, ["admin"]);
-  } else if (data.userId && data.organisationWide) {
-    await checkOrganisationMemberRole(data.organisationId, data.userId, [
-      "admin",
-      "owner",
-    ]);
+  } else if (data.userId && data.tenantWide) {
+    await checkTenantMemberRole(data.tenantId, data.userId, ["admin", "owner"]);
   }
 
-  const e = await getDb().insert(knowledgeText).values(data).returning();
+  const e = await getDb()
+    .insert(knowledgeText)
+    .values(data)
+    .returning();
+  if (!e[0]) {
+    throw new Error("Failed to create knowledge text");
+  }
   return e[0];
 };
 
 /**
- * Read all knowledgeText entries or a specific entry by ID
+ * Get list of all knowledge text entries WITHOUT text content
+ * Sorted alphabetically by title
  */
 export const getKnowledgeText = async (filters: {
-  id?: string;
-  organisationId: string;
+  tenantId: string;
   teamId?: string;
   userId?: string;
   workspaceId?: string;
   limit?: number;
   page?: number;
+  includeHidden?: boolean; // Optional: include system/hidden entries
 }) => {
+  // Exclude 'text' field to reduce payload size
   const permissionConditions: SQLWrapper[] = [
-    eq(knowledgeText.organisationId, filters.organisationId),
+    eq(knowledgeText.tenantId, filters.tenantId),
   ];
+
+  // By default, exclude hidden (system) entries unless explicitly requested
+  if (!filters.includeHidden) {
+    permissionConditions.push(eq(knowledgeText.hidden, false));
+  }
 
   if (filters.userId) {
     permissionConditions.push(
       or(
-        // User specific entries
         eq(knowledgeText.userId, filters.userId),
-        // Team specific entries (only if user is a member of the team)
-        and(
-          isNull(knowledgeText.teamId),
-          eq(knowledgeText.organisationWide, true)
-        ),
+        and(isNull(knowledgeText.teamId), eq(knowledgeText.tenantWide, true)),
         exists(
           getDb()
             .select()
@@ -72,15 +90,12 @@ export const getKnowledgeText = async (filters: {
     permissionConditions.push(eq(knowledgeText.teamId, filters.teamId));
   }
 
-  if (filters.id) {
-    permissionConditions.push(eq(knowledgeText.id, filters.id));
-  }
-
+  const { text, ...rest } = getTableColumns(knowledgeText); // exclude "text" column
   const query = getDb()
-    .select()
+    .select({ ...rest })
     .from(knowledgeText)
-    .orderBy(asc(knowledgeText.createdAt))
     .where(and(...permissionConditions))
+    .orderBy(asc(knowledgeText.title)) // Sort alphabetically by title
     .$dynamic();
 
   if (filters.limit) {
@@ -89,15 +104,102 @@ export const getKnowledgeText = async (filters: {
   if (filters.page && filters.limit) {
     query.offset((filters.page - 1) * filters.limit);
   }
+
   return await query;
 };
 
 /**
- * Get a knowledgeText entry by name, category and organisationId
+ * Get a single knowledge text entry by ID with full content
+ */
+export const getKnowledgeTextById = async (
+  id: string,
+  context: {
+    tenantId: string;
+    userId?: string;
+    teamId?: string;
+    workspaceId?: string;
+    includeHidden?: boolean; // Optional: include system/hidden entries
+  }
+) => {
+  const permissionConditions: SQLWrapper[] = [
+    eq(knowledgeText.tenantId, context.tenantId),
+    eq(knowledgeText.id, id),
+  ];
+
+  // Check hidden flag unless explicitly allowed
+  if (!context.includeHidden) {
+    permissionConditions.push(eq(knowledgeText.hidden, false));
+  }
+
+  if (context.userId) {
+    permissionConditions.push(
+      or(
+        eq(knowledgeText.userId, context.userId),
+        and(isNull(knowledgeText.teamId), eq(knowledgeText.tenantWide, true)),
+        exists(
+          getDb()
+            .select()
+            .from(teamMembers)
+            .where(
+              and(
+                eq(teamMembers.userId, context.userId),
+                eq(teamMembers.teamId, knowledgeText.teamId)
+              )
+            )
+        )
+      )!
+    );
+  }
+
+  if (context.teamId) {
+    permissionConditions.push(eq(knowledgeText.teamId, context.teamId));
+  }
+
+  const result = await getDb()
+    .select()
+    .from(knowledgeText)
+    .where(and(...permissionConditions));
+
+  if (!result[0]) {
+    throw new Error("Knowledge text not found or access denied");
+  }
+
+  return result[0];
+};
+
+/**
+ * Get complete version history for a knowledge text entry WITHOUT text content
+ * Returns all versions chronologically (oldest to newest) with metadata only
+ */
+export const getKnowledgeTextHistory = async (
+  id: string,
+  context: {
+    tenantId: string;
+    userId?: string;
+    teamId?: string;
+    workspaceId?: string;
+    includeHidden?: boolean;
+  }
+) => {
+  // First get the entry to check permissions
+  const entry = await getKnowledgeTextById(id, context);
+
+  // Get all history entries for this knowledge text
+  const historyEntries = await getDb()
+    .select()
+    .from(knowledgeTextHistory)
+    .where(eq(knowledgeTextHistory.knowledgeTextId, id))
+    .orderBy(desc(knowledgeTextHistory.createdAt)); // Newest first
+
+  return historyEntries;
+};
+
+/**
+ * Get a knowledgeText entry by name, category and tenantId
  */
 export const getKnowledgeTextByTitle = async (filters: {
   title: string;
-  organisationId: string;
+  tenantId: string;
 }) => {
   const result = await getDb()
     .select()
@@ -105,7 +207,7 @@ export const getKnowledgeTextByTitle = async (filters: {
     .where(
       and(
         eq(knowledgeText.title, filters.title),
-        eq(knowledgeText.organisationId, filters.organisationId)
+        eq(knowledgeText.tenantId, filters.tenantId)
       )
     );
   if (result.length === 0) {
@@ -116,50 +218,69 @@ export const getKnowledgeTextByTitle = async (filters: {
 
 /**
  * Update a knowledgeText entry by ID
+ * Creates a history entry before updating
  */
 export const updateKnowledgeText = async (
   id: string,
   data: Partial<KnowledgeTextInsert>,
   context: {
-    organisationId: string;
+    tenantId: string;
     userId?: string;
     teamId?: string;
     workspaceId?: string;
+    includeHidden?: boolean;
   }
 ) => {
-  // First check if user has permission to update this entry
-  const existing = await getKnowledgeText({
-    id,
-    organisationId: context.organisationId,
-    userId: context.userId,
-    teamId: context.teamId,
-    workspaceId: context.workspaceId,
-  });
+  // Get the current entry (including text) to create history
+  const currentEntry = await getKnowledgeTextById(id, context);
 
   // check permission
-  if (context.userId && existing.length === 0) {
-    throw new Error("Knowledge text not found or access denied");
-  } else if (context.userId) {
-    const item = existing[0];
-    if (item.organisationWide) {
-      await checkOrganisationMemberRole(
-        context.organisationId,
-        context.userId,
-        ["admin", "owner"]
-      );
-    } else if (item.teamId) {
-      await checkTeamMemberRole(item.teamId, context.userId, ["admin"]);
+  if (context.userId) {
+    if (currentEntry.tenantWide) {
+      await checkTenantMemberRole(context.tenantId, context.userId, [
+        "admin",
+        "owner",
+      ]);
+    } else if (currentEntry.teamId) {
+      await checkTeamMemberRole(currentEntry.teamId, context.userId, ["admin"]);
     }
   }
 
-  // update
-  const e = await getDb()
+  // Create history entry with the current state BEFORE updating
+  const historyEntry: KnowledgeTextHistoryInsert = {
+    knowledgeTextId: currentEntry.id,
+    tenantId: currentEntry.tenantId,
+    tenantWide: currentEntry.tenantWide,
+    teamId: currentEntry.teamId,
+    userId: currentEntry.userId,
+    parentId: currentEntry.parentId,
+    text: currentEntry.text,
+    title: currentEntry.title,
+    meta: currentEntry.meta,
+    hidden: currentEntry.hidden,
+  };
+
+  await getDb().insert(knowledgeTextHistory).values(historyEntry);
+
+  // Now update the current entry
+  const updateData: Partial<KnowledgeTextInsert> = {
+    ...data,
+  };
+
+  const result = await getDb()
     .update(knowledgeText)
-    .set({ ...data })
+    .set({
+      ...updateData,
+      updatedAt: sql`now()`,
+    })
     .where(eq(knowledgeText.id, id))
     .returning();
 
-  return e[0];
+  if (!result[0]) {
+    throw new Error("Failed to update knowledge text");
+  }
+
+  return result[0];
 };
 
 /**
@@ -168,36 +289,35 @@ export const updateKnowledgeText = async (
 export const deleteKnowledgeText = async (
   id: string,
   context: {
-    organisationId: string;
+    tenantId: string;
     userId?: string;
     teamId?: string;
     workspaceId?: string;
+    includeHidden?: boolean;
   }
 ) => {
-  const e = await getKnowledgeText({
-    id,
-    organisationId: context.organisationId,
-    userId: context.userId,
-    teamId: context.teamId,
-    workspaceId: context.workspaceId,
-  });
+  const item = await getKnowledgeTextById(id, context);
 
-  if (context.userId && e.length === 0) {
-    throw new Error("Knowledge text not found or access denied");
-  } else if (context.userId) {
-    const item = e[0];
-    if (item.organisationWide) {
-      await checkOrganisationMemberRole(
-        context.organisationId,
-        context.userId,
-        ["admin", "owner"]
-      );
+  if (context.userId) {
+    if (item.tenantWide) {
+      await checkTenantMemberRole(context.tenantId, context.userId, [
+        "admin",
+        "owner",
+      ]);
     } else if (item.teamId) {
       await checkTeamMemberRole(item.teamId, context.userId, ["admin"]);
     }
   }
 
-  await getDb().delete(knowledgeText).where(eq(knowledgeText.id, id));
+  // Delete the entry (history will be cascade deleted due to foreign key)
+  await getDb()
+    .delete(knowledgeText)
+    .where(
+      and(
+        eq(knowledgeText.id, id),
+        eq(knowledgeText.tenantId, context.tenantId)
+      )
+    );
 
   return RESPONSES.SUCCESS;
 };

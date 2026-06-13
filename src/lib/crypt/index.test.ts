@@ -37,12 +37,12 @@ describe("Crypt Module Tests", () => {
       const result = await setSecret({
         name: "TEST_SECRET",
         value: "test-value",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
       });
 
       expect(result.name).toBe("TEST_SECRET");
       expect(result.value).toBe(""); // Value should be empty in response
-      expect(result.organisationId).toBeTruthy(); // Just check if it exists
+      expect(result.tenantId).toBeTruthy(); // Just check if it exists
     });
 
     test("should update existing secret", async () => {
@@ -50,14 +50,14 @@ describe("Crypt Module Tests", () => {
       await setSecret({
         name: "UPDATE_SECRET",
         value: "initial-value",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
       });
 
       // Then update it
       const result = await setSecret({
         name: "UPDATE_SECRET",
         value: "updated-value",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
       });
 
       expect(result.name).toBe("UPDATE_SECRET");
@@ -69,7 +69,7 @@ describe("Crypt Module Tests", () => {
         await setSecret({
           name: "invalid-name",
           value: "test-value",
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
         });
         throw new Error("Should have thrown an error");
       } catch (e: any) {
@@ -85,7 +85,7 @@ describe("Crypt Module Tests", () => {
       await setSecret({
         name: "GET_SECRET",
         value: "secret-value",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
       });
 
       // Then retrieve it
@@ -108,7 +108,7 @@ describe("Crypt Module Tests", () => {
       await setSecret({
         name: "DELETE_SECRET",
         value: "secret-value",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
       });
 
       // Then delete it
@@ -117,6 +117,7 @@ describe("Crypt Module Tests", () => {
         TEST_ORGANISATION_1.id
       );
       expect(result.length).toBeGreaterThan(0);
+      if (!result[0]) return; // end test if result is undefined
       expect(result[0].name).toBe("DELETE_SECRET");
 
       // Verify it's deleted
@@ -126,18 +127,18 @@ describe("Crypt Module Tests", () => {
   });
 
   describe("getSecrets", () => {
-    test("should list all secrets for an organisation", async () => {
+    test("should list all secrets for an tenant", async () => {
       // First set some secrets
       await setSecret({
         name: "LIST_SECRET_1",
         value: "value1",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
       });
 
       await setSecret({
         name: "LIST_SECRET_2",
         value: "value2",
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
       });
 
       // Get all secrets

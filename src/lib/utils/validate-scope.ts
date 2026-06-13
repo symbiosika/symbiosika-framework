@@ -16,6 +16,14 @@ export const validateScope = (
       return;
     }
 
+    // Connection tokens are cert-authenticated server-to-server links. They are
+    // authorized for their own tenant; the per-tenant restriction is enforced by
+    // isTenantMember (which matches the token's tenantId to the route's tenant).
+    if (c.get("tokenType") === "connection") {
+      await next();
+      return;
+    }
+
     if (checkId) {
       const id = c.req.param("id");
       if (!id) {

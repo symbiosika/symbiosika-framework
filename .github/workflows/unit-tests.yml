@@ -1,4 +1,4 @@
-name: Unit tests for fastapp-framework
+name: Unit tests for framework
 
 on:
   push:
@@ -51,44 +51,38 @@ jobs:
           POSTGRES_USE_SSL=false
           POSTGRES_CA=''
 
-          # OpenAI for Chat,Embeddings and Text Features
-          OPENAI_API_KEY=${{ secrets.FASTAPP_UNITTEST_OPENAI_API_KEY }}
-
           # Mistral for Chat and MultiModal
-          MISTRAL_API_KEY=${{ secrets.FASTAPP_UNITTEST_MISTRAL_API_KEY }}
-
-          # Anthropic for Chat
-          ANTHROPIC_API_KEY=${{ secrets.FASTAPP_UNITTEST_ANTHROPIC_API_KEY }}
-
-           # Perplexity
-          PERPLEXITY_API_KEY=${{ secrets.FASTAPP_UNITTEST_PERPLEXITY_API_KEY }}
-
-          # Black Forest Labs
-          BLACK_FOREST_LABS_API_KEY=${{ secrets.FASTAPP_UNITTEST_BLACK_FOREST_LABS_API_KEY }}
-
-          # Replicate
-          REPLICATE_API_KEY=${{ secrets.FASTAPP_UNITTEST_REPLICATE_API_KEY }}
+          MISTRAL_API_KEY=${{ secrets.UNITTEST_MISTRAL_API_KEY }}
 
           # Webserver Settings
           ALLOWED_ORIGINS="*"
 
           # Parsing
           PDF_PARSER_SERVICE="local"
-          LOCAL_PDF_PARSER_API_KEY="${{ secrets.FASTAPP_UNITTEST_PDF_PARSER_API_KEY }}"
-          LOCAL_PDF_PARSER_BASE_URL="${{ secrets.FASTAPP_UNITTEST_PDF_PARSER_BASE_URL }}"
-          LLAMA_CLOUD_API_KEY="${{ secrets.FASTAPP_UNITTEST_LLAMA_CLOUD_API_KEY }}"
+          LOCAL_PDF_PARSER_API_KEY=""
+          LOCAL_PDF_PARSER_BASE_URL=""
+          LLAMA_CLOUD_API_KEY=""
 
           # Encryption
-          SECRETS_AES_KEY=${{ secrets.FASTAPP_UNITTEST_SECRETS_AES_KEY }}
-          SECRETS_AES_IV=${{ secrets.FASTAPP_UNITTEST_SECRETS_AES_IV }}
+          SECRETS_AES_KEY=${{ secrets.UNITTEST_SECRETS_AES_KEY }}
+          SECRETS_AES_IV=${{ secrets.UNITTEST_SECRETS_AES_IV }}
 
           # JWT
-          JWT_PUBLIC_KEY="${{ secrets.FASTAPP_UNITTEST_JWT_KEY }}"
-          JWT_PRIVATE_KEY="${{ secrets.FASTAPP_UNITTEST_JWT_KEY }}"
+          JWT_PUBLIC_KEY="${{ secrets.UNITTEST_JWT_KEY }}"
+          JWT_PRIVATE_KEY="${{ secrets.UNITTEST_JWT_KEY }}"
 
           # Cron
           CRON_LOG=false
           ZYTE_API_KEY=not-needed
+
+          # SMTP
+          SMTP_DEBUG=true
+          SMTP_HOST=console.localhost
+          SMTP_PORT=465
+          SMTP_SECURE=false
+          SMTP_USER=
+          SMTP_DEFAULT_SENDER=noreply@localhost
+          SMTP_PASS=
           EOL
 
       - name: Setup Bun
@@ -103,13 +97,13 @@ jobs:
         run: bun install
 
       - name: run migrations
-        run: npm run fastapp:migrate
+        run: npm run framework:migrate
 
       - name: Check connection
         run: bun test src/test/check-connection.test.ts
 
       # - name: Single test
-      #   run: bun test src/routes/organisation/[organisationId]/invitations/security.test.ts
+      #   run: bun test src/routes/tenant/[tenantId]/invitations/security.test.ts
 
       - name: Run tests
         run: bun test --reporter=junit --reporter-outfile=./junit.xml

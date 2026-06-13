@@ -1,29 +1,60 @@
-import { describe, it, expect, beforeAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { Hono } from "hono";
 import { definePublicUserRoutes } from "./public";
 import { defineSecuredUserRoutes } from "./protected";
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { initTests } from "../../test/init.test";
 import { TEST_ADMIN_USER } from "../../test/init.test";
 import { getDb } from "../../lib/db/db-connection";
 import { users } from "../../lib/db/db-schema";
-import { eq } from "drizzle-orm";
+import { smtpService } from "../../lib/email";
+import { eq, inArray } from "drizzle-orm";
 
 const TEST_EMAIL_USER = "test-user@symbiosika.de";
+const TEST_EMAIL_CUSTOM_REGISTER = "test-register-custom@symbiosika.de";
+const TEST_EMAIL_MAGIC_CUSTOM = "test-magic-custom@symbiosika.de";
+
+const ALL_TEST_EMAILS = [
+  TEST_EMAIL_USER,
+  TEST_EMAIL_CUSTOM_REGISTER,
+  TEST_EMAIL_MAGIC_CUSTOM,
+];
 
 describe("User API Endpoints", () => {
-  const app: FastAppHono = new Hono();
+  const app: SymbiosikaFrameworkHonoApp = new Hono();
   let jwt: string;
+  // Remember the original SMTP mode so we can restore it after the test run
+  // (other tests running in the same Bun process might rely on the real
+  // transporter, even though we want console-mode for this suite).
+  let originalConsoleMode: boolean;
 
   beforeAll(async () => {
     const { adminToken } = await initTests();
     jwt = adminToken;
 
-    // Delete any existing test user
-    await getDb().delete(users).where(eq(users.email, TEST_EMAIL_USER));
+    // Force SMTP into console-only mode for this suite so the magic-link
+    // registration test below does NOT send a real email via the configured
+    // SMTP host. The singleton has already been constructed at import time,
+    // so we flip its internal flag instead of relying on env variables.
+    const svc = smtpService as unknown as { consoleMode: boolean };
+    originalConsoleMode = svc.consoleMode;
+    svc.consoleMode = true;
+
+    // Clean slate for all test users this suite creates.
+    await getDb().delete(users).where(inArray(users.email, ALL_TEST_EMAILS));
 
     defineSecuredUserRoutes(app, "/api");
     definePublicUserRoutes(app, "/api");
+  });
+
+  afterAll(async () => {
+    try {
+      const svc = smtpService as unknown as { consoleMode: boolean };
+      svc.consoleMode = originalConsoleMode;
+      await getDb().delete(users).where(inArray(users.email, ALL_TEST_EMAILS));
+    } catch (err) {
+      console.warn("[routes/user index.test] cleanup failed:", err);
+    }
   });
 
   // Test user authentication
@@ -42,7 +73,7 @@ describe("User API Endpoints", () => {
     });
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data.token).toBeDefined();
   });
 
@@ -57,7 +88,7 @@ describe("User API Endpoints", () => {
     });
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data.id).toBeDefined();
     expect(data.email).toBeDefined();
   });
@@ -80,7 +111,7 @@ describe("User API Endpoints", () => {
     });
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data.firstname).toBe("John");
     expect(data.surname).toBe("Doe");
   });
@@ -99,7 +130,7 @@ describe("User API Endpoints", () => {
     );
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data.id).toBeDefined();
     expect(data.email).toBe(TEST_ADMIN_USER.email);
   });
@@ -121,7 +152,7 @@ describe("User API Endpoints", () => {
     });
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data.id).toBeDefined();
   });
 
@@ -164,6 +195,74 @@ describe("User API Endpoints", () => {
     expect(unauthorizedResponse.status).toBe(401);
   });
 
+  // Register endpoint persists customRegisterData on users.meta
+  it("POST /user/register persists meta.customRegisterData on the new user", async () => {
+    const response = await app.request("/api/user/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: TEST_EMAIL_CUSTOM_REGISTER,
+        password: TEST_ADMIN_USER.password,
+        sendVerificationEmail: false,
+        meta: {
+          customRegisterData: { adviceCenterNumber: "0042", source: "test" },
+        },
+      }),
+    });
+    expect(response.status).toBe(200);
+    const data: any = await response.json();
+    expect(data.id).toBeDefined();
+
+    const [row] = await getDb()
+      .select()
+      .from(users)
+      .where(eq(users.email, TEST_EMAIL_CUSTOM_REGISTER));
+    expect(row?.meta).toBeTruthy();
+    expect((row?.meta as any)?.customRegisterData?.adviceCenterNumber).toBe(
+      "0042"
+    );
+    expect((row?.meta as any)?.customRegisterData?.source).toBe("test");
+  });
+
+  // send-magic-link endpoint accepts customRegisterData as JSON-string query param
+  it("GET /user/send-magic-link persists meta.customRegisterData when creating a new user", async () => {
+    const customRegisterData = JSON.stringify({ adviceCenterNumber: "0007" });
+    const url =
+      "/api/user/send-magic-link" +
+      "?email=" +
+      encodeURIComponent(TEST_EMAIL_MAGIC_CUSTOM) +
+      "&createUserIfMissing=true" +
+      "&customRegisterData=" +
+      encodeURIComponent(customRegisterData);
+
+    const response = await app.request(url, { method: "GET" });
+    // SMTP is forced into console-mode in `beforeAll`, so the magic link is
+    // "delivered" locally only and the request must succeed with 200.
+    expect(response.status).toBe(200);
+
+    const [row] = await getDb()
+      .select()
+      .from(users)
+      .where(eq(users.email, TEST_EMAIL_MAGIC_CUSTOM));
+    expect(row).toBeDefined();
+    expect((row?.meta as any)?.customRegisterData?.adviceCenterNumber).toBe(
+      "0007"
+    );
+  });
+
+  it("GET /user/send-magic-link rejects malformed customRegisterData with 400", async () => {
+    const url =
+      "/api/user/send-magic-link" +
+      "?email=" +
+      encodeURIComponent("does-not-matter@symbiosika.de") +
+      "&createUserIfMissing=true" +
+      "&customRegisterData=" +
+      encodeURIComponent("this-is-not-json");
+
+    const response = await app.request(url, { method: "GET" });
+    expect(response.status).toBe(400);
+  });
+
   // Test available scopes endpoint
   it("should get available scopes for API tokens", async () => {
     const response = await app.request(
@@ -178,7 +277,7 @@ describe("User API Endpoints", () => {
     );
 
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data: any = await response.json();
     expect(data).toHaveProperty("all");
     expect(Array.isArray(data.all)).toBe(true);
     expect(data.all.length).toBeGreaterThan(0);

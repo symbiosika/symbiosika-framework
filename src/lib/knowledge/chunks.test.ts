@@ -32,12 +32,15 @@ describe("Knowledge Chunks CRUD Operations", () => {
     const entry = await getDb()
       .insert(knowledgeEntry)
       .values({
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         name: "Test Knowledge Entry",
         description: "Test description",
         userId: TEST_ADMIN_USER.id,
       })
       .returning();
+    if (!entry[0]) {
+      throw new Error("Failed to create test knowledge entry");
+    }
     testKnowledgeEntryId = entry[0].id;
 
     // Create test knowledge chunk
@@ -49,33 +52,45 @@ describe("Knowledge Chunks CRUD Operations", () => {
         header: "Test header",
         order: 0,
         embeddingModel: "test-model",
-        textEmbedding: new Array(1536).fill(0),
+        dimensions: 1536,
+        textEmbedding1536: new Array(1536).fill(0),
+        textEmbedding1024: null,
       })
       .returning();
+    if (!chunk[0]) {
+      throw new Error("Failed to create test knowledge chunk");
+    }
     testKnowledgeChunkId = chunk[0].id;
 
     // Create test team
     const team = await getDb()
       .insert(teams)
       .values({
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         name: "Test Team",
         description: "Test team description",
       })
       .returning();
+
+    if (!team[0]) {
+      throw new Error("Failed to create test team");
+    }
     testTeamId = team[0].id;
 
     // Create test knowledge group
     const group = await getDb()
       .insert(knowledgeGroup)
       .values({
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         name: "Test Knowledge Group",
         description: "Test knowledge group description",
         userId: TEST_ADMIN_USER.id,
-        organisationWideAccess: false,
+        tenantWideAccess: false,
       })
       .returning();
+    if (!group[0]) {
+      throw new Error("Failed to create test knowledge group");
+    }
     testKnowledgeGroupId = group[0].id;
   });
 
@@ -132,13 +147,17 @@ describe("Knowledge Chunks CRUD Operations", () => {
       const groupEntry = await getDb()
         .insert(knowledgeEntry)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Group Knowledge Entry",
           description: "Entry associated with a knowledge group",
           userId: TEST_ADMIN_USER.id,
           knowledgeGroupId: testKnowledgeGroupId,
         })
         .returning();
+
+      if (!groupEntry[0]) {
+        throw new Error("Failed to create group entry");
+      }
 
       // Create a chunk for this entry
       const groupChunk = await getDb()
@@ -149,19 +168,29 @@ describe("Knowledge Chunks CRUD Operations", () => {
           header: "Group header",
           order: 0,
           embeddingModel: "test-model",
-          textEmbedding: new Array(1536).fill(0),
+          dimensions: 1536,
+          textEmbedding1536: new Array(1536).fill(0),
+          textEmbedding1024: null,
         })
         .returning();
+
+      if (!groupChunk[0]) {
+        throw new Error("Failed to create group entry");
+      }
 
       // Add TEST_ORG1_USER_1 to a new team
       const userTeam = await getDb()
         .insert(teams)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "User Team",
           description: "User's team",
         })
         .returning();
+
+      if (!userTeam[0]) {
+        throw new Error("Failed to create user team");
+      }
 
       await getDb().insert(teamMembers).values({
         userId: TEST_ORG1_USER_1.id,
@@ -205,25 +234,33 @@ describe("Knowledge Chunks CRUD Operations", () => {
       const orgWideGroup = await getDb()
         .insert(knowledgeGroup)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Org-Wide Knowledge Group",
           description: "Organization-wide accessible group",
           userId: TEST_ADMIN_USER.id,
-          organisationWideAccess: true, // Organization-wide access
+          tenantWideAccess: true, // Organization-wide access
         })
         .returning();
+
+      if (!orgWideGroup[0]) {
+        throw new Error("Failed to create org-wide group");
+      }
 
       // Create a knowledge entry associated with the org-wide group
       const orgWideEntry = await getDb()
         .insert(knowledgeEntry)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Org-Wide Entry",
           description: "Entry with org-wide access",
           userId: TEST_ADMIN_USER.id,
           knowledgeGroupId: orgWideGroup[0].id,
         })
         .returning();
+
+      if (!orgWideEntry[0]) {
+        throw new Error("Failed to create org-wide entry");
+      }
 
       // Create a chunk for this entry
       const orgWideChunk = await getDb()
@@ -234,9 +271,15 @@ describe("Knowledge Chunks CRUD Operations", () => {
           header: "Org-wide header",
           order: 0,
           embeddingModel: "test-model",
-          textEmbedding: new Array(1536).fill(0),
+          dimensions: 1536,
+          textEmbedding1536: new Array(1536).fill(0),
+          textEmbedding1024: null,
         })
         .returning();
+
+      if (!orgWideChunk[0]) {
+        throw new Error("Failed to create org-wide chunk");
+      }
 
       // Any user in the organization should be able to access this chunk
       const result = await getKnowledgeChunkById(
@@ -265,25 +308,33 @@ describe("Knowledge Chunks CRUD Operations", () => {
       const restrictedGroup = await getDb()
         .insert(knowledgeGroup)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Restricted Knowledge Group",
           description: "Team-restricted group",
           userId: TEST_ADMIN_USER.id,
-          organisationWideAccess: false,
+          tenantWideAccess: false,
         })
         .returning();
+
+      if (!restrictedGroup[0]) {
+        throw new Error("Failed to create restricted group");
+      }
 
       // Create a knowledge entry associated with the restricted group
       const restrictedEntry = await getDb()
         .insert(knowledgeEntry)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Restricted Entry",
           description: "Entry with restricted access",
           userId: TEST_ADMIN_USER.id,
           knowledgeGroupId: restrictedGroup[0].id,
         })
         .returning();
+
+      if (!restrictedEntry[0]) {
+        throw new Error("Failed to create restricted entry");
+      }
 
       // Create a chunk for this entry
       const restrictedChunk = await getDb()
@@ -294,19 +345,29 @@ describe("Knowledge Chunks CRUD Operations", () => {
           header: "Restricted header",
           order: 0,
           embeddingModel: "test-model",
-          textEmbedding: new Array(1536).fill(0),
+          dimensions: 1536,
+          textEmbedding1536: new Array(1536).fill(0),
+          textEmbedding1024: null,
         })
         .returning();
+
+      if (!restrictedChunk[0]) {
+        throw new Error("Failed to create restricted chunk");
+      }
 
       // Create a team for the restricted group
       const restrictedTeam = await getDb()
         .insert(teams)
         .values({
-          organisationId: TEST_ORGANISATION_1.id,
+          tenantId: TEST_ORGANISATION_1.id,
           name: "Restricted Team",
           description: "Team for restricted access",
         })
         .returning();
+
+      if (!restrictedTeam[0]) {
+        throw new Error("Failed to create restricted team");
+      }
 
       // Assign the team to the knowledge group
       await getDb().insert(knowledgeGroupTeamAssignments).values({
@@ -361,16 +422,20 @@ describe("Knowledge Chunks CRUD Operations", () => {
       ).rejects.toThrow("Knowledge chunk not found");
     });
 
-    test("should throw error for chunk from different organisation", async () => {
-      // Create a chunk in a different organisation
+    test("should throw error for chunk from different tenant", async () => {
+      // Create a chunk in a different tenant
       const otherOrgEntry = await getDb()
         .insert(knowledgeEntry)
         .values({
-          organisationId: TEST_ORGANISATION_2.id,
+          tenantId: TEST_ORGANISATION_2.id,
           name: "Other Org Entry",
           description: "Test description",
         })
         .returning();
+
+      if (!otherOrgEntry[0]) {
+        throw new Error("Failed to create other org entry");
+      }
 
       const otherOrgChunk = await getDb()
         .insert(knowledgeChunks)
@@ -380,9 +445,15 @@ describe("Knowledge Chunks CRUD Operations", () => {
           header: "Other header",
           order: 0,
           embeddingModel: "test-model",
-          textEmbedding: new Array(1536).fill(0),
+          dimensions: 1536,
+          textEmbedding1536: new Array(1536).fill(0),
+          textEmbedding1024: null,
         })
         .returning();
+
+      if (!otherOrgChunk[0]) {
+        throw new Error("Failed to create other org chunk");
+      }
 
       try {
         await getKnowledgeChunkById(

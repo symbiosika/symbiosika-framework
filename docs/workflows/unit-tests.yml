@@ -1,0 +1,124 @@
+name: Unit tests
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Add the PostgreSQL service container
+    services:
+      postgres_db:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: symbiosika
+        ports:
+          - 5432:5432
+        # Add health checks to ensure the service is ready
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 2
+
+      - name: Create .env file
+        run: |
+          cd backend
+          cat > .env << 'EOL'
+          # Webserver
+          BASE_URL=http://localhost:3000
+          WRITE_DEBUG_FILES=true
+
+          # Database
+          POSTGRES_HOST=localhost
+          POSTGRES_PORT=5432
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=postgres
+          POSTGRES_DB=symbiosika
+          POSTGRES_USE_SSL=false
+          POSTGRES_CA=''          
+
+          # Mistral for Chat and MultiModal
+          MISTRAL_API_KEY=${{ secrets.FASTAPP_UNITTEST_MISTRAL_API_KEY }}         
+
+          # Webserver Settings
+          ALLOWED_ORIGINS="*"
+
+          # Encryption
+          SECRETS_AES_KEY=${{ secrets.FASTAPP_UNITTEST_SECRETS_AES_KEY }}
+          SECRETS_AES_IV=${{ secrets.FASTAPP_UNITTEST_SECRETS_AES_IV }}
+
+          # JWT
+          JWT_PUBLIC_KEY="${{ secrets.FASTAPP_UNITTEST_JWT_KEY }}"
+          JWT_PRIVATE_KEY="${{ secrets.FASTAPP_UNITTEST_JWT_KEY }}"
+
+          # Cron
+          CRON_LOG=false
+          ZYTE_API_KEY=not-needed          
+
+          # SMTP
+          SMTP_DEBUG=true
+          SMTP_HOST=console.localhost
+          SMTP_PORT=465
+          SMTP_SECURE=false
+          SMTP_USER=
+          SMTP_DEFAULT_SENDER=noreply@localhost
+          SMTP_PASS=
+          EOL
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Check version of Bun
+        run: bun --version
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          bun install
+
+      - name: Run framework migrations
+        run: |
+          cd backend
+          bun run framework:migrate
+
+      - name: Run app migrations
+        run: |
+          cd backend
+          bun run app:migrate
+
+      - name: Check connection
+        run: |
+          cd backend
+          bun test framework/src/test/check-connection.test.ts
+
+      - name: Run tests
+        run: |
+          cd backend
+          bun test --reporter=junit --reporter-outfile=./junit.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: backend/junit.xml
+          retention-days: 30

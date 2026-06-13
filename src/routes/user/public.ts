@@ -2,9 +2,10 @@
  * Routes to register and login a user.
  * These routes are not secured and public.
  */
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { HTTPException } from "hono/http-exception";
-import { LocalAuth } from "../../lib/auth";
+import { LocalAuth, createJwtSessionForUserId } from "../../lib/auth";
+import { sendEmailLoginCode, verifyEmailLoginCode } from "../../lib/auth/email-otp";
 import log from "../../lib/log";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { describeRoute } from "hono-openapi";
@@ -16,18 +17,25 @@ import { verifyPasswordResetToken } from "../../lib/auth/magic-link";
 import { checkIfInvitationCodeIsNeededToRegister } from "../../lib/usermanagement/invitations";
 import { verifyApiTokenAndGetJwt } from "../../lib/auth/token-auth";
 import { OAuthAuth } from "../../lib/auth/oauth2";
-
-let OAUTH_REDIRECT_URI =
-  process.env.OAUTH_REDIRECT_URI || "/manage/#/oauth-callback";
-if (OAUTH_REDIRECT_URI.endsWith("/")) {
-  OAUTH_REDIRECT_URI = OAUTH_REDIRECT_URI.slice(0, -1);
-}
+import {
+  isPasskeysEnabledForLocalAuth,
+  passkeyAuthenticationOptions,
+  passkeyAuthenticationVerify,
+} from "../../lib/auth/passkeys";
+import {
+  setAuthCookies,
+  clearAuthCookies,
+  JWT_COOKIE_NAME,
+} from "../../lib/auth/auth-cookies";
+import { getCookie } from "hono/cookie";
+import { revokeSessionByToken } from "../../lib/auth/sessions";
+import { deleteCachedToken } from "../../lib/utils/redis-cache";
 
 /**
  * Define the payment routes
  */
 export function definePublicUserRoutes(
-  app: FastAppHono,
+  app: SymbiosikaFrameworkHonoApp,
   API_BASE_PATH: string
 ) {
   /**
@@ -118,6 +126,7 @@ export function definePublicUserRoutes(
 
         if (data.magicLinkToken) {
           const r = await LocalAuth.loginWithMagicLink(data.magicLinkToken);
+          setAuthCookies(c, r.token);
           return c.json({ ...r, redirectUrl: data.redirectUrl });
         } else {
           const r = await LocalAuth.login(
@@ -125,11 +134,74 @@ export function definePublicUserRoutes(
             data.password,
             sendVerificationEmail
           );
+          setAuthCookies(c, r.token);
           return c.json({ ...r, redirectUrl: data.redirectUrl });
         }
       } catch (err) {
         throw new HTTPException(401, { message: "Invalid login: " + err });
       }
+    }
+  );
+
+  /**
+   * Request an email login code (OTP) for server-to-server use.
+   * Counterpart to /user/login-with-code.
+   */
+  app.post(
+    API_BASE_PATH + "/user/request-login-code",
+    async (c) => {
+      const { email } = await c.req.json<{ email?: string }>().catch(() => ({}) as any);
+      if (email) await sendEmailLoginCode(email);
+      return c.json({ ok: true });
+    }
+  );
+
+  /**
+   * Verify an email login code and return a JWT in the response body.
+   * Designed for server-to-server use (e.g. connection onboarding from a robot).
+   * Unlike /oauth/login/verify, this returns the token instead of setting a cookie.
+   */
+  app.post(
+    API_BASE_PATH + "/user/login-with-code",
+    async (c) => {
+      const { email, code } = await c.req.json<{ email?: string; code?: string }>().catch(() => ({}) as any);
+      try {
+        const { userId } = await verifyEmailLoginCode(email ?? "", code ?? "");
+        const session = await createJwtSessionForUserId(userId);
+        return c.json({ token: session.token, expiresAt: session.expiresAt });
+      } catch {
+        return c.json({ ok: false, error: "invalid_code" }, 400);
+      }
+    }
+  );
+
+  /**
+   * Logout endpoint - clears the auth cookies.
+   * Public so it succeeds even with an already-expired token.
+   */
+  app.post(
+    API_BASE_PATH + "/user/logout",
+    describeRoute({
+      tags: ["user"],
+      summary: "Logout - clears auth cookies",
+      responses: {
+        200: { description: "Successful response" },
+      },
+    }),
+    async (c) => {
+      // Revoke the server-side session so the token cannot be reused after
+      // logout. Public route: read the token directly from cookie/header.
+      const authHeader = c.req.header("Authorization");
+      const jwtToken =
+        authHeader && authHeader.startsWith("Bearer ")
+          ? authHeader.substring(7)
+          : getCookie(c, JWT_COOKIE_NAME) || "";
+      if (jwtToken) {
+        await revokeSessionByToken(jwtToken);
+        await deleteCachedToken(jwtToken);
+      }
+      clearAuthCookies(c);
+      return c.json(RESPONSES.SUCCESS);
     }
   );
 
@@ -149,17 +221,66 @@ export function definePublicUserRoutes(
       "query",
       v.object({
         email: v.string(),
+        createUserIfMissing: v.optional(v.string()),
+        invitationCode: v.optional(v.string()),
+        // JSON-stringified object. Persisted on the newly created user as
+        // `users.meta.customRegisterData` and forwarded to post-register actions.
+        customRegisterData: v.optional(v.string()),
+        // Key of a custom email template registered via
+        // `emailTemplates.custom` in the server config. Falls back to the
+        // default magic link template when missing.
+        template: v.optional(v.string()),
+        // Optional firstname/surname applied when a new user is created
+        // (only used together with createUserIfMissing=true).
+        firstname: v.optional(v.string()),
+        surname: v.optional(v.string()),
       })
     ),
     async (c) => {
-      const email = c.req.query("email");
+      const query = c.req.valid("query");
+      const email = query.email;
+      const createUserIfMissing = query.createUserIfMissing === "true";
+      const invitationCode = query.invitationCode;
+      const template = query.template;
+      const firstname = query.firstname;
+      const surname = query.surname;
+      let customRegisterData: Record<string, any> | undefined;
+      if (query.customRegisterData) {
+        try {
+          const parsed = JSON.parse(query.customRegisterData);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            customRegisterData = parsed;
+          }
+        } catch {
+          throw new HTTPException(400, {
+            message: "Invalid customRegisterData: must be JSON object",
+          });
+        }
+      }
       if (!email) {
         throw new HTTPException(400, { message: "?email=... is required" });
       }
       try {
-        await LocalAuth.sendMagicLink(email);
+        console.log("createUserIfMissing", createUserIfMissing);
+        await LocalAuth.sendMagicLink(
+          email,
+          undefined,
+          createUserIfMissing,
+          invitationCode,
+          customRegisterData,
+          template,
+          firstname,
+          surname
+        );
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
+        const errorMessage = err + "";
+        // Return specific error code for invitation code needed
+        if (errorMessage.includes("Invitation code needed")) {
+          throw new HTTPException(400, {
+            message: "Invitation code needed",
+          });
+        }
         throw new HTTPException(500, {
           message: "Error sending magic link: " + err,
         });
@@ -401,6 +522,86 @@ export function definePublicUserRoutes(
   );
 
   /**
+   * WebAuthn: begin passkey authentication (local auth; RP ID from BASE_URL hostname)
+   */
+  app.post(
+    API_BASE_PATH + "/user/passkey/authentication/options",
+    describeRoute({
+      tags: ["user"],
+      summary: "Begin passkey sign-in (returns WebAuthn request options)",
+      responses: {
+        200: { description: "PublicKeyCredentialRequestOptions + challenge token" },
+      },
+    }),
+    validator(
+      "json",
+      v.object({
+        email: v.string(),
+      })
+    ),
+    async (c) => {
+      if (!isPasskeysEnabledForLocalAuth()) {
+        throw new HTTPException(404, { message: "Passkeys are not enabled" });
+      }
+      try {
+        const { email } = c.req.valid("json");
+        const r = await passkeyAuthenticationOptions(c, email);
+        return c.json({
+          options: r.options,
+          challengeToken: r.challengeToken,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new HTTPException(400, { message });
+      }
+    }
+  );
+
+  /**
+   * WebAuthn: finish passkey authentication and issue JWT
+   */
+  app.post(
+    API_BASE_PATH + "/user/passkey/authentication/verify",
+    describeRoute({
+      tags: ["user"],
+      summary: "Complete passkey sign-in",
+      responses: {
+        200: {
+          description: "JWT and user profile",
+        },
+      },
+    }),
+    validator(
+      "json",
+      v.object({
+        challengeToken: v.string(),
+        credential: v.any(),
+      })
+    ),
+    async (c) => {
+      if (!isPasskeysEnabledForLocalAuth()) {
+        throw new HTTPException(404, { message: "Passkeys are not enabled" });
+      }
+      try {
+        const body = c.req.valid("json");
+        const r = await passkeyAuthenticationVerify(c, {
+          challengeToken: body.challengeToken,
+          credential: body.credential,
+        });
+        setAuthCookies(c, r.token);
+        return c.json({
+          token: r.token,
+          expiresAt: r.expiresAt.toISOString(),
+          user: r.user,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new HTTPException(400, { message });
+      }
+    }
+  );
+
+  /**
    * Get available OAuth providers
    */
   app.get(
@@ -516,7 +717,7 @@ export function definePublicUserRoutes(
         }
 
         return c.redirect(
-          `${OAUTH_REDIRECT_URI}/${provider}?token=${result.token}`
+          `${_GLOBAL_SERVER_CONFIG.oauthCallbackUrl}/${provider}?token=${result.token}`
         );
       } catch (err) {
         throw new HTTPException(401, {

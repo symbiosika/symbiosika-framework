@@ -1,0 +1,1 @@
+ALTER TABLE "base_knowledge_text" ALTER COLUMN "document_id" SET DEFAULT gen_random_uuid();

@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll } from "bun:test";
 import { Hono } from "hono";
 import definePingRoute from ".";
-import type { FastAppHono } from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 
 describe("Ping API Endpoint", () => {
-  const app: FastAppHono = new Hono();
+  const app: SymbiosikaFrameworkHonoApp = new Hono();
 
   beforeAll(() => {
     definePingRoute(app, "/api");
@@ -12,7 +12,7 @@ describe("Ping API Endpoint", () => {
 
   it("should return online status and internet connectivity", async () => {
     const response = await app.request("/api/ping");
-    const data = await response.json();
+    const data: any = await response.json();
 
     expect(response.status).toBe(200);
     expect(data).toHaveProperty("online", true);

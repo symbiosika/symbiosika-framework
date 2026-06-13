@@ -1,6 +1,7 @@
 import { getDb } from "../db/db-connection";
 import { webhooks } from "../db/schema/webhooks";
 import { and, eq } from "drizzle-orm";
+import { fetchWithSsrfGuard, SsrfBlockedError } from "../utils/url-guard";
 
 export interface WebhookTriggerOptions {
   payload?: any;
@@ -21,14 +22,14 @@ export class WebhookTriggerError extends Error {
  */
 export const triggerWebhook = async (
   webhookId: string,
-  organisationId: string,
+  tenantId: string,
   options: WebhookTriggerOptions = {}
 ) => {
   // Get webhook details
   const webhook = await getDb().query.webhooks.findFirst({
     where: and(
       eq(webhooks.id, webhookId),
-      eq(webhooks.organisationId, organisationId),
+      eq(webhooks.tenantId, tenantId),
       eq(webhooks.event, "chat-output")
     ),
   });
@@ -45,8 +46,9 @@ export const triggerWebhook = async (
   };
 
   try {
-    // Make the request
-    const response = await fetch(webhook.webhookUrl, {
+    // SSRF guard: the webhook URL is operator/tenant supplied; ensure it cannot
+    // be used to reach internal services or the cloud metadata endpoint.
+    const response = await fetchWithSsrfGuard(webhook.webhookUrl, {
       method: webhook.method,
       headers,
       body:
@@ -70,6 +72,12 @@ export const triggerWebhook = async (
   } catch (error) {
     if (error instanceof WebhookTriggerError) {
       throw error;
+    }
+    if (error instanceof SsrfBlockedError) {
+      throw new WebhookTriggerError(
+        `Webhook URL is not allowed: ${error.message}`,
+        400
+      );
     }
     throw new WebhookTriggerError(
       `Failed to trigger webhook: ${error + ""}`,

@@ -1,10 +1,10 @@
-# FastApp Framework
+# symbiosika-framework
 
 A powerful, abstracted framework for rapid application development that allows developers to focus on business logic while providing essential infrastructure and API endpoints out of the box.
 
 ## Overview
 
-FastApp Framework is designed to accelerate application development by providing:
+symbiosika-framework Framework is designed to accelerate application development by providing:
 
 - A pre-configured web server
 - Essential API endpoints
@@ -42,18 +42,20 @@ The framework provides several pre-built services:
 - **User Management Service**: User authentication and management
 - **WhatsApp Service**: WhatsApp integration
 - **Job Service**: Background job processing
+- **Connections Service**: Secure org-scoped WebSocket connections (client/server)
 
 ### API Endpoints
 
 The framework automatically sets up various API endpoints:
 
 - User Management (`/user/*`)
-- Organization Management (`/organisation/*`)
+- Organization Management (`/tenant/*`)
 - File Management (`/files/*`)
 - AI Features (`/ai/*`)
 - Payment Processing (`/payment/*`)
 - Plugin Management (`/plugins/*`)
 - Webhook Management (`/webhooks/*`)
+- Connections (`/tenant/:tenantId/connections/*`)
 - And more...
 
 ### Database Integration
@@ -76,13 +78,13 @@ The framework includes:
 1. Install the framework:
 
 ```bash
-npm install fastapp-framework
+git submodule add https://github.com/symbiosika/symbiosika-framework backend/framework
 ```
 
 2. Create your application entry point:
 
 ```typescript
-import { defineServer } from "fastapp-framework";
+import { defineServer } from "@framework/index";
 
 const server = defineServer({
   // Your configuration here

@@ -14,7 +14,7 @@ const getIdFromFileName = (fileName: string) => {
 export const saveFileToDb: SaveFileFunction = async (
   file,
   bucket,
-  organisationId,
+  tenantId,
   options
 ) => {
   try {
@@ -27,7 +27,7 @@ export const saveFileToDb: SaveFileFunction = async (
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       bucket: bucket,
-      organisationId: organisationId,
+      tenantId: tenantId,
       name: fileName, // original file name
       fileType: file.type,
       file: fileBuffer,
@@ -46,14 +46,14 @@ export const saveFileToDb: SaveFileFunction = async (
       })
       .returning();
 
-    if (e.length === 0) {
+    if (!e[0]) {
       throw new Error("no row created");
     }
     return {
-      path: `/api/v1/organisation/${organisationId}/files/db/${bucket}/${e[0].id}${fileExtension !== "" ? `.${fileExtension}` : ""}`,
+      path: `/api/v1/tenant/${tenantId}/files/db/${bucket}/${e[0].id}${fileExtension !== "" ? `.${fileExtension}` : ""}`,
       id: e[0].id,
       name: e[0].name,
-      organisationId: organisationId,
+      tenantId: tenantId,
     };
   } catch (error) {
     throw new Error("Failed to save file to database. " + error);
@@ -63,7 +63,7 @@ export const saveFileToDb: SaveFileFunction = async (
 export const getFileFromDb: GetFileFunction = async (
   name,
   bucket,
-  organisationId
+  tenantId
 ) => {
   try {
     const id = getIdFromFileName(name);
@@ -76,11 +76,11 @@ export const getFileFromDb: GetFileFunction = async (
         and(
           eq(files.id, id),
           eq(files.bucket, bucket),
-          eq(files.organisationId, organisationId)
+          eq(files.tenantId, tenantId)
         )
       );
 
-    if (fileRecord.length === 0) {
+    if (!fileRecord[0]) {
       throw new Error("File not found");
     }
     const file = fileRecord[0];
@@ -97,7 +97,7 @@ export const getFileFromDb: GetFileFunction = async (
 export const deleteFileFromDB: DeleteFileFunction = async (
   name,
   bucket,
-  organisationId
+  tenantId
 ) => {
   try {
     const id = name.split("/").pop() || "";
@@ -109,7 +109,7 @@ export const deleteFileFromDB: DeleteFileFunction = async (
         and(
           eq(files.id, id),
           eq(files.bucket, bucket),
-          eq(files.organisationId, organisationId)
+          eq(files.tenantId, tenantId)
         )
       );
   } catch (error) {

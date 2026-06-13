@@ -137,7 +137,7 @@ class Logger {
     source?: string;
     category?: string;
     sessionId?: string;
-    organisationId?: string;
+    tenantId?: string;
     message: string;
     metadata?: Record<string, any>;
     version?: number;
@@ -169,6 +169,58 @@ class Logger {
       console.error("Error writing to database:", error);
       // Log to file but don't recursively call logToDB
       await this.writeToFile(`Error writing to database: ${error}`);
+    }
+  }
+
+  async writeEmailFile(options: {
+    timestamp: string;
+    from: string;
+    to: string;
+    subject: string;
+    body: string;
+    html?: string;
+  }): Promise<string | null> {
+    const emailDir = path.join(process.cwd(), "logs", "email");
+    try {
+      await fs.mkdir(emailDir, { recursive: true });
+    } catch (error: any) {
+      if (error.code !== "EEXIST") {
+        console.error("Error creating email log directory:", error);
+        return null;
+      }
+    }
+
+    // Timestamp format: YYYY-MM-DDTHH-mm-ss-SSS for proper lexicographic sorting
+    const fileTimestamp = options.timestamp.replace(/:/g, "-").replace(/\./g, "-");
+    const subjectSlug = options.subject
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .substring(0, 50);
+    const fileName = `${fileTimestamp}_${subjectSlug}.txt`;
+    const filePath = path.join(emailDir, fileName);
+
+    const lines = [
+      `Timestamp: ${options.timestamp}`,
+      `From:      ${options.from}`,
+      `To:        ${options.to}`,
+      `Subject:   ${options.subject}`,
+      "",
+      "=".repeat(60),
+      "",
+      options.body,
+    ];
+
+    if (options.html) {
+      lines.push("", "=".repeat(60), "--- HTML ---", "", options.html);
+    }
+
+    try {
+      await fs.writeFile(filePath, lines.join("\n"), "utf8");
+      return filePath;
+    } catch (error) {
+      console.error("Error writing email log file:", error);
+      return null;
     }
   }
 

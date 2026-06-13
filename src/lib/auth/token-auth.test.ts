@@ -43,7 +43,7 @@ describe("Token Authentication", () => {
       const result = await createApiToken({
         name: "Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read", "user:write"],
       });
 
@@ -55,7 +55,7 @@ describe("Token Authentication", () => {
       const result = await createApiToken({
         name: "Expiring Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read"],
         expiresIn: 5, // 5 minutes
       });
@@ -69,12 +69,13 @@ describe("Token Authentication", () => {
       const { token } = await createApiToken({
         name: "Search Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read"],
       });
 
       const result = await searchForToken(token);
       expect(result).toBeDefined();
+      if (!result) return; // end test if result is undefined
       expect(result.name).toBe("Search Test Token");
     });
 
@@ -93,7 +94,7 @@ describe("Token Authentication", () => {
       const { token } = await createApiToken({
         name: "JWT Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read", "user:write"],
       });
 
@@ -106,7 +107,7 @@ describe("Token Authentication", () => {
       const { token } = await createApiToken({
         name: "Scope Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read", "user:write"],
       });
 
@@ -118,7 +119,7 @@ describe("Token Authentication", () => {
       const { token } = await createApiToken({
         name: "Scope Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read"],
       });
 
@@ -136,11 +137,14 @@ describe("Token Authentication", () => {
       const { token } = await createApiToken({
         name: "Revoke Test Token",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read"],
       });
 
       const tokenRecord = await searchForToken(token);
+      if (!tokenRecord) {
+        throw new Error("Token record is undefined");
+      }
       await revokeApiToken(tokenRecord.id, TEST_ORG1_USER_1.id);
 
       try {
@@ -158,19 +162,20 @@ describe("Token Authentication", () => {
       await createApiToken({
         name: "List Test Token 1",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:read"],
       });
 
       await createApiToken({
         name: "List Test Token 2",
         userId: TEST_ORG1_USER_1.id,
-        organisationId: TEST_ORGANISATION_1.id,
+        tenantId: TEST_ORGANISATION_1.id,
         scopes: ["user:write"],
       });
 
       const tokens = await listApiTokensForUser(TEST_ORG1_USER_1.id);
       expect(tokens.length).toBeGreaterThanOrEqual(2);
+      if (!tokens[0]) return; // end test if tokens is undefined
       expect(tokens[0].name).toBeDefined();
       expect(tokens[0].scopes).toBeDefined();
     });

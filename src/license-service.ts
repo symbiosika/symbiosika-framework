@@ -4,7 +4,7 @@ import { serverSettings } from "./lib/db/schema/server";
 import { eq } from "drizzle-orm";
 import { _GLOBAL_SERVER_CONFIG } from "./store";
 import { html } from "hono/html";
-import type { FastAppHono } from "./types";
+import type { SymbiosikaFrameworkHonoApp } from "./types";
 import log from "./lib/log";
 
 interface License {
@@ -15,8 +15,8 @@ interface License {
 }
 
 class LicenseManager {
-  private publicKey: string;
-  private isEnabled: boolean;
+  private publicKey: string = "";
+  private isEnabled: boolean = false;
 
   constructor() {}
 
@@ -120,7 +120,7 @@ class LicenseManager {
 
 export const licenseManager = new LicenseManager();
 
-export const defineLicenseRoutes = (app: FastAppHono) => {
+export const defineLicenseRoutes = (app: SymbiosikaFrameworkHonoApp) => {
   if (!licenseManager.isValid()) return;
 
   app.get("/license", async (c) => {

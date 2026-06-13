@@ -33,6 +33,9 @@ export const createPermissionGroup = async (
     .insert(userPermissionGroups)
     .values(data)
     .returning();
+  if (!result[0]) {
+    throw new Error("Failed to create permission group");
+  }
   return result[0];
 };
 
@@ -51,13 +54,13 @@ export const getPermissionGroup = async (groupId: string) => {
 };
 
 /**
- * Get all permission groups by an organisation ID
+ * Get all permission groups by an tenant ID
  */
 export const getPermissionGroupsByOrganisation = async (orgId: string) => {
   return await getDb()
     .select()
     .from(userPermissionGroups)
-    .where(eq(userPermissionGroups.organisationId, orgId));
+    .where(eq(userPermissionGroups.tenantId, orgId));
 };
 
 /**
@@ -89,6 +92,9 @@ export const deletePermissionGroup = async (groupId: string) => {
  */
 export const createPathPermission = async (data: PathPermissionsInsert) => {
   const result = await getDb().insert(pathPermissions).values(data).returning();
+  if (!result[0]) {
+    throw new Error("Failed to create path permission");
+  }
   return result[0];
 };
 
@@ -171,19 +177,19 @@ export const removePermissionFromGroup = async (
  */
 export const createPermissionGroupWithPermissions = async ({
   groupName,
-  organisationId,
+  tenantId,
   permissions,
   userIds = [],
 }: {
   groupName: string;
-  organisationId: string;
+  tenantId: string;
   permissions: SimplePathPermission[];
   userIds?: string[];
 }) => {
   // Create the permission group
   const group = await createPermissionGroup({
     name: groupName,
-    organisationId,
+    tenantId,
   });
 
   // Create path permissions and assign them to the group
@@ -197,7 +203,7 @@ export const createPermissionGroupWithPermissions = async ({
         type: "regex",
         method: perm.method,
         pathExpression: perm.pathExpression,
-        organisationId,
+        tenantId,
       });
 
       await assignPermissionToGroup(group.id, pathPerm.id);

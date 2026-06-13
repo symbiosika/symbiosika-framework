@@ -18,7 +18,7 @@
 //     });
 
 //     const result = await parsePdfFileAsMarkdownMistral(file, {
-//       organisationId: TEST_ORGANISATION_1.id,
+//       tenantId: TEST_ORGANISATION_1.id,
 //     });
 
 //     // Basic validation of the result

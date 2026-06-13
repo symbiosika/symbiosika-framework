@@ -1,0 +1,1 @@
+ALTER TABLE "base_oauth_clients" ALTER COLUMN "tenant_id" DROP NOT NULL;

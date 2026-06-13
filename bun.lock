@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "kinaut-webserver",
+      "name": "symbiosika-framework",
       "devDependencies": {
         "@types/bun": "latest",
         "@types/jsonwebtoken": "^9.0.6",

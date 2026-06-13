@@ -7,8 +7,11 @@ import {
 } from "../db/db-schema";
 import { nanoid } from "nanoid";
 import { smtpService } from "../email";
-import { generateJwt } from ".";
+import { generateUserSessionJwt } from ".";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
+import { postRegisterActions } from "./actions";
+import { checkIfInvitationCodeIsNeededToRegister, getPendingInvitationsForEmail } from "../usermanagement/invitations";
+import { checkGeneralInvitationCode } from "./index";
 
 const EXPIRE_TIME = 15 * 60 * 1000; // 15 minutes
 
@@ -17,10 +20,15 @@ const EXPIRE_TIME = 15 * 60 * 1000; // 15 minutes
  */
 export const createMagicLinkToken = async (
   email: string,
-  purpose: "login" | "email_verification" | "password_reset"
+  purpose: "login" | "email_verification" | "password_reset",
+  createUserIfMissing: boolean = false,
+  invitationCode?: string,
+  customRegisterData?: Record<string, any>,
+  firstname?: string,
+  surname?: string
 ): Promise<string> => {
   // Check if user exists
-  const userResult = await getDb()
+  let userResult = await getDb()
     .select({
       id: users.id,
       email: users.email,
@@ -30,7 +38,76 @@ export const createMagicLinkToken = async (
     .from(users)
     .where(eq(users.email, email));
 
-  if (userResult.length === 0) {
+  const isNewUser = !userResult[0];
+
+  // If creating a new user, check invitation code requirements
+  if (isNewUser && createUserIfMissing) {
+    // Check if invitation codes are required
+    const invitationCodeNeeded = await checkIfInvitationCodeIsNeededToRegister();
+    
+    if (invitationCodeNeeded) {
+      // Check if user has pending invitations
+      const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);
+      
+      // If no pending invitations, require invitation code
+      if (invitedInTenantIds.length < 1) {
+        if (!invitationCode) {
+          throw new Error("Invitation code needed");
+        }
+        
+        // Validate the invitation code
+        try {
+          await checkGeneralInvitationCode(invitationCode);
+        } catch (error) {
+          throw new Error("Invitation code not found");
+        }
+      }
+    }
+
+    // Create the user – persist customRegisterData (if any) in the meta column
+    const metaToPersist =
+      customRegisterData && typeof customRegisterData === "object"
+        ? { customRegisterData }
+        : null;
+
+    const newUser = await getDb()
+      .insert(users)
+      .values({
+        email: email,
+        firstname: firstname ?? "",
+        surname: surname ?? "",
+        extUserId: "",
+        salt: "",
+        password: null,
+        emailVerified: false,
+        meta: metaToPersist,
+      })
+      .onConflictDoNothing()
+      .returning({
+        id: users.id,
+        email: users.email,
+        firstname: users.firstname,
+        surname: users.surname,
+      });
+
+    if (!newUser[0]) {
+      throw new Error("Failed to create user");
+    }
+    userResult = newUser;
+
+    // Execute post-register actions for newly created user. The register meta
+    // (invitation code + custom data) is forwarded so custom hooks can react
+    // to per-user registration context (e.g. auto-assign to a sub-entity).
+    const registerMeta = {
+      invitationCode,
+      customRegisterData,
+    };
+    for (const action of postRegisterActions) {
+      await action(newUser[0].id, newUser[0].email, registerMeta);
+    }
+  }
+
+  if (!userResult[0]) {
     throw new Error("User not found");
   }
   const user = userResult[0];
@@ -54,34 +131,71 @@ export const createMagicLinkToken = async (
  * Create a Magic Login Link
  * @param email
  * @param redirectUrl
+ * @param createUserIfMissing
+ * @param invitationCode
  */
 export const createMagicLoginLink = async (
   email: string,
-  redirectUrl?: string
+  redirectUrl?: string,
+  createUserIfMissing: boolean = false,
+  invitationCode?: string,
+  customRegisterData?: Record<string, any>,
+  firstname?: string,
+  surname?: string
 ): Promise<string> => {
-  const token = await createMagicLinkToken(email, "login");
-  const frontendUrl = _GLOBAL_SERVER_CONFIG.baseUrl || "http://localhost:3000";
-  const magicLink = `${frontendUrl}/manage/#/magic-login?token=${encodeURIComponent(token)}&redirectUrl=${encodeURIComponent(redirectUrl || "")}`;
+  const token = await createMagicLinkToken(
+    email,
+    "login",
+    createUserIfMissing,
+    invitationCode,
+    customRegisterData,
+    firstname,
+    surname
+  );
+  const magicLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.magicLoginVerifyUrl}?token=${encodeURIComponent(token)}&redirectUrl=${encodeURIComponent(redirectUrl || "")}`;
 
   return magicLink;
 };
 
 /**
  * Send Magic Link to the users Email address
+ *
+ * @param template Optional key of a custom template defined via
+ *   `emailTemplates.custom` in the server config. Falls back to the default
+ *   `magicLink` template when the key is missing or not registered.
  */
 export const sendMagicLink = async (
   email: string,
-  redirectUrl?: string
+  redirectUrl?: string,
+  createUserIfMissing: boolean = false,
+  invitationCode?: string,
+  customRegisterData?: Record<string, any>,
+  template?: string,
+  firstname?: string,
+  surname?: string
 ): Promise<void> => {
-  const magicLink = await createMagicLoginLink(email, redirectUrl);
+  const magicLink = await createMagicLoginLink(
+    email,
+    redirectUrl,
+    createUserIfMissing,
+    invitationCode,
+    customRegisterData,
+    firstname,
+    surname
+  );
 
-  const { html, subject } =
-    await _GLOBAL_SERVER_CONFIG.emailTemplates.magicLink({
-      appName: _GLOBAL_SERVER_CONFIG.appName,
-      logoUrl: _GLOBAL_SERVER_CONFIG.logoUrl,
-      baseUrl: _GLOBAL_SERVER_CONFIG.baseUrl,
-      link: magicLink,
-    });
+  const customTemplate = template
+    ? _GLOBAL_SERVER_CONFIG.emailTemplates.custom?.[template]
+    : undefined;
+  const templateFn =
+    customTemplate ?? _GLOBAL_SERVER_CONFIG.emailTemplates.magicLink;
+
+  const { html, subject } = await templateFn({
+    appName: _GLOBAL_SERVER_CONFIG.appName,
+    logoUrl: _GLOBAL_SERVER_CONFIG.logoUrl,
+    baseUrl: _GLOBAL_SERVER_CONFIG.baseUrl,
+    link: magicLink,
+  });
 
   await smtpService.sendMail({
     sender: process.env.SMTP_FROM,
@@ -99,8 +213,7 @@ export const sendVerificationEmail = async (email: string) => {
   const token = await createMagicLinkToken(email, "email_verification");
 
   // Construct the magic link URL
-  const frontendUrl = _GLOBAL_SERVER_CONFIG.baseUrl || "http://localhost:3000";
-  const magicLink = `${frontendUrl}/manage/#/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  const magicLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.verifyEmailUrl}?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
 
   const { html, subject } =
     await _GLOBAL_SERVER_CONFIG.emailTemplates.verifyEmail({
@@ -134,7 +247,7 @@ export const verifyEmailToken = async (token: string) => {
       )
     );
 
-  if (magicLinkResult.length === 0) {
+  if (!magicLinkResult[0]) {
     throw new Error("Invalid or expired magic link");
   }
   const userId = magicLinkResult[0].userId;
@@ -149,7 +262,7 @@ export const verifyEmailToken = async (token: string) => {
     })
     .from(users)
     .where(eq(users.id, userId));
-  if (user.length === 0) {
+  if (!user[0]) {
     throw new Error("User not found");
   }
 
@@ -184,11 +297,8 @@ export const verifyMagicLink = async (
   // Verify the email token
   const { user, tokenId } = await verifyEmailToken(token);
 
-  // Generate a session token (JWT)
-  const { token: sessionToken } = await generateJwt(
-    user,
-    _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-  );
+  // Generate a session token (JWT) backed by a server-side session
+  const { token: sessionToken } = await generateUserSessionJwt(user);
   await deleteMagicLinkToken(tokenId);
 
   return { user, token: sessionToken };
@@ -209,11 +319,8 @@ export const verifyEmail = async (
     .set({ emailVerified: true })
     .where(eq(users.id, user.id));
 
-  // Generate a session token (JWT)
-  const { token: sessionToken } = await generateJwt(
-    user,
-    _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-  );
+  // Generate a session token (JWT) backed by a server-side session
+  const { token: sessionToken } = await generateUserSessionJwt(user);
   await deleteMagicLinkToken(tokenId);
 
   return { user, token: sessionToken };
@@ -226,9 +333,7 @@ export const createResetPasswordLink = async (
   email: string
 ): Promise<string> => {
   const token = await createMagicLinkToken(email, "password_reset");
-  const frontendUrl = _GLOBAL_SERVER_CONFIG.baseUrl || "http://localhost:3000";
-  // Example path /manage/#/reset-password?token=...
-  const resetLink = `${frontendUrl}/manage/#/reset-password?token=${encodeURIComponent(token)}`;
+  const resetLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.resetPasswordUrl}?token=${encodeURIComponent(token)}`;
   return resetLink;
 };
 
@@ -291,7 +396,7 @@ export const verifyPasswordResetToken = async (
       )
     );
 
-  if (magicLinkResult.length === 0) {
+  if (!magicLinkResult[0]) {
     throw new Error("Invalid or expired password reset token");
   }
 

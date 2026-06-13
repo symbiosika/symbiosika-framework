@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Redirect</title>
+    <script>
+      function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(";").shift();
+        return null;
+      }
+      // The real `jwt` cookie is HttpOnly (not readable from JS). The server
+      // also sets a non-secret `jwt_present` marker so the SPA can detect a
+      // logged-in state.
+      const hasJwt = getCookie("jwt_present");
+      if (hasJwt) {
+        (async () => {
+          try {
+            const u = await fetch("/api/v1/user/me");
+            if (u.status === 200) {
+              window.location.href = "/static/app/";
+            } else {
+              window.location.href = "/login.html";
+            }
+          } catch (error) {
+            console.error(error);
+          }
+        })();
+      } else {
+        window.location.href = "/login.html";
+      }
+    </script>
+  </head>
+  <body></body>
+</html>

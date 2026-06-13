@@ -16,6 +16,9 @@ export const insertStandardDataEntry = async (
 
   for (let tableCount = 0; tableCount < data.length; tableCount++) {
     const tableData = data[tableCount];
+    // TS aware continue
+    if (!tableData) continue;
+
     const tableName = normalizeTableName(tableData.schemaName);
     const table = getDbSchemaTable(tableName) as any;
 

@@ -3,7 +3,10 @@ import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
-import { authOrRedirectToLogin } from "./lib/utils/hono-middlewares";
+import {
+  authAndSetUsersInfo,
+  authOrRedirectToLogin,
+} from "./lib/utils/hono-middlewares";
 import { ipRestriction } from "hono/ip-restriction";
 // DB
 import {
@@ -15,7 +18,7 @@ import { initializeCollectionPermissions } from "./lib/db/db-collections";
 // Types
 import type {
   ServerSpecificConfig,
-  FastAppHonoContextVariables,
+  SFContextVariables,
 } from "./types";
 import { getConnInfo } from "hono/bun";
 // Utils
@@ -26,31 +29,36 @@ import {
   registerPostRegisterAction,
   registerPreRegisterCustomVerification,
 } from "./lib/auth/actions";
+import { registerPostConnectionAction } from "./lib/connections/actions";
 // Routes
 import { definePublicUserRoutes } from "./routes/user/public";
 import { defineSecuredUserRoutes } from "./routes/user/protected";
-import { defineFilesRoutes } from "./routes/organisation/[organisationId]/files";
+import { defineOAuth2Routes } from "./lib/oauth2";
+import { defineFilesRoutes } from "./routes/tenant/[tenantId]/files";
 
-// import aiKnowledgeRoutes from "./routes/organisation/[organisationId]/knowledge";
-// import aiKnowledgeFiltersRoutes from "./routes/organisation/[organisationId]/knowledge/knowledge-filters";
-// import aiKnowledgeGroupRoutes from "./routes/organisation/[organisationId]/knowledge/knowledge-groups";
-// import aiKnowledgeTextsRoutes from "./routes/organisation/[organisationId]/knowledge/knowledge-texts";
-// import aiKnowledgeChunksRoutes from "./routes/organisation/[organisationId]/knowledge/knowledge-chunks";
+import aiKnowledgeRoutes from "./routes/tenant/[tenantId]/knowledge";
+// import aiKnowledgeFiltersRoutes from "./routes/tenant/[tenantId]/knowledge/filters";
+import aiKnowledgeGroupRoutes from "./routes/tenant/[tenantId]/knowledge/groups";
+import aiKnowledgeTextsRoutes from "./routes/tenant/[tenantId]/knowledge/texts";
+import aiKnowledgeChunksRoutes from "./routes/tenant/[tenantId]/knowledge/chunks";
 
-import defineOrganisationRoutes from "./routes/organisation";
-import defineTeamRoutes from "./routes/organisation/[organisationId]/teams";
-import definePermissionGroupRoutes from "./routes/organisation/[organisationId]/permission-groups";
-import defineInvitationRoutes from "./routes/organisation/[organisationId]/invitations";
+import defineTenantRoutes from "./routes/tenant";
+import defineTeamRoutes from "./routes/tenant/[tenantId]/teams";
+import defineConnectionsRoutes from "./routes/tenant/[tenantId]/connections";
+import definePermissionGroupRoutes from "./routes/tenant/[tenantId]/permission-groups";
+import defineInvitationRoutes from "./routes/tenant/[tenantId]/invitations";
 // import { defineCollectionRoutes } from "./routes/collections";
-import defineManageSecretsRoutes from "./routes/organisation/[organisationId]/secrets";
+import defineManageSecretsRoutes from "./routes/tenant/[tenantId]/secrets";
 
 import definePingRoute from "./routes/ping";
-import defineWebhookRoutes from "./routes/organisation/[organisationId]/webhooks";
+import defineWebhookRoutes from "./routes/tenant/[tenantId]/webhooks";
 import defineAdminRoutes from "./routes/admin";
-import defineSearchInOrganisationRoutes from "./routes/organisation/[organisationId]/search";
-import defineJobRoutes from "./routes/organisation/[organisationId]/jobs";
+import defineSearchInOrganisationRoutes from "./routes/tenant/[tenantId]/search";
+import defineJobRoutes from "./routes/tenant/[tenantId]/jobs";
 import defineDocsRoutes from "./routes/docs";
 import defineWhatsAppRoutes from "./routes/communiation/wa";
+import defineNotificationRoutes from "./routes/user/notifications";
+import { addMessageToAllUsers } from "./lib/notifications";
 // Jobs
 import { defineJob, startJobQueue } from "./lib/jobs";
 // Cron
@@ -64,6 +72,9 @@ import { _GLOBAL_SERVER_CONFIG, setGlobalServerConfig } from "./store";
 import { smtpService } from "./lib/email";
 import { getMetaIpAddresses } from "./lib/communication/whatsapp/whitelist";
 import { defineLicenseRoutes, licenseManager } from "./license-service";
+import { initServerKeysIfNeeded } from "./lib/connections/init-server-keys";
+import { initRedisCache } from "./lib/utils/redis-cache";
+//import { logApiRoutes } from "./lib/utils/log-api-routes";
 
 /**
  * MAIN FUNCTION
@@ -106,7 +117,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
   /**
    * Init the main Hono app
    */
-  const app = new Hono<{ Variables: FastAppHonoContextVariables }>();
+  const app = new Hono<{ Variables: SFContextVariables }>();
   app.use(logger());
   if (config.useConsoleLogger) {
     console.log("Using console logger");
@@ -130,6 +141,16 @@ export const defineServer = (config: ServerSpecificConfig) => {
   if (config.customPostRegisterActions) {
     config.customPostRegisterActions.forEach((action) => {
       registerPostRegisterAction(action);
+    });
+  }
+
+  /**
+   * Register custom post-connection actions
+   * Fired after a server-to-server connection has been established.
+   */
+  if (config.customPostConnectionActions) {
+    config.customPostConnectionActions.forEach((action) => {
+      registerPostConnectionAction(action);
     });
   }
 
@@ -161,6 +182,17 @@ export const defineServer = (config: ServerSpecificConfig) => {
   waitForDbConnection().then(async () => {
     licenseManager.init();
 
+    // Initialize Redis cache for JWT token validation
+    initRedisCache();
+
+    // Initialize server keys (must exist exactly once)
+    try {
+      await initServerKeysIfNeeded();
+    } catch (error) {
+      console.error("Error initializing server keys:", error);
+      // Don't fail server startup if server keys init fails
+    }
+
     const isLicenseValid = await licenseManager.isValid();
 
     if (isLicenseValid) {
@@ -176,15 +208,24 @@ export const defineServer = (config: ServerSpecificConfig) => {
        */
       definePublicUserRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineSecuredUserRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      defineNotificationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
-       * Adds organisation routes
+       * OAuth2 / OIDC Authorization Server (opt-in via config.oauth2.enabled).
+       * Registers discovery (.well-known), the public flow (/oauth/*) and the
+       * tenant-admin client management routes. No-op when disabled.
        */
-      defineOrganisationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      defineOAuth2Routes(app, _GLOBAL_SERVER_CONFIG.basePath);
+
+      /**
+       * Adds tenant routes
+       */
+      defineTenantRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineTeamRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       definePermissionGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineInvitationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineSearchInOrganisationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      defineConnectionsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
        * Adds collection routes
@@ -220,11 +261,11 @@ export const defineServer = (config: ServerSpecificConfig) => {
        * - chat
        */
 
-      // aiKnowledgeRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      aiKnowledgeRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       // aiKnowledgeFiltersRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
-      // aiKnowledgeGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
-      // aiKnowledgeTextsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
-      // aiKnowledgeChunksRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      aiKnowledgeGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      aiKnowledgeTextsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      aiKnowledgeChunksRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
        * Add communication routes
@@ -257,16 +298,39 @@ export const defineServer = (config: ServerSpecificConfig) => {
       defineDocsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
-       * Adds custom routes from customHonoApps
-       * These are used to add custom routes to the server
-       * These are defined in the App config
+       * Adds custom routes from customHonoApps (without auth)
+       * These routes are public and do not require authentication
        */
       if (config.customHonoApps) {
         config.customHonoApps.forEach(({ baseRoute, app: customApp }) => {
           const honoApp = new Hono<{
-            Variables: FastAppHonoContextVariables;
+            Variables: SFContextVariables;
           }>();
+
+          // Register routes without global auth middleware
           customApp(honoApp);
+
+          app.route(_GLOBAL_SERVER_CONFIG.basePath + baseRoute, honoApp);
+        });
+      }
+
+      /**
+       * Adds custom routes from customHonoAppsWithAuth (with auth)
+       * These routes are protected by default and require authentication
+       * Security by design: All routes in customHonoAppsWithAuth are protected
+       */
+      if (config.customHonoAppsWithAuth) {
+        config.customHonoAppsWithAuth.forEach(({ baseRoute, app: customApp }) => {
+          const honoApp = new Hono<{
+            Variables: SFContextVariables;
+          }>();
+
+          // Apply global auth middleware to all routes
+          honoApp.use("/*", authAndSetUsersInfo);
+
+          // Register routes
+          customApp(honoApp);
+
           app.route(_GLOBAL_SERVER_CONFIG.basePath + baseRoute, honoApp);
         });
       }
@@ -319,18 +383,59 @@ export const defineServer = (config: ServerSpecificConfig) => {
        * Register job routes
        */
       defineJobRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+
+      /**
+       * Send server restart notification to all users
+       */
+      try {
+        const now = new Date();
+        const timeString = now.toLocaleString("de-DE", {
+          timeZone: "Europe/Berlin",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+        await addMessageToAllUsers(
+          `Server restart ${timeString}`,
+          "info"
+        );
+        console.log(`Server restart notification sent to all users at ${timeString}`);
+      } catch (error) {
+        console.error("Failed to send server restart notification:", error);
+        // Don't fail server startup if notification fails
+      }
+
+      // Log all registered endpoints
+      // logApiRoutes(app);
     } else {
       console.log("License check was invalid! Please check your license key.");
     }
   });
 
-  // Log all registered endpoints
-  // logApiRoutes(app);
+  const tlsCertPath = process.env.TLS_CERT_PATH;
+  const tlsKeyPath = process.env.TLS_KEY_PATH;
+  let tls: { cert: ReturnType<typeof Bun.file>; key: ReturnType<typeof Bun.file> } | undefined;
+  if (tlsCertPath && tlsKeyPath) {
+    const certFile = Bun.file(tlsCertPath);
+    const keyFile = Bun.file(tlsKeyPath);
+    if (certFile.size > 0 && keyFile.size > 0) {
+      tls = { cert: certFile, key: keyFile };
+      console.log(`HTTPS enabled (cert=${tlsCertPath}, key=${tlsKeyPath})`);
+    } else {
+      console.error(
+        `TLS_CERT_PATH/TLS_KEY_PATH set but files missing or empty (cert=${tlsCertPath}, key=${tlsKeyPath}) — falling back to HTTP`
+      );
+    }
+  }
 
   return {
     idleTimeout: 255,
     port: config.port ?? 3000,
     fetch: app.fetch,
+    ...(tls ? { tls } : {}),
   };
 };
 
@@ -340,8 +445,14 @@ export const defineServer = (config: ServerSpecificConfig) => {
 export * from "./types";
 
 /**
+ * Export the resource system for composable CRUD resources
+ */
+export * from "./lib/resource";
+
+/**
  * Export all services for the customer App
  */
 export { log };
 export { smtpService };
 export const GLOBAL_SERVER_CONFIG = _GLOBAL_SERVER_CONFIG;
+export { connectionsService } from "./lib/connections";

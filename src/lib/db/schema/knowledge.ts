@@ -17,7 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { pgBaseTable } from ".";
-import { organisations, teams, users } from "./users";
+import { tenants, teams, users } from "./users";
 import {
   createSelectSchema,
   createInsertSchema,
@@ -42,19 +42,25 @@ export const knowledgeText = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
-    organisationWide: boolean("organisation_wide").notNull().default(false),
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    tenantWide: boolean("tenant_wide").notNull().default(false),
     // optional team id to organize knowledge entries into teams.
     // security feature to limit access to knowledge entries
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
     // optional user id to assign knowledge entries to a user.
     // security feature to limit access to knowledge entries
     userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
-    text: text("text").notNull(),
+    // parentId: ONLY for Wiki hierarchy (parent-child relationships in tree)
+    parentId: uuid("parent_id").references(
+      (): AnyPgColumn => knowledgeText.id,
+      { onDelete: "cascade" }
+    ),
+    text: text("text").notNull().default(""),
     title: varchar("title", { length: 1000 }).notNull().default(""),
     meta: jsonb("meta").notNull().default("{}"),
+    hidden: boolean("hidden").notNull().default(false),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),
@@ -68,12 +74,48 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_updated_at_idx").on(knowledgeText.updatedAt),
     index("knowledge_text_deleted_at_idx").on(knowledgeText.deletedAt),
     index("knowledge_text_title_idx").on(knowledgeText.title),
-    index("knowledge_text_organisation_id_idx").on(
-      knowledgeText.organisationId
-    ),
+    index("knowledge_text_tenant_id_idx").on(knowledgeText.tenantId),
     index("knowledge_text_team_id_idx").on(knowledgeText.teamId),
     index("knowledge_text_user_id_idx").on(knowledgeText.userId),
-    check("knowledge_text_text_min_length", sql`length(text) > 3`),
+    index("knowledge_text_parent_id_idx").on(knowledgeText.parentId),
+  ]
+);
+
+// History table for knowledgeText versions
+export const knowledgeTextHistory = pgBaseTable(
+  "knowledge_text_history",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    knowledgeTextId: uuid("knowledge_text_id")
+      .notNull()
+      .references(() => knowledgeText.id, { onDelete: "cascade" }),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    tenantWide: boolean("tenant_wide").notNull().default(false),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    parentId: uuid("parent_id"), // Store the parentId at time of history creation
+    text: text("text").notNull().default(""),
+    title: varchar("title", { length: 1000 }).notNull().default(""),
+    meta: jsonb("meta").notNull().default("{}"),
+    hidden: boolean("hidden").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(), // When this history entry was created
+  },
+  (knowledgeTextHistory) => [
+    index("knowledge_text_history_knowledge_text_id_idx").on(
+      knowledgeTextHistory.knowledgeTextId
+    ),
+    index("knowledge_text_history_tenant_id_idx").on(
+      knowledgeTextHistory.tenantId
+    ),
+    index("knowledge_text_history_created_at_idx").on(
+      knowledgeTextHistory.createdAt
+    ),
   ]
 );
 
@@ -83,6 +125,13 @@ export type KnowledgeTextInsert = typeof knowledgeText.$inferInsert;
 export const knowledgeTextSchema = createSelectSchema(knowledgeText);
 export const knowledgeTextInsertSchema = createInsertSchema(knowledgeText);
 export const knowledgeTextUpdateSchema = createUpdateSchema(knowledgeText);
+
+export type KnowledgeTextHistorySelect = typeof knowledgeTextHistory.$inferSelect;
+export type KnowledgeTextHistoryInsert = typeof knowledgeTextHistory.$inferInsert;
+
+export const knowledgeTextHistorySchema = createSelectSchema(knowledgeTextHistory);
+export const knowledgeTextHistoryInsertSchema = createInsertSchema(knowledgeTextHistory);
+export const knowledgeTextHistoryUpdateSchema = createUpdateSchema(knowledgeTextHistory);
 
 export type KnowledgeTextMeta = {
   sourceUri?: string;
@@ -97,12 +146,10 @@ export const knowledgeGroup = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
-    organisationWideAccess: boolean("organisation_wide_access")
-      .notNull()
-      .default(false),
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    tenantWideAccess: boolean("tenant_wide_access").notNull().default(false),
     userId: uuid("user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
@@ -116,8 +163,8 @@ export const knowledgeGroup = pgBaseTable(
       .defaultNow(),
   },
   (table) => [
-    unique("knowledge_group_name_org_idx").on(table.name, table.organisationId),
-    index("knowledge_group_organisation_id_idx").on(table.organisationId),
+    unique("knowledge_group_name_org_idx").on(table.name, table.tenantId),
+    index("knowledge_group_tenant_id_idx").on(table.tenantId),
     index("knowledge_group_user_id_idx").on(table.userId),
   ]
 );
@@ -206,9 +253,9 @@ export const knowledgeEntry = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
+      .references(() => tenants.id, { onDelete: "cascade" }),
     // optional team id to organize knowledge entries into teams.
     // security feature to limit access to knowledge entries
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
@@ -247,7 +294,7 @@ export const knowledgeEntry = pgBaseTable(
     uniqueIndex("knowledgeentry_name_idx").on(
       knowledgeEntry.name,
       knowledgeEntry.parentId,
-      knowledgeEntry.organisationId,
+      knowledgeEntry.tenantId,
       knowledgeEntry.teamId,
       knowledgeEntry.userId,
       knowledgeEntry.version
@@ -255,9 +302,7 @@ export const knowledgeEntry = pgBaseTable(
     index("knowledgeentry_created_at_idx").on(knowledgeEntry.createdAt),
     index("knowledgeentry_updated_at_idx").on(knowledgeEntry.updatedAt),
     index("knowledgeentry_deleted_at_idx").on(knowledgeEntry.deletedAt),
-    index("knowledgeentry_organisation_id_idx").on(
-      knowledgeEntry.organisationId
-    ),
+    index("knowledgeentry_tenant_id_idx").on(knowledgeEntry.tenantId),
     index("knowledge_entry_team_id_idx").on(knowledgeEntry.teamId),
     index("knowledge_entry_user_id_idx").on(knowledgeEntry.userId),
     check(
@@ -301,7 +346,13 @@ export const knowledgeChunks = pgBaseTable(
       .notNull()
       .default("")
       .notNull(),
-    textEmbedding: vector("text_embedding", { dimensions: 1536 }).notNull(),
+    dimensions: integer("dimensions").notNull().default(0),
+    textEmbedding1536: vector("text_embedding_1536", {
+      dimensions: 1536,
+    }),
+    textEmbedding1024: vector("text_embedding_1024", {
+      dimensions: 1024,
+    }),
     meta: jsonb("meta").$type<KnowledgeChunkMeta>().default({}),
   },
   (knowledgeChunks) => [
@@ -310,6 +361,10 @@ export const knowledgeChunks = pgBaseTable(
     ),
     index("knowledge_chunks_created_at_idx").on(knowledgeChunks.createdAt),
     index("knowledge_chunks_header_idx").on(knowledgeChunks.header),
+    check(
+      "knowledge_chunks_embedding_required",
+      sql`text_embedding_1536 IS NOT NULL OR text_embedding_1024 IS NOT NULL`
+    ),
   ]
 );
 
@@ -329,9 +384,9 @@ export const knowledgeFilters = pgBaseTable(
     id: uuid("id")
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    organisationId: uuid("organisation_id")
+    tenantId: uuid("tenant_id")
       .notNull()
-      .references(() => organisations.id, { onDelete: "cascade" }),
+      .references(() => tenants.id, { onDelete: "cascade" }),
     category: varchar("category", { length: 50 }).notNull(), // z.B. 'department', 'topic', 'level'
     name: varchar("name", { length: 255 }).notNull(),
     createdAt: timestamp("created_at", { mode: "string" })
@@ -363,9 +418,9 @@ export const knowledgeEntryRelations = relations(
   knowledgeEntry,
   ({ many, one }) => ({
     knowledgeChunks: many(knowledgeChunks),
-    organisation: one(organisations, {
-      fields: [knowledgeEntry.organisationId],
-      references: [organisations.id],
+    tenant: one(tenants, {
+      fields: [knowledgeEntry.tenantId],
+      references: [tenants.id],
     }),
     team: one(teams, {
       fields: [knowledgeEntry.teamId],
@@ -395,9 +450,9 @@ export const knowledgeChunksRelations = relations(
 export const knowledgeTextRelations = relations(
   knowledgeText,
   ({ many, one }) => ({
-    organisation: one(organisations, {
-      fields: [knowledgeText.organisationId],
-      references: [organisations.id],
+    tenant: one(tenants, {
+      fields: [knowledgeText.tenantId],
+      references: [tenants.id],
     }),
     team: one(teams, {
       fields: [knowledgeText.teamId],
@@ -405,6 +460,29 @@ export const knowledgeTextRelations = relations(
     }),
     user: one(users, {
       fields: [knowledgeText.userId],
+      references: [users.id],
+    }),
+    history: many(knowledgeTextHistory),
+  })
+);
+
+export const knowledgeTextHistoryRelations = relations(
+  knowledgeTextHistory,
+  ({ one }) => ({
+    knowledgeText: one(knowledgeText, {
+      fields: [knowledgeTextHistory.knowledgeTextId],
+      references: [knowledgeText.id],
+    }),
+    tenant: one(tenants, {
+      fields: [knowledgeTextHistory.tenantId],
+      references: [tenants.id],
+    }),
+    team: one(teams, {
+      fields: [knowledgeTextHistory.teamId],
+      references: [teams.id],
+    }),
+    user: one(users, {
+      fields: [knowledgeTextHistory.userId],
       references: [users.id],
     }),
   })

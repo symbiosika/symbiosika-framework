@@ -1,5 +1,14 @@
 import type { EmailTemplateFunction } from "../types";
 
+// Helper function to truncate email subject to max 100 characters (as per email validation)
+function truncateSubject(subject: string, maxLength: number = 100): string {
+  if (subject.length <= maxLength) {
+    return subject;
+  }
+  // Truncate and add ellipsis, ensuring we don't exceed maxLength
+  return subject.substring(0, maxLength - 3) + "...";
+}
+
 // HTML email wrapper to unify style and structure for all emails
 function htmlEmailWrapper({
   appName,
@@ -134,6 +143,45 @@ export const stdTemplateMagicLink: EmailTemplateFunction = async (data) => {
   };
 };
 
+export const stdTemplateEmailLoginCode: EmailTemplateFunction = async (
+  data
+) => {
+  const codeBlock = `
+    <p style="text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 6px; margin: 24px 0;">${
+      data.code ?? ""
+    }</p>`;
+
+  const englishContent = `
+    <h2>Your login code for ${data.appName}</h2>
+    <p>Hello,</p>
+    <p>Use the following code to continue signing in:</p>
+    ${codeBlock}
+    <p style="text-align: center;">The code is valid for 10 minutes.</p>
+    <p>If you didn't request this code, you can safely ignore this email.</p>
+    <p>Best regards,<br>The ${data.appName} Team</p>
+  `;
+
+  const germanContent = `
+    <h2>Ihr Login-Code für ${data.appName}</h2>
+    <p>Hallo,</p>
+    <p>Verwenden Sie den folgenden Code, um die Anmeldung fortzusetzen:</p>
+    ${codeBlock}
+    <p style="text-align: center;">Der Code ist 10 Minuten gültig.</p>
+    <p>Falls Sie diesen Code nicht angefordert haben, können Sie diese E-Mail ignorieren.</p>
+    <p>Viele Grüße,<br>Ihr ${data.appName}-Team</p>
+  `;
+
+  return {
+    html: htmlEmailWrapper({
+      appName: data.appName,
+      logoUrl: data.logoUrl,
+      englishContent,
+      germanContent,
+    }),
+    subject: `Your login code for ${data.appName} / Ihr Login-Code für ${data.appName}`,
+  };
+};
+
 export const stdTemplateVerifyEmail: EmailTemplateFunction = async (data) => {
   // English content for the verify email
   const englishContent = `
@@ -237,8 +285,8 @@ export const stdTemplatePasswordResetWelcome: EmailTemplateFunction = async (
 export const stdTemplateInviteToOrganization: EmailTemplateFunction = async (
   data
 ) => {
-  // Determine organisation name if present
-  const orgName = data.organisation?.name;
+  // Determine tenant name if present
+  const orgName = data.tenant?.name;
 
   // English content for organization invite
   const englishContent = orgName
@@ -270,7 +318,7 @@ export const stdTemplateInviteToOrganization: EmailTemplateFunction = async (
       <p>Viele Grüße,<br>Ihr ${data.appName}-Team</p>
     `;
 
-  // Subject with organisation name if present
+  // Subject with tenant name if present
   const subject = orgName
     ? `Invitation to Join ${orgName} on ${data.appName} / Einladung zu ${orgName} auf ${data.appName}`
     : `Invitation to Join ${data.appName} / Einladung zu ${data.appName}`;
@@ -284,14 +332,14 @@ export const stdTemplateInviteToOrganization: EmailTemplateFunction = async (
       buttonLink: data.link,
       buttonText: "Register Now / Jetzt registrieren",
     }),
-    subject,
+    subject: truncateSubject(subject),
   };
 };
 
 export const stdTemplateInviteToOrganizationWhenUserExists: EmailTemplateFunction =
   async (data) => {
-    // Determine organisation name if present
-    const orgName = data.organisation?.name;
+    // Determine tenant name if present
+    const orgName = data.tenant?.name;
 
     // English content for existing user organization invite
     const englishContent = orgName
@@ -331,7 +379,7 @@ export const stdTemplateInviteToOrganizationWhenUserExists: EmailTemplateFunctio
         <p>Viele Grüße,<br>Ihr ${data.appName}-Team</p>
       `;
 
-    // Subject with organisation name if present
+    // Subject with tenant name if present
     const subject = orgName
       ? `Invitation to Join ${orgName} on ${data.appName} / Einladung zu ${orgName} auf ${data.appName}`
       : `Invitation to Join an Organization on ${data.appName} / Einladung zu einer Organisation auf ${data.appName}`;
@@ -345,6 +393,6 @@ export const stdTemplateInviteToOrganizationWhenUserExists: EmailTemplateFunctio
         buttonLink: data.link,
         buttonText: "Accept Invitation / Einladung annehmen",
       }),
-      subject,
+      subject: truncateSubject(subject),
     };
   };

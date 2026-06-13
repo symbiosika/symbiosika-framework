@@ -1,7 +1,7 @@
 /**
  * CRUD operations for teams
  *
- * Teams are used to group users together inside a organisation
+ * Teams are used to group users together inside a tenant
  */
 
 import { getDb } from "../db/db-connection";
@@ -14,13 +14,16 @@ import {
   users,
   type TeamMembersSelect,
 } from "../db/schema/users";
-import { getUserOrganisations } from "./oganisations";
+import { getUserTenants } from "./tenants";
 
 /**
  * Create a team
  */
 export const createTeam = async (data: TeamsInsert): Promise<TeamsSelect> => {
   const result = await getDb().insert(teams).values(data).returning();
+  if (!result[0]) {
+    throw new Error("Failed to create team");
+  }
   return result[0];
 };
 
@@ -44,6 +47,9 @@ export const updateTeam = async (
     .set({ ...data, updatedAt: new Date().toISOString() })
     .where(eq(teams.id, teamId))
     .returning();
+  if (!result[0]) {
+    throw new Error("Failed to update team");
+  }
   return result[0];
 };
 
@@ -55,15 +61,12 @@ export const deleteTeam = async (teamId: string): Promise<void> => {
 };
 
 /**
- * Get all teams by an organisation ID
+ * Get all teams by an tenant ID
  */
 export const getTeamsByOrganisation = async (
   orgId: string
 ): Promise<TeamsSelect[]> => {
-  return await getDb()
-    .select()
-    .from(teams)
-    .where(eq(teams.organisationId, orgId));
+  return await getDb().select().from(teams).where(eq(teams.tenantId, orgId));
 };
 
 /**
@@ -81,9 +84,7 @@ export const getTeamsByUser = async (
     })
     .from(teams)
     .innerJoin(teamMembers, eq(teamMembers.teamId, teams.id))
-    .where(
-      and(eq(teamMembers.userId, userId), eq(teams.organisationId, orgId))
-    );
+    .where(and(eq(teamMembers.userId, userId), eq(teams.tenantId, orgId)));
 };
 
 /**
@@ -142,15 +143,15 @@ export const dropUserFromTeam = async (
  */
 export const addTeamMember = async (
   teamId: string,
-  organisationId: string,
+  tenantId: string,
   userId: string,
   role?: "admin" | "member"
 ): Promise<TeamMembersSelect> => {
-  // check if the user is part of the organisation
-  const orgs = await getUserOrganisations(userId);
-  const membership = orgs.find((org) => org.organisationId === organisationId);
+  // check if the user is part of the tenant
+  const tenants = await getUserTenants(userId);
+  const membership = tenants.find((tenant) => tenant.tenantId === tenantId);
   if (!membership) {
-    throw new Error("User is not part of the organisation");
+    throw new Error("User is not part of the tenant");
   }
 
   const result = await getDb()
@@ -161,6 +162,9 @@ export const addTeamMember = async (
       role,
     })
     .returning();
+  if (!result[0]) {
+    throw new Error("Failed to add team member");
+  }
   return result[0];
 };
 
@@ -175,9 +179,10 @@ export const checkTeamMemberRole = async (
     .from(teamMembers)
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
 
-  if (member.length === 0) {
+  if (!member[0]) {
     throw new Error("User has not the required role");
-  } else if (roleToCheck.includes(member[0].role)) {
+  }
+  if (roleToCheck.includes(member[0].role)) {
     return true;
   } else {
     throw new Error("User has not the required role");
@@ -245,6 +250,9 @@ export const updateTeamMemberRole = async (
       )
     )
     .returning();
+  if (!result[0]) {
+    throw new Error("Failed to update team member role");
+  }
   return result[0];
 };
 

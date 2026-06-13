@@ -23,8 +23,6 @@ import {
   type KnowledgeEntryInsert,
 } from "../db/schema/knowledge";
 import { parseDocument, parseFile } from "./parsing";
-import { nanoid } from "nanoid";
-import { eq } from "drizzle-orm";
 import type { PageContent } from "./parsing/pdf/types";
 import { generateEmbedding } from "./embedding";
 
@@ -51,14 +49,26 @@ export const storeKnowledgeEntry = async (
  * Helper to store a knowledge chunk in the database
  */
 const storeKnowledgeChunk = async (data: KnowledgeChunksInsert) => {
-  await getDb().insert(knowledgeChunks).values(data);
+  try {
+    const result = await getDb()
+      .insert(knowledgeChunks)
+      .values(data)
+      .returning();
+    log.debug(
+      `Stored knowledge chunk with id: ${result[0]?.id}, text length: ${data.text?.length || 0}`
+    );
+    return result[0];
+  } catch (error) {
+    log.error(`Error in storeKnowledgeChunk: ${error}`);
+    throw error;
+  }
 };
 
 /**
  * Extract knowledge from a file and store it in the database
  */
 export const extractKnowledgeFromText = async (data: {
-  organisationId: string;
+  tenantId: string;
   title: string;
   text?: string;
   pages?: PageContent[];
@@ -79,7 +89,7 @@ export const extractKnowledgeFromText = async (data: {
   summaryCustomPrompt?: string;
   summaryModel?: string;
 }) => {
-  const title = data.title + "-" + nanoid(4);
+  const title = data.title;
 
   // Get full text for text-based operations
   let fullText = data.text || "";
@@ -94,15 +104,11 @@ export const extractKnowledgeFromText = async (data: {
   const allEmbeddings: ChunkWithEmbedding[] = await Promise.all(
     chunks.map(async (chunk) => {
       try {
-        if (chunk.text?.length > 10) {
-          const embedding = await generateEmbedding(chunk.text, {
-            organisationId: data.organisationId,
-            userId: data.userId,
-          });
-          return { ...chunk, embedding };
-        } else {
-          return { ...chunk, embedding: { embedding: [], model: "" } };
-        }
+        const embedding = await generateEmbedding(chunk.text, {
+          tenantId: data.tenantId,
+          userId: data.userId,
+        });
+        return { ...chunk, embedding };
       } catch (e) {
         log.error(`Error generating embedding for chunk: ${chunk.text}`);
         log.debug(`Chunk length: ${chunk.text.length}`);
@@ -131,7 +137,7 @@ export const extractKnowledgeFromText = async (data: {
       //   chunks,
       //   data.title,
       //   {
-      //     organisationId: data.organisationId,
+      //     tenantId: data.tenantId,
       //     userId: data.userId,
       //   },
       //   {
@@ -146,7 +152,7 @@ export const extractKnowledgeFromText = async (data: {
       //   fullText,
       //   data.title,
       //   {
-      //     organisationId: data.organisationId,
+      //     tenantId: data.tenantId,
       //     userId: data.userId,
       //   },
       //   {
@@ -171,7 +177,7 @@ export const extractKnowledgeFromText = async (data: {
   const knowledgeEntry = await storeKnowledgeEntry(
     {
       ...data,
-      organisationId: data.organisationId,
+      tenantId: data.tenantId,
       name: title,
       meta,
       userId: data.userId,
@@ -187,16 +193,14 @@ export const extractKnowledgeFromText = async (data: {
   await log.debug(`Store knowledge chunks: ${allEmbeddings.length}`);
   await Promise.all(
     allEmbeddings.map((e) => {
-      if (e.embedding.model === "") {
-        return;
-      }
       return storeKnowledgeChunk({
         knowledgeEntryId: knowledgeEntry.id,
         text: e.text,
         header: e.header,
         order: e.order,
         embeddingModel: e.embedding.model,
-        textEmbedding: e.embedding.embedding,
+        textEmbedding1536: e.embedding.dimensions === 1536 ? e.embedding.embedding : null,
+        textEmbedding1024: e.embedding.dimensions === 1024 ? e.embedding.embedding : null,
         meta: e.meta,
       });
     })
@@ -211,7 +215,7 @@ export const extractKnowledgeFromText = async (data: {
  * Extract knowledge from a file and store it in the database
  */
 export const extractKnowledgeFromExistingDbEntry = async (data: {
-  organisationId: string;
+  tenantId: string;
   sourceType: FileSourceType;
   sourceId?: string;
   sourceFileBucket?: string;
@@ -243,7 +247,7 @@ export const extractKnowledgeFromExistingDbEntry = async (data: {
     sourceFileBucket: data.sourceFileBucket,
     sourceId: data.sourceId,
     sourceUrl: data.sourceUrl,
-    organisationId: data.organisationId,
+    tenantId: data.tenantId,
     userId: data.userId,
     teamId: data.teamId,
     workspaceId: data.workspaceId,
@@ -261,7 +265,7 @@ export const extractKnowledgeFromExistingDbEntry = async (data: {
  */
 export const extractKnowledgeInOneStep = async (
   data: {
-    organisationId: string;
+    tenantId: string;
     filters?: Record<string, string>;
     teamId?: string;
     workspaceId?: string;
@@ -290,14 +294,14 @@ export const extractKnowledgeInOneStep = async (
   if (data.file) {
     // 1. parse file content
     const parsed = await parseFile(data.file, {
-      organisationId: data.organisationId,
+      tenantId: data.tenantId,
       teamId: data.teamId,
       workspaceId: data.workspaceId,
     });
 
     // 2. Extract knowledge
     const result = await extractKnowledgeFromText({
-      organisationId: data.organisationId,
+      tenantId: data.tenantId,
       title: data.file.name ?? "Unknown",
       text: parsed.text,
       filters: data.filters,
@@ -319,7 +323,7 @@ export const extractKnowledgeInOneStep = async (
   // if the text is provided, extract knowledge from it
   else if (data.data) {
     return extractKnowledgeFromText({
-      organisationId: data.organisationId,
+      tenantId: data.tenantId,
       title: data.data.title,
       text: data.data.text,
       filters: data.filters,

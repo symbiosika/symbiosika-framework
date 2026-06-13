@@ -80,8 +80,8 @@ export const parsePdfFileAsMardownLocal = async (
     throw new Error(`Upload failed: ${uploadResponse.statusText}`);
   }
 
-  const uploadedJobData = await uploadResponse.json();
-  const jobId = uploadedJobData.job_id;
+  const uploadedJobData: any = await uploadResponse.json();
+  const jobId: string = uploadedJobData.job_id;
   log.debug(`Job ID: ${jobId}`);
 
   // Poll for job completion
@@ -96,7 +96,7 @@ export const parsePdfFileAsMardownLocal = async (
       throw new Error(`Status check failed: ${statusResponse.statusText}`);
     }
 
-    const statusData = await statusResponse.json();
+    const statusData: any = await statusResponse.json();
     log.debug(`Status: ${statusData.status}`);
     isComplete = statusData.status === "completed";
 

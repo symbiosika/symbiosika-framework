@@ -1,15 +1,19 @@
 import { eq, and, isNull } from "drizzle-orm";
 import {
   invitationCodes,
-  organisationMembers,
-  sessions,
+  tenantMembers,
   users,
   type UserSelectBasic,
 } from "../db/db-schema";
 import { getDb } from "../db/db-connection";
+import {
+  createUserSession,
+  revokeSession,
+  revokeAllSessionsForUser,
+} from "./sessions";
 import jwt from "jsonwebtoken";
 import {
-  sendMagicLink,
+  sendMagicLink as sendMagicLinkImpl,
   sendVerificationEmail,
   verifyEmail,
   verifyMagicLink,
@@ -18,14 +22,14 @@ import {
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { preRegisterCustomVerifications, postRegisterActions } from "./actions";
 import log from "../log";
-import { addOrganisationMember } from "../usermanagement/oganisations";
+import { addTenantMember } from "../usermanagement/tenants";
 import { updateUser } from "../usermanagement/user";
 import {
-  acceptAllPendingInvitationsForUser,
-  acceptOrganisationInvitation,
+  acceptAllPendingInvitationsForTenantMember,
   getPendingInvitationsForEmail,
 } from "../usermanagement/invitations";
 
+// JWT_PRIVATE_KEY will be set by the key generation utility in hono-middlewares.ts
 const JWT_PRIVATE_KEY = process.env.JWT_PRIVATE_KEY || "";
 
 /**
@@ -67,7 +71,7 @@ const getUserFromDb = async (
       .from(users)
       .where(eq(users.email, email));
 
-    if (user.length === 0 || !user[0].password) {
+    if (!user[0] || !user[0].password) {
       throw "user not found";
     }
 
@@ -125,6 +129,9 @@ const setUserInDb = async (
     });
   }
 
+  if (!user[0]) {
+    throw new Error("Failed to set user in database");
+  }
   return user[0];
 };
 
@@ -157,6 +164,53 @@ export const generateJwt = async (
 };
 
 /**
+ * Issues a JWT for a user login and creates a matching server-side session.
+ *
+ * The session id is embedded as the `sid` claim; the middleware validates it on
+ * every request, which is what makes the token revocable (logout / password
+ * reset) before it expires. Use this for every interactive login flow
+ * (password, passkey, magic link, OAuth). Stateless service tokens (API tokens,
+ * server connections) must keep using `generateJwt` directly.
+ */
+export const generateUserSessionJwt = async (
+  user: {
+    id: string;
+    email: string;
+    firstname: string;
+    surname: string;
+  },
+  expiresIn: number = _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
+) => {
+  const { sid, expiresAt } = await createUserSession(user.id, expiresIn);
+  const { token } = await generateJwt(user, expiresIn, { sid });
+  return { token, expiresAt, sid };
+};
+
+/**
+ * Creates a JWT and session for an existing user (e.g. passkey login).
+ */
+export const createJwtSessionForUserId = async (userId: string) => {
+  const user = await getDb()
+    .select({
+      id: users.id,
+      email: users.email,
+      firstname: users.firstname,
+      surname: users.surname,
+    })
+    .from(users)
+    .where(eq(users.id, userId));
+  if (!user[0]) {
+    throw new Error("User not found");
+  }
+  const { token, expiresAt } = await generateUserSessionJwt(user[0]);
+  return {
+    token,
+    expiresAt,
+    user: user[0],
+  };
+};
+
+/**
  * Checks if a user exists and creates a session
  */
 const checkAndCreateSession = async (
@@ -166,24 +220,7 @@ const checkAndCreateSession = async (
 ) => {
   const user = await getUserFromDb(email, password, sendVerificationEmail);
 
-  const { token, expiresAt } = await generateJwt(
-    user,
-    _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-  );
-  const session = await getDb()
-    .insert(sessions)
-    .values({
-      sessionToken: "",
-      userId: user.id,
-      expires: expiresAt.toISOString(),
-    })
-    .onConflictDoUpdate({
-      target: sessions.sessionToken,
-      set: {
-        expires: expiresAt.toISOString(),
-      },
-    })
-    .returning();
+  const { token, expiresAt } = await generateUserSessionJwt(user);
   return { token, expiresAt };
 };
 
@@ -202,6 +239,11 @@ const setNewPassword = async (userId: string, newPassword: string) => {
   if (updatedUser.length === 0) {
     throw "User not found";
   }
+
+  // Security: a password change invalidates every existing login session, so a
+  // leaked/forgotten token can no longer be used (covers forgot-password reset
+  // and "log out everywhere" on change).
+  await revokeAllSessionsForUser(userId);
 
   return updatedUser[0];
 };
@@ -227,14 +269,14 @@ const changePassword = async (
 /**
  * Check if a general invitation code is valid
  * This will check if there are any general invitation codes and if the provided code is valid
- * If the code is valid, it will return the organisationId to set if a organisation is provided
+ * If the code is valid, it will return the tenantId to set if a tenant is provided
  */
-const checkGeneralInvitationCode = async (
+export const checkGeneralInvitationCode = async (
   code: string | undefined
 ): Promise<{
   usedInvitationCode: boolean;
   check: boolean;
-  setOrganisationId: string | null;
+  setTenantId: string | null;
 }> => {
   const codes = await getDb()
     .select()
@@ -242,7 +284,7 @@ const checkGeneralInvitationCode = async (
     .where(eq(invitationCodes.isActive, true));
 
   if (codes.length === 0) {
-    return { usedInvitationCode: false, check: true, setOrganisationId: null }; // no general invitation codes active, so we can register without one
+    return { usedInvitationCode: false, check: true, setTenantId: null }; // no general invitation codes active, so we can register without one
   } else if (!code) {
     throw "No invitation code provided but is required";
   } else {
@@ -253,7 +295,7 @@ const checkGeneralInvitationCode = async (
     return {
       usedInvitationCode: true,
       check: true,
-      setOrganisationId: found.organisationId,
+      setTenantId: found.tenantId,
     };
   }
 };
@@ -272,10 +314,12 @@ export const LocalAuth = {
     sendVerificationEmail: boolean,
     meta: {
       invitationCode?: string;
+      customRegisterData?: Record<string, any>;
+      [key: string]: any;
     }
   ) {
     log.info(`Registering user: ${email}`);
-    
+
     // go through all pre-register custom verifications
     for (const verification of preRegisterCustomVerifications) {
       log.info(`Running pre-register custom verification`);
@@ -286,51 +330,64 @@ export const LocalAuth = {
     }
 
     // check if the user has pending invitations
-    const { invitedInOrganisationIds } =
-      await getPendingInvitationsForEmail(email);
+    const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);
 
     // check if we can register without an invitation code
     // then we can skip the invitation code check
-    let firstOrganisationId: string | null = null;
-    if (invitedInOrganisationIds.length < 1) {
-      const { usedInvitationCode, setOrganisationId } =
+    let firstTenantId: string | null = null;
+    if (invitedInTenantIds.length < 1) {
+      const { usedInvitationCode, setTenantId } =
         await checkGeneralInvitationCode(meta?.invitationCode);
-      firstOrganisationId = setOrganisationId;
+      firstTenantId = setTenantId;
     }
 
     // add user to db
     const user = await setUserInDb(email, password, sendVerificationEmail);
+    if (!user) {
+      throw new Error("Failed to register user");
+    }
     log.info(`New user registered: ${user.id}`);
 
-    // check if an organisation was provided via invitation code
-    if (firstOrganisationId) {
-      // check if the organisation has already members
+    // persist custom register data on the user row for later processing
+    // by post-register actions (the post-register action callbacks also
+    // receive the meta object directly, but we still persist it so that
+    // downstream code / asynchronous flows can access it later).
+    if (meta?.customRegisterData && typeof meta.customRegisterData === "object") {
+      await getDb()
+        .update(users)
+        .set({ meta: { customRegisterData: meta.customRegisterData } })
+        .where(eq(users.id, user.id));
+    }
+
+    // check if an tenant was provided via invitation code
+    if (firstTenantId) {
+      // check if the tenant has already members
       const members = await getDb()
         .select()
-        .from(organisationMembers)
-        .where(eq(organisationMembers.organisationId, firstOrganisationId));
+        .from(tenantMembers)
+        .where(eq(tenantMembers.tenantId, firstTenantId));
 
       let role: "member" | "owner" = "member";
-      if (members.length === 0) {
+      if (!members[0]) {
         role = "owner";
       }
-      await addOrganisationMember(firstOrganisationId, user.id, role);
+      await addTenantMember(firstTenantId, user.id, role);
       await updateUser(user.id, {
-        lastOrganisationId: firstOrganisationId,
+        lastTenantId: firstTenantId,
       });
     }
 
     // accept all pending invitations if there are any
-    if (invitedInOrganisationIds.length > 0) {
-      for (const organisationId of invitedInOrganisationIds) {
-        await acceptAllPendingInvitationsForUser(user.id, organisationId);
+    if (invitedInTenantIds.length > 0) {
+      for (const tenantId of invitedInTenantIds) {
+        await acceptAllPendingInvitationsForTenantMember(user.id, tenantId);
       }
     }
 
-    // go through all post-register actions
+    // go through all post-register actions (meta is forwarded for custom per-user data)
     for (const action of postRegisterActions) {
       log.info(`Running post-register action`);
-      await action(user.id, user.email);
+      await action(user.id, user.email, meta);
     }
 
     return user;
@@ -344,8 +401,26 @@ export const LocalAuth = {
     return await verifyMagicLink(token);
   },
 
-  async sendMagicLink(email: string) {
-    return await sendMagicLink(email);
+  async sendMagicLink(
+    email: string,
+    redirectUrl?: string,
+    createUserIfMissing: boolean = false,
+    invitationCode?: string,
+    customRegisterData?: Record<string, any>,
+    template?: string,
+    firstname?: string,
+    surname?: string
+  ) {
+    return await sendMagicLinkImpl(
+      email,
+      redirectUrl,
+      createUserIfMissing,
+      invitationCode,
+      customRegisterData,
+      template,
+      firstname,
+      surname
+    );
   },
 
   async sendVerificationEmail(email: string) {
@@ -368,7 +443,7 @@ export const LocalAuth = {
     return await changePassword(email, oldPassword, newPassword);
   },
 
-  async refreshToken(userId: string) {
+  async refreshToken(userId: string, currentSid?: string) {
     const user = await getDb()
       .select({
         id: users.id,
@@ -378,18 +453,22 @@ export const LocalAuth = {
       })
       .from(users)
       .where(eq(users.id, userId));
-    if (!user || user.length === 0) {
+    if (!user[0]) {
       throw "User not found";
     }
-    const { token, expiresAt } = await generateJwt(
-      user[0],
-      _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
-    );
+    // Rotate the session: the refreshed token gets a new session and the old
+    // one is revoked, so a refresh truly replaces the previous token.
+    const { token, expiresAt } = await generateUserSessionJwt(user[0]);
+    if (currentSid) {
+      await revokeSession(currentSid);
+    }
     return { token, expiresAt };
   },
 
   async forgotPasswort(email: string, sendWelcomeText = false) {
-    // Check if user exists in DB (optional check for clarity)
+    // Look up the user but never reveal whether the address exists — returning
+    // a different result / error for unknown emails enables account
+    // enumeration. Only send the reset link when the user actually exists.
     const user = await getDb()
       .select({
         id: users.id,
@@ -397,11 +476,12 @@ export const LocalAuth = {
       })
       .from(users)
       .where(eq(users.email, email));
-    if (!user || user.length === 0) {
-      throw "User not found";
+    if (user && user.length > 0) {
+      await sendResetPasswordLink(email, sendWelcomeText).catch((err) => {
+        // Log server-side; do not surface to the caller (avoids enumeration).
+        log.error("Error sending reset password link: " + err);
+      });
     }
-    // Send password-reset link
-    await sendResetPasswordLink(email, sendWelcomeText);
     return { message: "Reset password link has been sent to your email." };
   },
 };

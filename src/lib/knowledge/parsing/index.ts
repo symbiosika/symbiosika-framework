@@ -8,6 +8,7 @@ import { getDb } from "../../../lib/db/db-connection";
 import { eq } from "drizzle-orm";
 import type { PageContent } from "./pdf/types";
 import { applyPostProcessors } from "./pre-processors";
+import { urlToMarkdown } from "./url";
 
 /**
  * Helper function to parse a file and return the text content and pages if available
@@ -15,7 +16,7 @@ import { applyPostProcessors } from "./pre-processors";
 export const parseFile = async (
   file: File,
   context: {
-    organisationId: string;
+    tenantId: string;
     userId?: string;
     teamId?: string;
     workspaceId?: string;
@@ -31,10 +32,25 @@ export const parseFile = async (
 }> => {
   log.debug(`Parse file: ${file.name} from type ${file.type}`);
 
+  const mime = file.type.trim().toLowerCase();
+  /** Windows / some browsers send "" or octet-stream for .pdf / .PDF */
+  const pdfByExtension =
+    /\.pdf$/i.test(file.name) &&
+    (mime === "" ||
+      mime === "application/octet-stream" ||
+      mime === "application/x-download" ||
+      mime === "binary/octet-stream");
+  const fileForPdf =
+    mime === "application/pdf"
+      ? file
+      : pdfByExtension
+        ? new File([file], file.name, { type: "application/pdf" })
+        : null;
+
   // PDF
-  if (file.type === "application/pdf") {
+  if (fileForPdf) {
     // try to parse the content
-    const result = await parsePdfFileAsMardown(file, context, options);
+    const result = await parsePdfFileAsMardown(fileForPdf, context, options);
 
     // Create a combined text from all pages if available
     let fullText = "";
@@ -71,7 +87,7 @@ export const parseFile = async (
  */
 export const parseDocument = async (data: {
   sourceType: FileSourceType;
-  organisationId: string;
+  tenantId: string;
   sourceId?: string;
   sourceFileBucket?: string;
   sourceUrl?: string;
@@ -91,12 +107,12 @@ export const parseDocument = async (data: {
 
   if (data.sourceType === "db" && data.sourceId && data.sourceFileBucket) {
     log.debug(
-      `Get file from DB: ${data.sourceId} ${data.sourceFileBucket} for organisation ${data.organisationId}`
+      `Get file from DB: ${data.sourceId} ${data.sourceFileBucket} for tenant ${data.tenantId}`
     );
     const file = await getFileFromDb(
       data.sourceId,
       data.sourceFileBucket,
-      data.organisationId
+      data.tenantId
     );
     const {
       text,
@@ -105,7 +121,7 @@ export const parseDocument = async (data: {
     } = await parseFile(
       file,
       {
-        organisationId: data.organisationId,
+        tenantId: data.tenantId,
         teamId: data.teamId,
         workspaceId: data.workspaceId,
       },
@@ -124,12 +140,12 @@ export const parseDocument = async (data: {
     data.sourceFileBucket
   ) {
     log.debug(
-      `Get file from local disc: ${data.sourceId} ${data.sourceFileBucket} for organisation ${data.organisationId}`
+      `Get file from local disc: ${data.sourceId} ${data.sourceFileBucket} for tenant ${data.tenantId}`
     );
     const file = await getFileFromLocalDisc(
       data.sourceId,
       data.sourceFileBucket,
-      data.organisationId
+      data.tenantId
     );
     const {
       text,
@@ -138,7 +154,7 @@ export const parseDocument = async (data: {
     } = await parseFile(
       file,
       {
-        organisationId: data.organisationId,
+        tenantId: data.tenantId,
         teamId: data.teamId,
         workspaceId: data.workspaceId,
       },
@@ -152,16 +168,20 @@ export const parseDocument = async (data: {
     title = file.name;
     docIncludesImages = includesImages;
   } else if (data.sourceType === "url" && data.sourceUrl) {
-    log.debug(`Get file from URL: ${data.sourceUrl}`);
-    content = "";
-    title = "";
+    log.debug(`Fetch and parse content from URL: ${data.sourceUrl}`);
+    const result = await urlToMarkdown(data.sourceUrl);
+    content = result.markdown;
+    title = result.title || data.sourceUrl;
+    log.debug(
+      `URL parsed. title="${title}" markdown length=${content.length}`
+    );
   } else if (data.sourceType === "text") {
     log.debug(`Get file from TEXT`);
     const dbResults = await getDb()
       .select()
       .from(knowledgeText)
       .where(eq(knowledgeText.id, data.sourceId!));
-    if (dbResults.length === 0) {
+    if (!dbResults[0]) {
       throw new Error(`Knowledge text not found: ${data.sourceId}`);
     }
     content = dbResults[0].text;
@@ -180,7 +200,7 @@ export const parseDocument = async (data: {
   if (data.usePostProcessors && data.usePostProcessors.length > 0) {
     content = await applyPostProcessors(
       content,
-      data.organisationId,
+      data.tenantId,
       data.usePostProcessors
     );
     // set pages to undefined since we don't have pages after post processing
