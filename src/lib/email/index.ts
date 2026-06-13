@@ -121,27 +121,25 @@ class SMTPService {
 
     // Console mode: log email to console instead of sending
     if (this.consoleMode) {
-      const emailData = {
-        from: sender || process.env.SMTP_DEFAULT_SENDER,
-        to: recipients.join(", "),
-        subject,
-        text,
-        html,
-      };
+      const from = sender || process.env.SMTP_DEFAULT_SENDER || "unknown";
+      const to = recipients.join(", ");
+      const body = text || htmlToPlainText(html || "");
 
       console.log("\n" + "=".repeat(60));
       console.log("📧 EMAIL (Console Mode - Not Actually Sent)");
       console.log("=".repeat(60));
-      console.log(`From: ${emailData.from}`);
-      console.log(`To: ${emailData.to}`);
-      console.log(`Subject: ${emailData.subject}`);
+      console.log(`From:    ${from}`);
+      console.log(`To:      ${to}`);
+      console.log(`Subject: ${subject}`);
       console.log("-".repeat(60));
-      if (text) {
-        console.log(text);
-      } else if (html) {
-        console.log(htmlToPlainText(html));
-      }
+      console.log(body);
       console.log("=".repeat(60) + "\n");
+
+      const timestamp = new Date().toISOString();
+      const filePath = await log.writeEmailFile({ timestamp, from, to, subject, body, html });
+      if (filePath) {
+        console.log(`📁 Email saved to: ${filePath}`);
+      }
 
       this.log(`[Console Mode] Email logged: ${subject}`);
       return true;
