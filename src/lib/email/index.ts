@@ -2,6 +2,29 @@ import nodemailer from "nodemailer";
 import * as v from "valibot";
 import log from "../log";
 
+/** Convert HTML to plain text for console so links (e.g. magic link) are visible. */
+function htmlToPlainText(html: string): string {
+  let s = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+  // Preserve links as "text (url)" so URLs remain visible in plain text
+  s = s.replace(/<a\s[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, url, text) => {
+    const cleanUrl = url.replace(/&amp;/g, "&");
+    const cleanText = text.replace(/<[^>]+>/g, "").trim();
+    if (!cleanText || cleanText === cleanUrl) return cleanUrl + "\n";
+    return `${cleanText} (${cleanUrl})\n`;
+  });
+  s = s.replace(/<[^>]+>/g, " ");
+  s = s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
+  return s.replace(/\s+/g, " ").trim();
+}
+
 const emailSchema = v.object({
   sender: v.optional(v.string()),
   recipients: v.array(v.pipe(v.string(), v.email())),
@@ -17,6 +40,10 @@ export interface EmailOptions {
   text?: string;
   html?: string;
 }
+
+const isConsoleMode = (): boolean => {
+  return process.env.SMTP_HOST === "console.localhost";
+};
 
 const getMailCredentials = () => {
   return {
@@ -34,12 +61,21 @@ const getMailCredentials = () => {
 };
 
 class SMTPService {
-  private transporter: nodemailer.Transporter;
+  private transporter: nodemailer.Transporter | null = null;
   private logEnabled: boolean = false;
+  private consoleMode: boolean = false;
 
   constructor() {
     this.logEnabled = process.env.SMTP_DEBUG === "true";
-    this.transporter = nodemailer.createTransport(getMailCredentials());
+    this.consoleMode = isConsoleMode();
+
+    if (!this.consoleMode) {
+      this.transporter = nodemailer.createTransport(getMailCredentials());
+    } else {
+      console.log(
+        "📧 SMTP Console Mode enabled - emails will be logged to console"
+      );
+    }
   }
 
   private log(message: string): void {
@@ -61,25 +97,51 @@ class SMTPService {
     text,
     html,
   }: EmailOptions): Promise<boolean> {
+    // Validate email options first
+    try {
+      v.parse(emailSchema, { sender, recipients, subject, text, html });
+      if (!text && !html) {
+        throw new Error("Text or HTML body is required");
+      }
+    } catch (error) {
+      this.error(`Email validation failed: ${error}`);
+      return false;
+    }
+
+    // Console mode: log email to console instead of sending
+    if (this.consoleMode) {
+      const from = sender || process.env.SMTP_DEFAULT_SENDER || "unknown";
+      const to = recipients.join(", ");
+      const body = text || htmlToPlainText(html || "");
+
+      console.log("\n" + "=".repeat(60));
+      console.log("📧 EMAIL (Console Mode - Not Actually Sent)");
+      console.log("=".repeat(60));
+      console.log(`From:    ${from}`);
+      console.log(`To:      ${to}`);
+      console.log(`Subject: ${subject}`);
+      console.log("-".repeat(60));
+      console.log(body);
+      console.log("=".repeat(60) + "\n");
+
+      const timestamp = new Date().toISOString();
+      const filePath = await log.writeEmailFile({ timestamp, from, to, subject, body, html });
+      if (filePath) {
+        console.log(`📁 Email saved to: ${filePath}`);
+      }
+
+      this.log(`[Console Mode] Email logged: ${subject}`);
+      return true;
+    }
+
+    // Real SMTP mode: send email with retries
     const maxRetries = 3;
     const retryInterval = 15 * 60 * 1000; // 15 minutes in milliseconds
     let attempt = 0;
 
     while (attempt < maxRetries) {
       try {
-        v.parse(emailSchema, {
-          sender,
-          recipients,
-          subject,
-          text,
-          html,
-        });
-
-        if (!text && !html) {
-          throw new Error("Text or HTML body is required");
-        }
-
-        const info = await this.transporter.sendMail({
+        const info = await this.transporter!.sendMail({
           from: sender || process.env.SMTP_DEFAULT_SENDER,
           to: recipients.join(", "),
           subject,
@@ -129,8 +191,14 @@ class SMTPService {
   }
 
   async verifyConnection(): Promise<boolean> {
+    // Console mode always returns true
+    if (this.consoleMode) {
+      this.log("[Console Mode] SMTP connection verification skipped");
+      return true;
+    }
+
     return new Promise((resolve) =>
-      this.transporter.verify((error) => {
+      this.transporter!.verify((error) => {
         if (error) {
           this.error(`SMTP connection verification failed: ${error}`);
           this.error(
