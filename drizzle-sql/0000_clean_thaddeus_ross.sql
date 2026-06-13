@@ -1,4 +1,4 @@
-CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS vector;--> statement-breakpoint
 
 CREATE TYPE "public"."magic_link_purpose" AS ENUM('login', 'email_verification', 'password_reset');--> statement-breakpoint
 CREATE TYPE "public"."message_type" AS ENUM('info', 'warning', 'error');--> statement-breakpoint

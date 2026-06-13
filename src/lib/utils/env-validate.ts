@@ -7,12 +7,19 @@ import { ensureJWTKeys } from "./jwt-keys";
 export const validateAllEnvVariables = async (
   customEnvVariablesToCheckOnStartup: string[] = []
 ): Promise<void> => {
+  // When the embedded local database is used (USE_LOCAL_DB=true), no external
+  // Postgres connection is configured, so the POSTGRES_* vars are not required.
+  const useLocalDb = process.env.USE_LOCAL_DB === "true";
   const requiredEnvVars = [
-    "POSTGRES_HOST",
-    "POSTGRES_PORT",
-    "POSTGRES_USER",
-    "POSTGRES_PASSWORD",
-    "POSTGRES_DB",
+    ...(useLocalDb
+      ? []
+      : [
+          "POSTGRES_HOST",
+          "POSTGRES_PORT",
+          "POSTGRES_USER",
+          "POSTGRES_PASSWORD",
+          "POSTGRES_DB",
+        ]),
     "SECRETS_AES_KEY",
     "SECRETS_AES_IV",
   ];

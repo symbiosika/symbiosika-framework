@@ -41,6 +41,10 @@
     "valibot": "^1.2.0",
     "@simplewebauthn/server": "^13.0.0"
   },
+  "optionalDependencies": {
+    "@electric-sql/pglite": "^0.5.2",
+    "@electric-sql/pglite-pgvector": "^0.0.3"
+  },
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
