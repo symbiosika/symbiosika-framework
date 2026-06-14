@@ -179,6 +179,9 @@ lib/**/*
 # App specific files
 attachments
 
+# Local embedded dev database (PGlite)
+dev-db/
+
 static/upload/*
 
 .env.remote

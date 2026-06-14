@@ -1,4 +1,4 @@
-DELETE FROM "base_knowledge_text";
+DELETE FROM "base_knowledge_text";--> statement-breakpoint
 
 ALTER TABLE "base_knowledge_text" ADD COLUMN "document_id" uuid NOT NULL;--> statement-breakpoint
 ALTER TABLE "base_knowledge_text" ADD COLUMN "is_latest" boolean DEFAULT true NOT NULL;--> statement-breakpoint
