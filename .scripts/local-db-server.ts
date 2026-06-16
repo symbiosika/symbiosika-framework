@@ -13,7 +13,7 @@
  *                bun run dev
  *
  * PGlite is a single-connection database; pglite-socket multiplexes (serializes)
- * multiple connections, so maxConnections must be >= the postgres-js pool size
+ * multiple connections, so maxConnections must be 1(!) for postgres-js pool size
  * (default 10).
  */
 import { PGlite } from "@electric-sql/pglite";
