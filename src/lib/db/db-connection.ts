@@ -22,6 +22,9 @@ const POSTGRES_CA = process.env.POSTGRES_CA?.trim() || undefined;
 const useSSL = !!POSTGRES_CA;
 const POSTGRES_CHECK_IDENTITY =
   process.env.POSTGRES_CHECK_IDENTITY?.trim().toLowerCase() === "true";
+const POSTGRES_CONNECTION_POOL_SIZE = process.env.POSTGRES_CONNECTION_POOL_SIZE
+  ? parseInt(process.env.POSTGRES_CONNECTION_POOL_SIZE)
+  : undefined;
 
 console.log(
   "POSTGRES SSL is",
@@ -30,10 +33,20 @@ console.log(
     : "disabled"
 );
 
+if (POSTGRES_CONNECTION_POOL_SIZE) {
+  console.log(
+    "CONNECTION_POOL_SIZE is ",
+    POSTGRES_CONNECTION_POOL_SIZE
+  )
+}
+
 // PostgresJS client
 let dbClient = postgres(
   `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}`,
   {
+    ...(POSTGRES_CONNECTION_POOL_SIZE !== undefined && {
+      max: POSTGRES_CONNECTION_POOL_SIZE,
+    }),
     ...(useSSL && {
       ssl: {
         rejectUnauthorized: false,
