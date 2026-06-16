@@ -6,7 +6,7 @@
  * summary and exits non-zero on any failure.
  *
  *   Run from the backend directory:
- *     bun run framework/scripts/oauth-flow.ts
+ *     bun run framework/.scripts/oauth-flow.ts
  *
  * Covers: discovery + JWKS, admin client creation, passwordless login (OTP),
  * consent, authorization-code + PKCE, token exchange, id_token (RS256) verified

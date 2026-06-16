@@ -110,7 +110,7 @@ views/oauth/ login.html · consent.html
 | 4 | OIDC-Layer: id_token (RS256), /userinfo, jwks, openid-configuration | ✅ erledigt (RS256 via Server-RSA-Key) |
 | 5 | Consent-/Login-Views (überschreibbar via `oauth2.views`) | ✅ erledigt |
 | 6 | Resource-Server-Middleware (`oauth:true`) + Regression (Schritt 2) | ✅ erledigt (31 Tests grün) |
-| 7 | Flow-Script (`scripts/oauth-flow.ts`, 16/16 PASS) | ✅ erledigt · ⚠️ Rate-Limiting noch offen |
+| 7 | Flow-Script (`./.scripts/oauth-flow.ts`, 16/16 PASS) | ✅ erledigt · ⚠️ Rate-Limiting noch offen |
 
 ## Tests
 
@@ -119,7 +119,7 @@ rotate, delete→revoke), `flow` (authorize→consent→token, PKCE-Mismatch,
 redirect_uri-Mismatch, Code-Reuse, Refresh-Rotation, Reuse→Family-Revoke, Revoke),
 `oidc` (id_token-Claims, /userinfo, JWKS-Signaturprüfung), `consent` (Persistenz,
 Re-Consent bei neuen Scopes), `middlewares` (OAuth-AT setzt Context; Step-2-Session-JWT
-unverändert). + interaktives `scripts/oauth-flow.ts`.
+unverändert). + interaktives `./.scripts/oauth-flow.ts`.
 
 ## Env-Variablen (neu, mit Defaults)
 

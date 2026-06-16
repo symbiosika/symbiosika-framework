@@ -17,7 +17,7 @@ Uses the debug email flow: the magic-link token is read directly from `logs/emai
 Run the script and show the full output:
 
 ```bash
-bash scripts/testuser.sh
+bash ./.scripts/testuser.sh
 ```
 
 ## What the script does

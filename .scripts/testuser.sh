@@ -2,8 +2,8 @@
 # End-to-end testuser login via magic link (local dev only).
 # Requires SMTP_HOST=console.localhost so emails land in logs/email/.
 #
-# Usage: bash scripts/testuser.sh [base-url]
-#   e.g. bash scripts/testuser.sh http://localhost:3000
+# Usage: bash ./.scripts/testuser.sh [base-url]
+#   e.g. bash ./.scripts/testuser.sh http://localhost:3000
 set -euo pipefail
 
 BASE_URL="${1:-${BASE_URL:-http://localhost:3000}}"
