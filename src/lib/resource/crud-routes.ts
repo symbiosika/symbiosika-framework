@@ -4,12 +4,16 @@
  */
 
 import { Hono } from "hono";
-import { validator } from "hono-openapi";
+import type { MiddlewareHandler } from "hono";
+import { describeRoute, resolver, validator } from "hono-openapi";
 import * as v from "valibot";
 import { HTTPException } from "hono/http-exception";
 import type { SFContextVariables } from "../../types";
-import type { CrudOperations } from "./types";
+import type { CrudAuthConfig, CrudOpenApiConfig, CrudOperations } from "./types";
 import { parseQueryOptions } from "./query-params";
+import { validateScope } from "../utils/validate-scope";
+import { registerScopes } from "../auth/available-scopes";
+import { isTenantAdmin, isTenantMember } from "../../routes/tenant";
 
 /**
  * Configuration for createCrudRoutes
@@ -19,11 +23,28 @@ export interface CrudRoutesConfig {
   basePath: string;
   /** Singular entity name for error messages (e.g., "competitor") */
   entityName: string;
+  /** Plural resource name, used as the default OpenAPI tag (e.g. "competitors") */
+  resourceName?: string;
   /** Markdown export renderer */
   markdown?: {
     renderer: (entries: any[]) => string;
   };
+  /**
+   * Authorization config: scope checks and tenant guards per action.
+   * When omitted, every action requires tenant membership and has no scope check.
+   */
+  auth?: CrudAuthConfig;
+  /** OpenAPI documentation config. */
+  openapi?: CrudOpenApiConfig;
+  /** Valibot schemas used to document request bodies and responses. */
+  schemas?: {
+    select?: any;
+    insert?: any;
+    update?: any;
+  };
 }
+
+type CrudAction = "read" | "create" | "update" | "delete";
 
 /**
  * Standard error handler for CRUD routes.
@@ -60,11 +81,17 @@ function handleRouteError(
  * Create standard CRUD routes for a resource.
  * Generates GET /, GET /markdown (optional), GET /:id, POST /, PUT /:id, DELETE /:id
  *
+ * Authorization (scopes + tenant guards) and OpenAPI docs are derived from the
+ * `auth`, `openapi` and `schemas` config and applied per action.
+ *
  * @example
  * ```typescript
  * const { registerRoutes } = createCrudRoutes(operations, {
  *   basePath: '/tenant/:tenantId/competitors',
  *   entityName: 'competitor',
+ *   resourceName: 'competitors',
+ *   auth: { scopePrefix: 'competitors', delete: { tenantGuard: 'admin' } },
+ *   schemas: { select: competitorsSelectSchema, insert: competitorsInsertSchema, update: competitorsUpdateSchema },
  *   markdown: { renderer: renderCompetitorsMarkdown },
  * });
  * registerRoutes(app); // Register routes on a Hono app
@@ -76,16 +103,118 @@ export function createCrudRoutes(
 ) {
   const app = new Hono<{ Variables: SFContextVariables }>();
   const { entityName } = config;
+  const resourceName = config.resourceName ?? entityName;
+
+  const authConfig = config.auth ?? {};
+  const defaultGuard = authConfig.tenantGuard ?? "member";
+
+  // Resolve the scope required for an action: an explicit per-action scope wins,
+  // otherwise the scopePrefix shorthand expands to `${prefix}:read|write`.
+  const resolveScope = (
+    action: CrudAction,
+    kind: "read" | "write"
+  ): string | undefined => {
+    const explicit = authConfig[action]?.scope;
+    if (explicit) return explicit;
+    if (authConfig.scopePrefix) return `${authConfig.scopePrefix}:${kind}`;
+    return undefined;
+  };
+
+  const resolveGuard = (action: CrudAction) =>
+    authConfig[action]?.tenantGuard ?? defaultGuard;
+
+  // Register every configured scope so it is accepted on token creation and
+  // exposed in the OAuth2 discovery metadata.
+  registerScopes(
+    ...(
+      [
+        resolveScope("read", "read"),
+        resolveScope("create", "write"),
+        resolveScope("update", "write"),
+        resolveScope("delete", "write"),
+      ].filter(Boolean) as string[]
+    )
+  );
+
+  // Build the auth middleware chain (scope check + tenant guard) for an action.
+  const authChain = (
+    action: CrudAction,
+    kind: "read" | "write"
+  ): MiddlewareHandler[] => {
+    const chain: MiddlewareHandler[] = [];
+    const scope = resolveScope(action, kind);
+    if (scope) chain.push(validateScope(scope));
+    const guard = resolveGuard(action);
+    if (guard === "member") chain.push(isTenantMember);
+    else if (guard === "admin") chain.push(isTenantAdmin);
+    return chain;
+  };
+
+  // --- OpenAPI helpers --------------------------------------------------------
+  const openapi = config.openapi ?? {};
+  const openapiEnabled = openapi.enabled !== false;
+  const tags = openapi.tags ?? [resourceName];
+  const selectSchema = config.schemas?.select ?? openapi.selectSchema;
+  const insertSchema = config.schemas?.insert;
+  const updateSchema = config.schemas?.update;
+
+  const successEnvelope = (dataSchema: any) =>
+    v.object({ success: v.literal(true), data: dataSchema });
+
+  // Build a describeRoute middleware (or nothing if docs are disabled).
+  const doc = (spec: {
+    summary: string;
+    dataSchema?: any;
+    bodySchema?: any;
+  }): MiddlewareHandler[] => {
+    if (!openapiEnabled) return [];
+
+    const responses: Record<string, any> = {
+      200: {
+        description: "Successful response",
+        ...(spec.dataSchema
+          ? {
+              content: {
+                "application/json": {
+                  schema: resolver(successEnvelope(spec.dataSchema)),
+                },
+              },
+            }
+          : {}),
+      },
+    };
+
+    const route: Record<string, any> = {
+      tags,
+      summary: spec.summary,
+      responses,
+    };
+
+    if (spec.bodySchema) {
+      route.requestBody = {
+        content: {
+          "application/json": { schema: resolver(spec.bodySchema) },
+        },
+      };
+    }
+
+    return [describeRoute(route)];
+  };
 
   // GET / - List entries with optional filtering, pagination, sorting and
   // relation expansion. Filters use PostgREST-style query params, e.g.
   //   ?status=eq.active&age=gte.18&name=like.john&expand=tenant&limit=20
   app.get(
     "/",
+    ...doc({
+      summary: `List ${resourceName}`,
+      dataSchema: selectSchema ? v.array(selectSchema) : undefined,
+    }),
+    ...authChain("read", "read"),
     validator("param", v.object({ tenantId: v.string() })),
     async (c) => {
       try {
-        const { tenantId } = c.req.valid("param");
+        const tenantId = c.req.param("tenantId")!;
         const rawQuery = c.req.query();
         const queryOptions = parseQueryOptions(rawQuery);
 
@@ -107,6 +236,8 @@ export function createCrudRoutes(
 
     app.get(
       "/markdown",
+      ...doc({ summary: `Export ${resourceName} as markdown` }),
+      ...authChain("read", "read"),
       validator("param", v.object({ tenantId: v.string() })),
       validator(
         "query",
@@ -114,8 +245,8 @@ export function createCrudRoutes(
       ),
       async (c) => {
         try {
-          const { tenantId } = c.req.valid("param");
-          const { type = "text" } = c.req.valid("query");
+          const tenantId = c.req.param("tenantId")!;
+          const type = (c.req.query("type") as "text" | "json") ?? "text";
 
           const entries = await operations.getAll(tenantId);
           const markdownContent = renderer(entries);
@@ -142,13 +273,13 @@ export function createCrudRoutes(
   // GET /:id - Get single entry
   app.get(
     "/:id",
-    validator(
-      "param",
-      v.object({ tenantId: v.string(), id: v.string() })
-    ),
+    ...doc({ summary: `Get a ${entityName} by id`, dataSchema: selectSchema }),
+    ...authChain("read", "read"),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     async (c) => {
       try {
-        const { tenantId, id } = c.req.valid("param");
+        const tenantId = c.req.param("tenantId")!;
+        const id = c.req.param("id")!;
         const entry = await operations.getById(tenantId, id);
 
         if (!entry) {
@@ -171,10 +302,16 @@ export function createCrudRoutes(
   // POST / - Create new entry
   app.post(
     "/",
+    ...doc({
+      summary: `Create a ${entityName}`,
+      dataSchema: selectSchema,
+      bodySchema: insertSchema,
+    }),
+    ...authChain("create", "write"),
     validator("param", v.object({ tenantId: v.string() })),
     async (c) => {
       try {
-        const { tenantId } = c.req.valid("param");
+        const tenantId = c.req.param("tenantId")!;
         const body = await c.req.json();
 
         const newEntry = await operations.create(tenantId, body);
@@ -192,13 +329,17 @@ export function createCrudRoutes(
   // PUT /:id - Update entry
   app.put(
     "/:id",
-    validator(
-      "param",
-      v.object({ tenantId: v.string(), id: v.string() })
-    ),
+    ...doc({
+      summary: `Update a ${entityName}`,
+      dataSchema: selectSchema,
+      bodySchema: updateSchema,
+    }),
+    ...authChain("update", "write"),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     async (c) => {
       try {
-        const { tenantId, id } = c.req.valid("param");
+        const tenantId = c.req.param("tenantId")!;
+        const id = c.req.param("id")!;
         const body = await c.req.json();
 
         const updatedEntry = await operations.update(tenantId, id, body);
@@ -223,13 +364,13 @@ export function createCrudRoutes(
   // DELETE /:id - Delete entry
   app.delete(
     "/:id",
-    validator(
-      "param",
-      v.object({ tenantId: v.string(), id: v.string() })
-    ),
+    ...doc({ summary: `Delete a ${entityName}` }),
+    ...authChain("delete", "write"),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     async (c) => {
       try {
-        const { tenantId, id } = c.req.valid("param");
+        const tenantId = c.req.param("tenantId")!;
+        const id = c.req.param("id")!;
         const deleted = await operations.remove(tenantId, id);
 
         if (!deleted) {

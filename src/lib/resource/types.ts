@@ -92,6 +92,67 @@ export interface CrudHooks {
 }
 
 /**
+ * Tenant access guard applied to a CRUD action.
+ * - "member": caller must be a member of the route's tenant (default)
+ * - "admin":  caller must be an admin or owner of the route's tenant
+ * - "none":   no tenant membership check (the operation still scopes by tenantId)
+ */
+export type TenantGuard = "member" | "admin" | "none";
+
+/** Per-action authorization config. */
+export interface CrudActionAuth {
+  /**
+   * Required scope for this action (e.g. "robots:read"). When set, a
+   * validateScope() middleware is applied to the route and the scope is
+   * registered as an available scope automatically.
+   */
+  scope?: string;
+  /** Tenant access guard for this action. Defaults to the group default. */
+  tenantGuard?: TenantGuard;
+}
+
+/**
+ * Authorization config for generated CRUD routes.
+ *
+ * Actions map to routes as follows:
+ * - `read`   -> GET (list), GET /:id, GET /markdown
+ * - `create` -> POST /
+ * - `update` -> PUT /:id
+ * - `delete` -> DELETE /:id
+ */
+export interface CrudAuthConfig {
+  /**
+   * Scope prefix shorthand. Expands to `${prefix}:read` for read actions and
+   * `${prefix}:write` for create/update/delete actions, unless a per-action
+   * `scope` overrides it. All resulting scopes are registered automatically.
+   */
+  scopePrefix?: string;
+  /** Default tenant guard for every action. Defaults to "member". */
+  tenantGuard?: TenantGuard;
+  /** Per-action override for the read actions (list, getById, markdown). */
+  read?: CrudActionAuth;
+  /** Per-action override for create (POST). */
+  create?: CrudActionAuth;
+  /** Per-action override for update (PUT). */
+  update?: CrudActionAuth;
+  /** Per-action override for delete (DELETE). */
+  delete?: CrudActionAuth;
+}
+
+/** OpenAPI documentation config for generated CRUD routes. */
+export interface CrudOpenApiConfig {
+  /** Emit OpenAPI docs via describeRoute. Defaults to true. */
+  enabled?: boolean;
+  /** OpenAPI tags for grouping. Defaults to the resource name. */
+  tags?: string[];
+  /**
+   * Valibot select schema used to document successful responses. Falls back to
+   * the resource's select schema when omitted.
+   */
+  selectSchema?: any;
+}
+
+/**
  * CRUD operations returned by createCrudOperations
  */
 export interface CrudOperations<TSelect = any> {
@@ -122,6 +183,8 @@ export interface ResourceConfig<
   insertSchema: any;
   /** Valibot update schema from drizzle-valibot */
   updateSchema: any;
+  /** Valibot select schema from drizzle-valibot, used for response docs */
+  selectSchema?: any;
   /** Semantic field descriptions for AI tools and API docs */
   fieldDescriptions?: Record<string, string>;
   /** Default ordering for getAll queries */
@@ -148,6 +211,14 @@ export interface ResourceConfig<
   markdown?: {
     renderer: (entries: any[]) => string;
   };
+  /**
+   * Authorization for generated routes: scope checks and tenant guards per
+   * action. When omitted, routes require tenant membership ("member") and have
+   * no scope check.
+   */
+  auth?: CrudAuthConfig;
+  /** OpenAPI documentation config for generated routes. */
+  openapi?: CrudOpenApiConfig;
 }
 
 /**
