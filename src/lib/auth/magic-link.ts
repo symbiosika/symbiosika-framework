@@ -152,7 +152,9 @@ export const createMagicLoginLink = async (
     firstname,
     surname
   );
-  const magicLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.magicLoginVerifyUrl}?token=${encodeURIComponent(token)}&redirectUrl=${encodeURIComponent(redirectUrl || "")}`;
+  const magicLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.magicLoginVerifyUrl}?token=${encodeURIComponent(token)}${
+    redirectUrl ? `&redirectUrl=${encodeURIComponent(redirectUrl)}` : ""
+  }`;
 
   return magicLink;
 };
