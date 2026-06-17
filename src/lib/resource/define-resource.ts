@@ -59,7 +59,15 @@ export function defineResource<T extends PgTable<TableConfig>>(
   const { registerRoutes } = createCrudRoutes(operations, {
     basePath: config.route,
     entityName,
+    resourceName: config.name,
     markdown: config.markdown,
+    auth: config.auth,
+    openapi: config.openapi,
+    schemas: {
+      select: config.selectSchema,
+      insert: config.insertSchema,
+      update: config.updateSchema,
+    },
   });
 
   // 3. Create AI tools (optional)

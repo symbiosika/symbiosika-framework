@@ -21,6 +21,10 @@ export type {
   CrudOperations,
   ResourceConfig,
   ResourceDefinition,
+  TenantGuard,
+  CrudActionAuth,
+  CrudAuthConfig,
+  CrudOpenApiConfig,
 } from "./types";
 
 // URL query parsing (filtering, pagination, sorting, relation expansion)

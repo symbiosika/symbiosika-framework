@@ -61,3 +61,22 @@ export const validateScope = (scopes: string[]) => {
     throw new Error(`Invalid scope: ${invalidScopes.join(", ")}`);
   }
 };
+
+/**
+ * Register additional scopes as valid at runtime.
+ *
+ * Apps (and the resource system) use this to make their own scopes known to the
+ * framework so they pass token-creation validation and appear in the OAuth2
+ * discovery metadata. Duplicates and empty values are ignored, so it is safe to
+ * call repeatedly (e.g. once per resource at server-definition time).
+ *
+ * @example
+ * registerScopes("robots:read", "robots:write");
+ */
+export const registerScopes = (...scopes: string[]) => {
+  for (const scope of scopes) {
+    if (scope && !availableScopes.all.includes(scope)) {
+      availableScopes.all.push(scope);
+    }
+  }
+};
