@@ -15,8 +15,11 @@
  *     KEY=some-string          → set to "some-string" if not already present
  *     KEY={!}some-string       → always set to "some-string" (overwrites existing)
  *     KEY={shared_secret}      → generate a random secret if not already present
- *     KEY={user_input}         → prompt on the console if not already present;
- *                                empty input skips without overwriting
+ *     KEY={user_input}         → use the value from the current process
+ *                                environment (e.g. an exported shell/Docker var)
+ *                                if set and non-empty; otherwise prompt on the
+ *                                console. Only applied if not already present.
+ *                                Empty input skips without overwriting
  *     KEY={!}{user_input}      → always prompt (even if already present)
  *     KEY={folder://PATH:SRC}  → read SRC from the .env in folder PATH (relative
  *                                to the current dir, may be a sibling/parent) and
@@ -305,6 +308,15 @@ async function applyRequiredVariables(path: string): Promise<void> {
         updates[required_var.key] = generateSharedSecret();
         break;
       case "user_input": {
+        // Prefer a value already present in the process environment
+        // (e.g. an exported shell/Docker sandbox variable) — set it
+        // automatically without prompting.
+        const fromEnv = process.env[required_var.key];
+        if (fromEnv !== undefined && fromEnv.trim() !== "") {
+          updates[required_var.key] = fromEnv;
+          console.log(`✓ ${required_var.key}: taken from environment`);
+          break;
+        }
         const answer = prompt(`Enter value for ${required_var.key}:`);
         // Empty input: skip without overwriting.
         if (answer === null || answer.trim() === "") continue;
