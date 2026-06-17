@@ -1,6 +1,23 @@
 import nodemailer from "nodemailer";
 import * as v from "valibot";
 import log from "../log";
+import { _GLOBAL_SERVER_CONFIG } from "../../store";
+
+/**
+ * Console-mode DX shortcut: detect a magic login link inside the email content
+ * by matching any URL that points at the configured magicLoginVerifyUrl path.
+ * Returns the bare link (or null if none is found). Only used in console mode
+ * so that a developer sees just the login URL instead of the whole email.
+ */
+function extractMagicLoginLink(content: string): string | null {
+  const path = _GLOBAL_SERVER_CONFIG.magicLoginVerifyUrl;
+  if (!path) return null;
+  const escapedPath = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`https?://[^\\s"'<>]*${escapedPath}[^\\s"'<>]*`, "i");
+  const match = content.match(re);
+  if (!match) return null;
+  return match[0].replace(/&amp;/g, "&");
+}
 
 /** Convert HTML to plain text for console so links (e.g. magic link) are visible. */
 function htmlToPlainText(html: string): string {
@@ -123,6 +140,34 @@ class SMTPService {
     if (this.consoleMode) {
       const from = sender || process.env.SMTP_DEFAULT_SENDER || "unknown";
       const to = recipients.join(", ");
+
+      // Magic login shortcut: if the email contains a magic login link,
+      // output ONLY the link (console + file) for a faster dev login flow.
+      const magicLoginLink = extractMagicLoginLink(html || text || "");
+      if (magicLoginLink) {
+        console.log("\n" + "=".repeat(60));
+        console.log("🔑 MAGIC LOGIN LINK (Console Mode)");
+        console.log("=".repeat(60));
+        console.log(`To: ${to}`);
+        console.log(magicLoginLink);
+        console.log("=".repeat(60) + "\n");
+
+        const timestamp = new Date().toISOString();
+        const filePath = await log.writeEmailFile({
+          timestamp,
+          from,
+          to,
+          subject,
+          body: magicLoginLink,
+        });
+        if (filePath) {
+          console.log(`📁 Login link saved to: ${filePath}`);
+        }
+
+        this.log(`[Console Mode] Magic login link logged: ${subject}`);
+        return true;
+      }
+
       const body = text || htmlToPlainText(html || "");
 
       console.log("\n" + "=".repeat(60));
