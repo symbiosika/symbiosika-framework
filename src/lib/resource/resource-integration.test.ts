@@ -36,6 +36,12 @@ const resource = defineResource({
     queryKey: "tenantSpecificData",
     allowed: ["tenant"],
   },
+  // This test mounts the routes on a bare Hono app without authAndSetUsersInfo,
+  // so it does not simulate tenant membership. Opt out of the (now default)
+  // tenant membership guard so the generated routes' data behaviour can be
+  // exercised directly. Operation-level tenant scoping (by tenantId) is still
+  // enforced and is what the isolation tests below verify.
+  auth: { tenantGuard: "none" },
 });
 
 let app: SymbiosikaFrameworkHonoApp;
