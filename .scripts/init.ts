@@ -276,76 +276,12 @@ function generateSharedSecret(): string {
 }
 
 /**
- * Apply app-specific required variables from .env.required-variables.
- * Present (non-empty) values are only overwritten when prefixed with {!}.
+ * Merge KEY=VALUE updates into .env content: replace existing lines (set or
+ * empty) and append keys that don't exist yet. Pure — returns the new content.
  */
-async function applyRequiredVariables(path: string): Promise<void> {
-  const requiredFile = Bun.file(envRequiredPath);
-  if (!(await requiredFile.exists())) return;
-
-  const required = parseRequiredVariables(await requiredFile.text());
-  if (required.length === 0) return;
-
-  const envFile = Bun.file(path);
-  const content = (await envFile.exists()) ? await envFile.text() : "";
-  const current = parseEnv(content);
-
-  const isPresent = (key: string): boolean => {
-    const value = current.get(key);
-    return value !== undefined && value.trim() !== "";
-  };
-
-  const updates: Record<string, string> = {};
-
-  for (const required_var of required) {
-    if (isPresent(required_var.key) && !required_var.force) continue;
-
-    switch (required_var.kind) {
-      case "literal":
-        updates[required_var.key] = required_var.literal;
-        break;
-      case "shared_secret":
-        updates[required_var.key] = generateSharedSecret();
-        break;
-      case "user_input": {
-        // Prefer a value already present in the process environment
-        // (e.g. an exported shell/Docker sandbox variable) — set it
-        // automatically without prompting.
-        const fromEnv = process.env[required_var.key];
-        if (fromEnv !== undefined && fromEnv.trim() !== "") {
-          updates[required_var.key] = fromEnv;
-          console.log(`✓ ${required_var.key}: taken from environment`);
-          break;
-        }
-        const answer = prompt(`Enter value for ${required_var.key}:`);
-        // Empty input: skip without overwriting.
-        if (answer === null || answer.trim() === "") continue;
-        updates[required_var.key] = answer;
-        break;
-      }
-      case "folder_ref": {
-        const value = await readFromFolder(
-          required_var.folderPath,
-          required_var.sourceKey
-        );
-        // Source file/key missing: skip without overwriting.
-        if (value === null) {
-          console.warn(
-            `⚠ ${required_var.key}: ${required_var.sourceKey} not found in ${required_var.folderPath}/.env — skipped`
-          );
-          continue;
-        }
-        updates[required_var.key] = value;
-        break;
-      }
-    }
-  }
-
-  const keysSet = Object.keys(updates);
-  if (keysSet.length === 0) return;
-
+function mergeEnv(content: string, updates: Record<string, string>): string {
   const lines = content.split("\n");
-  const remaining = new Set(keysSet);
+  const remaining = new Set(Object.keys(updates));
 
   const newLines = lines.map((line: string) => {
     const stripped = line.replace(/\r$/, "");
@@ -363,8 +299,102 @@ async function applyRequiredVariables(path: string): Promise<void> {
     newLines.push(`${key}=${updates[key]}`);
   }
 
-  await Bun.write(path, newLines.join("\n"));
-  console.log(`✓ Applied required variables: ${keysSet.join(", ")}`);
+  return newLines.join("\n");
+}
+
+/**
+ * Apply app-specific required variables from .env.required-variables.
+ * Present (non-empty) values are only overwritten when prefixed with {!}.
+ *
+ * Runs in two phases so an aborted prompt can never discard work:
+ *   1. Deterministic values (literal, shared_secret, folder_ref) are computed
+ *      and written to disk immediately — before any interactive prompt.
+ *   2. Interactive {user_input} values are prompted for and each answer is
+ *      written as soon as it is provided.
+ */
+async function applyRequiredVariables(path: string): Promise<void> {
+  const requiredFile = Bun.file(envRequiredPath);
+  if (!(await requiredFile.exists())) return;
+
+  const required = parseRequiredVariables(await requiredFile.text());
+  if (required.length === 0) return;
+
+  const envFile = Bun.file(path);
+  let content = (await envFile.exists()) ? await envFile.text() : "";
+  const current = parseEnv(content);
+
+  const isPresent = (key: string): boolean => {
+    const value = current.get(key);
+    return value !== undefined && value.trim() !== "";
+  };
+
+  // Phase 1 — deterministic values. Collected and flushed to disk before any
+  // prompt so they survive an aborted/interrupted phase 2.
+  const deterministic: Record<string, string> = {};
+
+  for (const required_var of required) {
+    if (isPresent(required_var.key) && !required_var.force) continue;
+
+    switch (required_var.kind) {
+      case "literal":
+        deterministic[required_var.key] = required_var.literal;
+        break;
+      case "shared_secret":
+        deterministic[required_var.key] = generateSharedSecret();
+        break;
+      case "folder_ref": {
+        const value = await readFromFolder(
+          required_var.folderPath,
+          required_var.sourceKey
+        );
+        // Source file/key missing: skip without overwriting.
+        if (value === null) {
+          console.warn(
+            `⚠ ${required_var.key}: ${required_var.sourceKey} not found in ${required_var.folderPath}/.env — skipped`
+          );
+          continue;
+        }
+        deterministic[required_var.key] = value;
+        break;
+      }
+      case "user_input":
+        // Handled in phase 2.
+        break;
+    }
+  }
+
+  const deterministicKeys = Object.keys(deterministic);
+  if (deterministicKeys.length > 0) {
+    content = mergeEnv(content, deterministic);
+    await Bun.write(path, content);
+    console.log(`✓ Applied required variables: ${deterministicKeys.join(", ")}`);
+  }
+
+  // Phase 2 — interactive {user_input} values. Each answer is written
+  // immediately, so aborting a later prompt keeps the earlier answers.
+  for (const required_var of required) {
+    if (required_var.kind !== "user_input") continue;
+    if (isPresent(required_var.key) && !required_var.force) continue;
+
+    // Prefer a value already present in the process environment
+    // (e.g. an exported shell/Docker sandbox variable) — set it
+    // automatically without prompting.
+    const fromEnv = process.env[required_var.key];
+    let value: string;
+    if (fromEnv !== undefined && fromEnv.trim() !== "") {
+      value = fromEnv;
+      console.log(`✓ ${required_var.key}: taken from environment`);
+    } else {
+      const answer = prompt(`Enter value for ${required_var.key}:`);
+      // Empty input: skip without overwriting.
+      if (answer === null || answer.trim() === "") continue;
+      value = answer;
+    }
+
+    content = mergeEnv(content, { [required_var.key]: value });
+    await Bun.write(path, content);
+    console.log(`✓ Applied required variable: ${required_var.key}`);
+  }
 }
 
 /**
@@ -395,10 +425,9 @@ async function init(): Promise<void> {
     console.log("ℹ All secrets already set");
   }
 
-  // Apply app-specific required variables (./.env.required-variables)
-  await applyRequiredVariables(envPath);
-
-  // Apply KEY=VALUE overrides from CLI arguments
+  // Apply KEY=VALUE overrides from CLI arguments. These are deterministic, so
+  // apply them before required variables (whose interactive {user_input} phase
+  // could otherwise abort and leave overrides unwritten).
   const overrides = parseOverrides(process.argv.slice(2));
   if (Object.keys(overrides).length > 0) {
     const keysSet = await applyOverrides(envPath, overrides);
@@ -406,6 +435,10 @@ async function init(): Promise<void> {
       console.log(`✓ Applied overrides: ${keysSet.join(", ")}`);
     }
   }
+
+  // Apply app-specific required variables (./.env.required-variables).
+  // Deterministic values are written first; interactive prompts come last.
+  await applyRequiredVariables(envPath);
 }
 
 // Run init
