@@ -15,4 +15,5 @@ export {
   verifySignature,
   signData,
   generateKeyPair,
+  authenticateConnection,
 } from "../lib/connections";

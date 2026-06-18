@@ -14,5 +14,6 @@ export {
 export {
   getDbSchema,
   getValidDbSchemaTableNames,
+  initializeFullDbSchema,
   type DatabaseSchema,
 } from "../lib/db/db-schema";
