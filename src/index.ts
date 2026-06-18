@@ -51,6 +51,7 @@ import defineInvitationRoutes from "./routes/tenant/[tenantId]/invitations";
 import defineManageSecretsRoutes from "./routes/tenant/[tenantId]/secrets";
 
 import definePingRoute from "./routes/ping";
+import defineHealthRoute from "./routes/health";
 import defineWebhookRoutes from "./routes/tenant/[tenantId]/webhooks";
 import defineAdminRoutes from "./routes/admin";
 import defineSearchInOrganisationRoutes from "./routes/tenant/[tenantId]/search";
@@ -175,6 +176,13 @@ export const defineServer = (config: ServerSpecificConfig) => {
    * and check if the server has external internet access
    */
   definePingRoute(app, _GLOBAL_SERVER_CONFIG.basePath);
+
+  /**
+   * Adds health endpoints at the root path
+   * - GET /health         public liveness probe (Coolify / docker)
+   * - GET /health/detail  authenticated readiness probe (DB / SMTP / job queue)
+   */
+  defineHealthRoute(app);
 
   /**
    * Initialize internal caches after DB is connected

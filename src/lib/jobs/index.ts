@@ -18,6 +18,17 @@ export interface JobHandlerRegister {
 
 const jobHandlers: Record<string, JobHandler> = {};
 
+// Whether the background job queue interval has been started (see startJobQueue).
+let jobQueueRunning = false;
+
+/**
+ * Returns true once startJobQueue() has been called.
+ * Used by the health endpoint to report job-queue status.
+ */
+export function isJobQueueRunning(): boolean {
+  return jobQueueRunning;
+}
+
 export function defineJob(type: string, handler: JobHandler) {
   jobHandlers[type] = handler;
 }
@@ -75,6 +86,7 @@ async function processJob(job: Job) {
 }
 
 export async function startJobQueue() {
+  jobQueueRunning = true;
   setInterval(async () => {
     // log.debug("Checking for pending jobs");
     const pendingJobs = await getDb()
