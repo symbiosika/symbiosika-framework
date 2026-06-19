@@ -163,19 +163,32 @@ export function defineSecuredUserRoutes(
         image: v.optional(v.nullable(v.string())),
         lastTenantId: v.optional(v.nullable(v.string())),
         phoneNumber: v.optional(v.nullable(v.string())),
+        theme: v.optional(v.picklist(["light", "dark"])),
       })
     ),
     async (c) => {
       try {
         // ensure to get only the allowed fields
-        const { firstname, surname, image, lastTenantId, phoneNumber } =
+        const { firstname, surname, image, lastTenantId, phoneNumber, theme } =
           c.req.valid("json");
+
+        // Theme is stored on the generic "meta" JSONB column. Merge it into the
+        // existing meta so other keys (e.g. customRegisterData) are preserved.
+        let meta: Record<string, unknown> | undefined;
+        if (theme !== undefined) {
+          const current = await getUserById(c.get("usersId"));
+          const currentMeta =
+            (current?.meta as Record<string, unknown> | null) ?? {};
+          meta = { ...currentMeta, theme };
+        }
+
         await updateUser(c.get("usersId"), {
           firstname,
           surname,
           image,
           lastTenantId,
           phoneNumber,
+          ...(meta !== undefined ? { meta } : {}),
         });
         const user = await getUserById(c.get("usersId"));
         return c.json(user);

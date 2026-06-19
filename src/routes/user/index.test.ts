@@ -263,6 +263,57 @@ describe("User API Endpoints", () => {
     expect(response.status).toBe(400);
   });
 
+  // Theme preference is stored on users.meta.theme
+  it("PUT /user/me persists the theme preference in meta", async () => {
+    // set theme to dark
+    const darkResponse = await app.request("/api/user/me", {
+      method: "PUT",
+      body: JSON.stringify({ theme: "dark" }),
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `jwt=${jwt}`,
+      },
+    });
+    expect(darkResponse.status).toBe(200);
+    const darkData: any = await darkResponse.json();
+    expect(darkData.meta?.theme).toBe("dark");
+
+    // verify it is returned again on GET
+    const getResponse = await app.request("/api/user/me", {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `jwt=${jwt}`,
+      },
+    });
+    const getData: any = await getResponse.json();
+    expect(getData.meta?.theme).toBe("dark");
+
+    // switch back to light
+    const lightResponse = await app.request("/api/user/me", {
+      method: "PUT",
+      body: JSON.stringify({ theme: "light" }),
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `jwt=${jwt}`,
+      },
+    });
+    const lightData: any = await lightResponse.json();
+    expect(lightData.meta?.theme).toBe("light");
+  });
+
+  it("PUT /user/me rejects an invalid theme value with 400", async () => {
+    const response = await app.request("/api/user/me", {
+      method: "PUT",
+      body: JSON.stringify({ theme: "rainbow" }),
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `jwt=${jwt}`,
+      },
+    });
+    expect(response.status).toBe(400);
+  });
+
   // Test available scopes endpoint
   it("should get available scopes for API tokens", async () => {
     const response = await app.request(
