@@ -24,6 +24,7 @@ import { getConnInfo } from "hono/bun";
 // Utils
 import log from "./lib/log";
 import { validateAllEnvVariables } from "./lib/utils/env-validate";
+import { globalErrorHandler } from "./lib/utils/global-error-handler";
 // Registration actions
 import {
   registerPostRegisterAction,
@@ -119,6 +120,9 @@ export const defineServer = (config: ServerSpecificConfig) => {
    * Init the main Hono app
    */
   const app = new Hono<{ Variables: SFContextVariables }>();
+  // Central error boundary: passes HTTPException through, logs + 500s the rest.
+  // Makes per-handler try/catch wrappers obsolete.
+  app.onError(globalErrorHandler);
   app.use(logger());
   if (config.useConsoleLogger) {
     console.log("Using console logger");
@@ -314,6 +318,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
           const honoApp = new Hono<{
             Variables: SFContextVariables;
           }>();
+          honoApp.onError(globalErrorHandler);
 
           // Register routes without global auth middleware
           customApp(honoApp);
@@ -332,6 +337,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
           const honoApp = new Hono<{
             Variables: SFContextVariables;
           }>();
+          honoApp.onError(globalErrorHandler);
 
           // Apply global auth middleware to all routes
           honoApp.use("/*", authAndSetUsersInfo);
