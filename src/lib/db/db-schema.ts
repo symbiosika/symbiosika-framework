@@ -18,6 +18,7 @@ import * as oauthCodes from "./schema/oauth-codes";
 import * as oauthRefreshTokens from "./schema/oauth-refresh-tokens";
 import * as oauthConsents from "./schema/oauth-consents";
 import * as emailLoginCodes from "./schema/email-login-codes";
+import * as userSettings from "./schema/user-settings";
 
 // export all tables for drizzle-kit
 export * from "./schema/users";
@@ -36,6 +37,7 @@ export * from "./schema/oauth-codes";
 export * from "./schema/oauth-refresh-tokens";
 export * from "./schema/oauth-consents";
 export * from "./schema/email-login-codes";
+export * from "./schema/user-settings";
 
 const baseDbSchema = {
   ...userTables,
@@ -54,6 +56,7 @@ const baseDbSchema = {
   ...oauthRefreshTokens,
   ...oauthConsents,
   ...emailLoginCodes,
+  ...userSettings,
 };
 
 let validTableNames: string[] = [];

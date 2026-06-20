@@ -34,6 +34,7 @@ import { registerPostConnectionAction } from "./lib/connections/actions";
 // Routes
 import { definePublicUserRoutes } from "./routes/user/public";
 import { defineSecuredUserRoutes } from "./routes/user/protected";
+import { defineUserSettingsRoutes } from "./routes/user/settings";
 import { defineOAuth2Routes } from "./lib/oauth2";
 import { defineFilesRoutes } from "./routes/tenant/[tenantId]/files";
 
@@ -220,6 +221,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
        */
       definePublicUserRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineSecuredUserRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      defineUserSettingsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineNotificationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
