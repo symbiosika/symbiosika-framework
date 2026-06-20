@@ -16,4 +16,9 @@ export {
   signData,
   generateKeyPair,
   authenticateConnection,
+  disconnectConnection,
+  disconnectLocalConnections,
+  teardownConnectionBySignature,
+  ConnectionNotFoundError,
+  ConnectionGoneError,
 } from "../lib/connections";

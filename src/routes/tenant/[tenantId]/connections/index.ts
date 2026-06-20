@@ -8,12 +8,14 @@
  * - POST /init - Initialize a new connection to a remote server
  * - POST /exchange-keys - Accept connection from remote server (called by remote)
  * - POST /authenticate - Authenticate connection using signature (public endpoint)
+ * - POST /teardown - Terminate a connection from the remote side (signed, public)
  * - POST /:connectionId/verify - Verify connection status
  * - GET / - List all connections for tenant
  * - GET /list - List connections (id, name, meta only)
+ * - DELETE /self-disconnect - Terminate all locally-initiated connections (Abmelden)
  * - GET /:connectionId - Get specific connection
  * - POST /:connectionId/refresh - Refresh connection timestamp
- * - DELETE /:connectionId - Drop a connection
+ * - DELETE /:connectionId - Terminate a connection (notify remote + delete local)
  */
 
 import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
@@ -22,7 +24,10 @@ import {
   authAndSetUsersInfo,
   checkUserPermission,
 } from "../../../../lib/utils/hono-middlewares";
-import { connectionsService } from "../../../../lib/connections";
+import {
+  connectionsService,
+  ConnectionNotFoundError,
+} from "../../../../lib/connections";
 import { describeRoute } from "hono-openapi";
 import { validator } from "hono-openapi";
 import * as v from "valibot";
@@ -380,11 +385,69 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
         return c.json(result);
       } catch (error) {
         log.error("Error authenticating connection:", error as object);
+        // Explicit, machine-readable signal that the connection no longer
+        // exists here. The remote uses this to self-heal (delete its own row)
+        // — distinct from a 401 invalid-signature, which must NOT delete it.
+        if (error instanceof ConnectionNotFoundError) {
+          return c.json(
+            { error: "connection_not_found", message: error.message },
+            404
+          );
+        }
         throw new HTTPException(401, {
           message:
             error instanceof Error
               ? error.message
               : "Authentication failed",
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /teardown
+   * Terminate ("cancel") a connection from the remote side.
+   * Public endpoint — authorized solely by the RSA signature over
+   * `${remoteConnectionId}:${timestamp}`, verified against the stored public
+   * key (same trust model as /authenticate). Idempotent.
+   */
+  app.post(
+    `${baseRoute}/teardown`,
+    validator(
+      "json",
+      v.object({
+        remoteConnectionId: v.string("Remote connection ID is required"),
+        timestamp: v.number("Timestamp is required"),
+        signature: v.string("Signature is required"),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string() })),
+    describeRoute({
+      description: "Terminate a connection from the remote side (signed request)",
+      responses: {
+        200: { description: "Connection torn down (or already gone)" },
+        401: { description: "Invalid signature" },
+      },
+    }),
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const { remoteConnectionId, timestamp, signature } =
+          c.req.valid("json");
+
+        const result = await connectionsService.teardownConnectionBySignature(
+          tenantId,
+          remoteConnectionId,
+          timestamp,
+          signature
+        );
+
+        return c.json(result);
+      } catch (error) {
+        log.error("Error tearing down connection:", error as object);
+        throw new HTTPException(401, {
+          message:
+            error instanceof Error ? error.message : "Teardown failed",
         });
       }
     }
@@ -525,6 +588,45 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
   );
 
   /**
+   * DELETE /self-disconnect
+   * Terminate all connections this tenant initiated locally (the "Abmelden"
+   * action). Notifies each remote, then deletes locally. Registered before the
+   * /:connectionId routes so "self-disconnect" is not parsed as a connection id.
+   */
+  app.delete(
+    `${baseRoute}/self-disconnect`,
+    authAndSetUsersInfo,
+    checkUserPermission,
+    isTenantAdmin,
+    validator("param", v.object({ tenantId: v.string() })),
+    validateScope("connections:write"),
+    describeRoute({
+      description: "Terminate all locally-initiated connections of this tenant",
+      responses: {
+        200: { description: "Connections terminated successfully" },
+        400: { description: "Failed to terminate connections" },
+      },
+    }),
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const result =
+          await connectionsService.disconnectLocalConnections(tenantId);
+        return c.json({
+          message: "Disconnected successfully",
+          ...result,
+        });
+      } catch (error) {
+        log.error("Error self-disconnecting:", error as object);
+        throw new HTTPException(400, {
+          message:
+            error instanceof Error ? error.message : "Failed to disconnect",
+        });
+      }
+    }
+  );
+
+  /**
    * GET /:connectionId
    * Get a specific connection
    */
@@ -632,29 +734,36 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     ),
     validateScope("connections:write"),
     describeRoute({
-      description: "Drop a connection",
+      description:
+        "Terminate a connection: notify the remote (best-effort), then delete locally",
       responses: {
         200: {
-          description: "Connection dropped successfully",
+          description: "Connection terminated successfully",
         },
         400: {
-          description: "Failed to drop connection",
+          description: "Failed to terminate connection",
         },
       },
     }),
     async (c) => {
       try {
         const { tenantId, connectionId } = c.req.valid("param");
-        await connectionsService.dropConnection(connectionId, tenantId);
+        const result = await connectionsService.disconnectConnection(
+          connectionId,
+          tenantId
+        );
 
         return c.json({
-          message: "Connection dropped successfully",
+          message: "Connection terminated successfully",
+          ...result,
         });
       } catch (error) {
-        log.error("Error dropping connection:", error as object);
+        log.error("Error terminating connection:", error as object);
         throw new HTTPException(400, {
           message:
-            error instanceof Error ? error.message : "Failed to drop connection",
+            error instanceof Error
+              ? error.message
+              : "Failed to terminate connection",
         });
       }
     }

@@ -52,6 +52,37 @@ export interface AuthenticationResult {
   token: string;
 }
 
+export interface DisconnectResult {
+  connectionId: string;
+  /** Whether the remote side acknowledged the teardown (deleted its row). */
+  remoteNotified: boolean;
+}
+
+/**
+ * Thrown by authenticateConnection when no connection exists for the given
+ * remoteConnectionId. The remote side translates this into an explicit
+ * `connection_not_found` response so the caller can self-heal (scenario 2:
+ * the other side already terminated the connection while we were offline).
+ */
+export class ConnectionNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConnectionNotFoundError";
+  }
+}
+
+/**
+ * Thrown by verifyConnection when the remote side explicitly reported that the
+ * connection no longer exists. The local connection has been removed at this
+ * point — callers should treat the connection as gone (e.g. re-onboard).
+ */
+export class ConnectionGoneError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConnectionGoneError";
+  }
+}
+
 // ============================================================================
 // Cryptographic Functions
 // ============================================================================
@@ -638,7 +669,7 @@ export async function authenticateConnection(
       remoteConnectionId
     );
     if (!connection) {
-      throw new Error(
+      throw new ConnectionNotFoundError(
         `Connection not found for remoteConnectionId: ${remoteConnectionId}`
       );
     }
@@ -756,6 +787,28 @@ export async function verifyConnection(
     );
 
     if (!response.ok) {
+      // Scenario 2: the remote explicitly reports the connection no longer
+      // exists (it was terminated there while this side could not be reached).
+      // Only this precise, machine-readable signal triggers a local cleanup —
+      // never a generic 401/5xx/network error, so we don't drop a connection
+      // by accident when the remote is merely temporarily unhappy.
+      if (response.status === 404) {
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        if (body?.error === "connection_not_found") {
+          await dropConnection(connectionId, tenantId).catch((err) =>
+            log.error(
+              "Failed to drop local connection after remote reported it gone:",
+              err as object
+            )
+          );
+          throw new ConnectionGoneError(
+            "Remote connection no longer exists; local connection removed."
+          );
+        }
+      }
+
       const errorText = await response.text().catch(() => "Unknown error");
       throw new Error(
         `Authentication failed: ${response.status} ${errorText}`
@@ -916,6 +969,160 @@ export async function dropConnection(
       ? error
       : new Error("Failed to drop connection");
   }
+}
+
+/**
+ * Notify the remote side that we are terminating ("cancelling") the connection.
+ *
+ * Sends a request signed with our server private key (same signature scheme as
+ * authenticate) to the remote's /connections/teardown endpoint. The remote
+ * verifies the signature against the stored public key — that cryptographic
+ * proof is sufficient authorization to drop its matching row. Best-effort: a
+ * returned `false` (remote offline / unreachable / rejected) is expected and
+ * handled by the local-delete-then-self-heal-later flow (scenario 2).
+ */
+async function notifyRemoteTeardown(
+  connection: ConnectionsSelect
+): Promise<boolean> {
+  if (!connection.remoteUrl || !connection.remoteConnectionId) {
+    return false;
+  }
+  try {
+    const serverKey = await getServerKeys();
+    if (!serverKey) return false;
+
+    const timestamp = Date.now();
+    const data = `${connection.remoteConnectionId}:${timestamp}`;
+    const signature = signData(data, serverKey.privateKey);
+
+    const res = await fetch(
+      `${connection.remoteUrl}/api/v1/tenant/${connection.tenantId}/connections/teardown`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          remoteConnectionId: connection.remoteConnectionId,
+          timestamp,
+          signature,
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      log.info(
+        `Remote teardown not acknowledged for connection ${connection.id}: ${res.status}`
+      );
+      return false;
+    }
+    return true;
+  } catch (error) {
+    log.info(
+      `Failed to notify remote of teardown for connection ${connection.id}: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`
+    );
+    return false;
+  }
+}
+
+/**
+ * Terminate ("cancel") a connection from this side.
+ *
+ * Either side may trigger this. Flow:
+ * 1. Notify the remote (best-effort, signature-validated) so it deletes its
+ *    matching row — scenario 1 (remote reachable: both sides delete cleanly).
+ * 2. Always delete the local row afterwards — scenario 2 (remote offline: the
+ *    local row goes away now; the remote learns about it on its next
+ *    authenticate attempt, which then returns `connection_not_found`).
+ *
+ * Authorization for the teardown is the manual action plus, on the remote, the
+ * cryptographic signature — no extra credentials are required.
+ */
+export async function disconnectConnection(
+  connectionId: string,
+  tenantId?: string
+): Promise<DisconnectResult> {
+  const connection = await getConnection(connectionId, tenantId);
+  if (!connection) {
+    throw new Error("Connection not found");
+  }
+
+  const remoteNotified = await notifyRemoteTeardown(connection);
+  await dropConnection(connectionId, tenantId);
+
+  log.info(
+    `Connection disconnected: ${connectionId} (remoteNotified=${remoteNotified})`
+  );
+  return { connectionId, remoteNotified };
+}
+
+/**
+ * Terminate all connections a tenant initiated locally.
+ *
+ * Used by the robot's "Abmelden" action — a robot holds exactly one such cloud
+ * connection, but this stays correct if there happen to be several.
+ */
+export async function disconnectLocalConnections(
+  tenantId: string
+): Promise<{ disconnected: number; remoteNotified: number }> {
+  const conns = await getConnectionByLocalTenant(tenantId, "local");
+  let remoteNotified = 0;
+  for (const conn of conns) {
+    const result = await disconnectConnection(conn.id, tenantId);
+    if (result.remoteNotified) remoteNotified++;
+  }
+  return { disconnected: conns.length, remoteNotified };
+}
+
+/**
+ * Handle an incoming teardown ("cancellation") request from the remote side.
+ *
+ * Authenticated solely by the RSA signature over `${remoteConnectionId}:${timestamp}`,
+ * verified against the stored remote public key — that proof is sufficient
+ * authorization to drop the connection (it can only be issued by the holder of
+ * the matching private key). Idempotent: a missing connection is treated as
+ * already-torn-down and reported as a no-op rather than an error.
+ */
+export async function teardownConnectionBySignature(
+  tenantId: string,
+  remoteConnectionId: string,
+  timestamp: number,
+  signature: string
+): Promise<{ removed: boolean }> {
+  if (!tenantId || !remoteConnectionId || !timestamp || !signature) {
+    throw new Error("Missing required teardown parameters");
+  }
+
+  // Reject stale requests (replay protection, 5 minute window) — same as authenticate.
+  const now = Date.now();
+  if (Math.abs(now - timestamp) > 5 * 60 * 1000) {
+    throw new Error("Timestamp expired");
+  }
+
+  const connection = await getConnectionByRemoteConnectionId(
+    tenantId,
+    remoteConnectionId
+  );
+  if (!connection) {
+    // Already gone — nothing to tear down. Idempotent success.
+    return { removed: false };
+  }
+
+  if (!connection.remotePublicKey) {
+    throw new Error(
+      "No remote public key found for connection. Cannot verify teardown request."
+    );
+  }
+
+  const data = `${remoteConnectionId}:${timestamp}`;
+  if (!verifySignature(data, signature, connection.remotePublicKey)) {
+    throw new Error("Invalid signature");
+  }
+
+  const db = getDb();
+  await db.delete(connections).where(eq(connections.id, connection.id));
+  log.info(`Connection torn down by remote request: ${connection.id}`);
+  return { removed: true };
 }
 
 /**
@@ -1156,6 +1363,9 @@ export const connectionsService = {
 
   // Connection lifecycle
   dropConnection,
+  disconnectConnection,
+  disconnectLocalConnections,
+  teardownConnectionBySignature,
   refreshConnection,
   cleanupStaleConnections,
 };
