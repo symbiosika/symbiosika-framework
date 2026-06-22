@@ -69,6 +69,22 @@ async function main() {
   );
 }
 
+/**
+ * Build a readable error message. Drizzle wraps the real DB error (e.g.
+ * "relation ... does not exist") in `error.cause`, so surface that too.
+ */
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = (error as { cause?: unknown }).cause;
+    const causeMessage =
+      cause instanceof Error ? cause.message : cause ? String(cause) : "";
+    return causeMessage && causeMessage !== error.message
+      ? `${error.message} (${causeMessage})`
+      : error.message;
+  }
+  return String(error);
+}
+
 main()
   .then(() => process.exit(0))
   .catch((error) => {
@@ -76,7 +92,7 @@ main()
       JSON.stringify(
         {
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: describeError(error),
         },
         null,
         2
