@@ -1,71 +1,89 @@
 ---
 name: db-query
 description: >
-  Use when you need to inspect raw data in the development database by running an arbitrary
-  SQL query and reading the result. Use when the user asks to "check the DB", "look up rows",
-  "run a query", "see what's in table X", or verify data while debugging. Runs a raw SQL query
-  via the framework's getDb() connection against the dev database and prints rows (or the error)
-  as JSON to the console.
+  Use when you need to inspect or verify real data in the development database. Use when the user
+  asks to "check the DB", "look up rows", "run a query", "see what's in table X", count records,
+  confirm a migration worked, or debug why something looks wrong by reading the actual data.
+  Runs a raw SQL query and prints the rows (or the error) as JSON to the console.
 ---
 
 # DB Query Skill
 
-This skill runs a **raw SQL query** against the development database and prints
-the result to the console as JSON. It exists so an AI agent (or developer) can
-inspect raw data directly without writing a one-off script for every question.
+Run any SQL query against the development database and read the result as JSON.
+Use it to **answer questions about the actual data** — what exists, how many,
+what the values are — instead of guessing or writing a throwaway script.
 
-## How it works
+## What you can do with it
 
-- Uses the framework's normal `getDb()` connection (`src/lib/db/db-connection.ts`).
-- Connects automatically to the database defined by the local `POSTGRES_*`
-  environment variables — i.e. the development environment. No extra config.
-- The query is passed **directly on the command line**.
-- Output is JSON on the console: rows on success, an error message on failure.
+- **Look things up**: read rows from any table to see the real data.
+- **Count / aggregate**: `count(*)`, `sum`, `group by` to understand volume and distribution.
+- **Verify your work**: after a migration, insert, or fix, query the table to confirm the data is as expected.
+- **Debug**: when behavior looks wrong, inspect the underlying rows to find the cause.
+- **Discover the schema**: list tables and columns when you don't know the structure yet.
+
+Anything the connected DB user can run will execute. Prefer `SELECT` for
+inspection. The result is plain JSON, so you can read it directly and reason
+about the values.
 
 ## Usage
 
 ```bash
-bun run db:query "SELECT * FROM base_tenants LIMIT 5"
+bun run db:query "<SQL>"
 ```
 
-Equivalent (calling the script directly):
+Always wrap the query in quotes so the shell passes it as a single argument.
+
+## Examples
+
+**1. List the available tables** (when you don't know the schema yet):
 
 ```bash
-bun run ./.scripts/db-query.ts "SELECT count(*) FROM base_users"
+bun run db:query "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename"
 ```
-
-Always wrap the query in quotes so the shell passes it as one argument.
-
-## Output
-
-On success:
 
 ```json
 {
   "ok": true,
   "rowCount": 2,
   "rows": [
-    { "id": "...", "name": "..." }
+    { "tablename": "base_tenants" },
+    { "tablename": "base_users" }
   ]
 }
 ```
 
-On error (invalid SQL, no DB connection, etc.):
+**2. Inspect rows in a table** (note the table prefix — see below):
+
+```bash
+bun run db:query "SELECT id, email FROM base_users LIMIT 5"
+```
+
+```json
+{
+  "ok": true,
+  "rowCount": 1,
+  "rows": [
+    { "id": "a1b2...", "email": "user@example.com" }
+  ]
+}
+```
+
+On error you get the reason, so you can correct the query:
 
 ```json
 {
   "ok": false,
-  "error": "relation \"foo\" does not exist"
+  "error": "Failed query: ... (relation \"users\" does not exist)"
 }
 ```
 
-## Notes
+## Important
 
-- Table names use the framework's prefixes (e.g. `base_tenants`, `base_users`).
-  Use a query like `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`
-  to discover available tables.
-- This executes raw SQL with no validation — it is a development/inspection tool.
-  Prefer `SELECT` for inspection; any statement the connected user is allowed to
-  run will execute.
-- Requires the dev database to be reachable. For local development start it with
-  `bun run db:local` (PGlite on localhost:5432) before querying.
+- **Zero config**: no setup, connection string, or flags needed. Just run it.
+- **Uses the app's database**: it connects automatically to the same development
+  database the app uses (the local `POSTGRES_*` environment). Whatever you query
+  is the real data the running app sees.
+- **Table names need their prefix**: framework tables are prefixed (e.g.
+  `base_users`, `base_tenants`, not `users`/`tenants`). If a query fails with
+  "relation does not exist", you likely dropped the prefix — list the tables
+  (example 1) to find the exact name.
