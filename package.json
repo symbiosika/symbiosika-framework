@@ -68,6 +68,7 @@
     "dev": "bun --hot run demo.ts",
     "dev:inspect": "bun --inspect --hot run demo.ts",
     "db:local": "bun run ./.scripts/local-db-server.ts",
+    "db:query": "bun run ./.scripts/db-query.ts",
     "dev:local": "pglite-server --db=./dev-db/pglite --extensions=vector -m 20 -p 5432 --run 'bun run framework:migrate && bun run dev'",
     "framework:migrate": "drizzle-kit migrate",
     "framework:push": "drizzle-kit push",
