@@ -6,9 +6,7 @@ import type {
 } from "./types";
 
 const LOCAL_API_KEY = process.env.LOCAL_PDF_PARSER_API_KEY;
-const LOCAL_API_BASE_URL =
-  process.env.LOCAL_PDF_PARSER_BASE_URL ??
-  "https://document-services.perlecto.de";
+const LOCAL_API_BASE_URL = process.env.LOCAL_PDF_PARSER_BASE_URL ?? "";
 
 // Define interfaces for the API response structure
 interface PdfParserPage {
@@ -49,7 +47,7 @@ interface LocalParserResult {
 export const parsePdfFileAsMardownLocal = async (
   fileContent: File,
   context: PdfParserContext,
-  options?: PdfParserOptions
+  options?: PdfParserOptions,
 ): Promise<PdfParserResult> => {
   if (!LOCAL_API_KEY) {
     throw new Error("No API key set for local PDF parser API.");
@@ -114,7 +112,7 @@ export const parsePdfFileAsMardownLocal = async (
     `${LOCAL_API_BASE_URL}/jobs/${jobId}/result`,
     {
       headers: { "X-API-Key": LOCAL_API_KEY },
-    }
+    },
   );
 
   if (!resultResponse.ok) {
