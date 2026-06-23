@@ -307,6 +307,27 @@ function oppositeRole(role: ConnectionRole): ConnectionRole {
   return role === "leading" ? "following" : "leading";
 }
 
+function normalizeServerUrl(url: string): string {
+  return url.trim().replace(/\/+$/, "").toLowerCase();
+}
+
+/**
+ * True when `remoteUrl` points at this very server (its configured baseUrl).
+ *
+ * A connection models two *separate* databases: the initiating side stores a
+ * shadow of the leader tenant and one connection row; the accepting side stores
+ * the mirror row. Pointed at itself, a single database would hold both rows
+ * under the same tenant id (ambiguous `getConnectionByRemoteConnectionId`
+ * lookups) and the shadow upsert would overwrite a real local tenant's origin.
+ * It is therefore not a sound operation and is rejected explicitly.
+ */
+export function isSelfConnectionUrl(remoteUrl: string): boolean {
+  const base = _GLOBAL_SERVER_CONFIG.baseUrl;
+  if (!base || !remoteUrl) return false;
+  return normalizeServerUrl(base) === normalizeServerUrl(remoteUrl);
+}
+
+
 /**
  * Create or refresh the local mirror ("shadow") of a remote *leader* tenant.
  * Marked origin="remote" so it is exempt from local name-uniqueness and can
@@ -495,6 +516,13 @@ async function runInitiatingHandshake(args: {
   } = args;
 
   const following = role === "following";
+
+  // A server cannot meaningfully connect to itself (see isSelfConnectionUrl).
+  if (isSelfConnectionUrl(remoteUrl)) {
+    throw new Error(
+      "Refusing to connect a server to itself: remoteUrl points to this server's own baseUrl."
+    );
+  }
 
   // A following side mirrors the leader tenant locally and runs the connection
   // under it; a leading side keeps its own tenant and never shadows the remote.

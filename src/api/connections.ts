@@ -15,6 +15,7 @@ export {
   verifySignature,
   signData,
   generateKeyPair,
+  isSelfConnectionUrl,
   authenticateConnection,
   disconnectConnection,
   disconnectLocalConnections,
