@@ -21,8 +21,31 @@ import { generateKeyPairSync, sign, verify, randomUUID } from "node:crypto";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { generateJwt } from "../auth";
 import { getServerKeys } from "./init-server-keys";
-import { getTenant, updateTenant } from "../usermanagement/tenants";
+import {
+  getTenant,
+  deleteTenant,
+  addTenantMember,
+  setLastTenant,
+} from "../usermanagement/tenants";
 import { runPostConnectionActions } from "./actions";
+
+export type ConnectionRole = "leading" | "following";
+
+/**
+ * Options for the *initiating* (client) side of a connection.
+ * - role: this side's role. Defaults to "following" — the requester normally
+ *   mirrors the remote main server. Set "leading" for the reverse case.
+ * - replaceLocalTenants: when following, wipe all other local tenants after a
+ *   successful handshake so this instance becomes a pure mirror of the leader
+ *   tenant (edge/appliance mode). DESTRUCTIVE — off by default.
+ * - actingUserId: the admin performing the action; kept as owner of the
+ *   adopted leader tenant so the login survives the switch.
+ */
+export interface ConnectionInitOptions {
+  role?: ConnectionRole;
+  replaceLocalTenants?: boolean;
+  actingUserId?: string;
+}
 
 // ============================================================================
 // Types
@@ -218,7 +241,8 @@ async function exchangePublicKeys(
   localServerUrl: string,
   connectionName: string,
   localTenantId: string,
-  localTenantName: string
+  localTenantName: string,
+  peerRole: ConnectionRole
 ): Promise<{ remotePublicKey: string }> {
   try {
     const exchangeUrl = `${remoteUrl}/api/v1/tenant/${remoteTenantId}/connections/exchange-keys`;
@@ -239,6 +263,8 @@ async function exchangePublicKeys(
         remoteTenantName: localTenantName,
         remoteUrl: localServerUrl,
         connectionName: connectionName,
+        // The role the *receiving* side should take (opposite of ours).
+        role: peerRole,
       }),
     });
 
@@ -277,22 +303,95 @@ async function exchangePublicKeys(
 // Connection Management
 // ============================================================================
 
+function oppositeRole(role: ConnectionRole): ConnectionRole {
+  return role === "leading" ? "following" : "leading";
+}
+
 /**
- * Initialize connection with remote server
- * 
+ * Create or refresh the local mirror ("shadow") of a remote *leader* tenant.
+ * Marked origin="remote" so it is exempt from local name-uniqueness and can
+ * coexist with same-named local or remote tenants. Returns whether the row was
+ * newly created, so a failed handshake can roll it back without touching a
+ * pre-existing tenant.
+ */
+async function upsertRemoteShadowTenant(
+  remoteTenantId: string,
+  remoteTenantName: string
+): Promise<{ created: boolean }> {
+  const db = getDb();
+  const existing = await getTenant(remoteTenantId);
+  await db
+    .insert(tenants)
+    .values({ id: remoteTenantId, name: remoteTenantName, origin: "remote" })
+    .onConflictDoUpdate({
+      target: [tenants.id],
+      set: {
+        name: remoteTenantName,
+        origin: "remote",
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  return { created: !existing };
+}
+
+/**
+ * Delete every local tenant except the one to keep. DESTRUCTIVE: tenant
+ * deletion cascades to teams, members, permissions, app data and any other
+ * connections. Only ever invoked on a following side that explicitly opted in
+ * via `replaceLocalTenants`, and only after the handshake fully succeeded.
+ */
+async function deleteAllTenantsExcept(keepTenantId: string): Promise<number> {
+  const db = getDb();
+  const all = await db.select({ id: tenants.id }).from(tenants);
+  let deleted = 0;
+  for (const t of all) {
+    if (t.id === keepTenantId) continue;
+    await deleteTenant(t.id);
+    deleted++;
+  }
+  log.info(
+    `Edge cleanup: removed ${deleted} local tenant(s), kept ${keepTenantId}`
+  );
+  return deleted;
+}
+
+/**
+ * Ensure the initiating admin keeps a working login on the adopted leader
+ * tenant (which starts out with no local members): add them as owner and point
+ * their lastTenant at it.
+ */
+async function ensureOwnerOfAdoptedTenant(
+  tenantId: string,
+  actingUserId: string
+): Promise<void> {
+  await addTenantMember(tenantId, actingUserId, "owner");
+  // setLastTenant verifies membership, which we just created.
+  await setLastTenant(actingUserId, tenantId).catch((err) =>
+    log.error("Failed to set lastTenant after adoption:", err as object)
+  );
+}
+
+/**
+ * Initialize connection with remote server (initiating / client side).
+ *
  * Flow:
- * 1. Validate remote credentials
- * 2. Create/update remote tenant locally
- * 3. Create connection record with generated remoteConnectionId
- * 4. Exchange public keys with remote server
- * 5. Update connection with remote public key
- * 
- * @param localTenantId - The tenant ID initiating the connection
+ * 1. Validate remote credentials and locate the target remote tenant.
+ * 2. Decide this side's role (default "following").
+ * 3. If following: adopt the remote (leader) tenant locally as a shadow
+ *    (origin="remote"). If leading: no shadow is created.
+ * 4. Create the connection record in status "pending".
+ * 5. Exchange public keys; the peer is told to take the opposite role.
+ * 6. On success: flip to "active". If following, keep the acting admin as owner
+ *    of the adopted tenant and — when replaceLocalTenants is set — wipe all
+ *    other local tenants so this instance becomes a pure mirror.
+ *
+ * @param localTenantId - The tenant context initiating the connection
  * @param remoteUrl - URL of the remote server
  * @param remoteEmail - Email for remote authentication
  * @param remotePassword - Password for remote authentication
  * @param remoteTenantId - Tenant ID on remote server
  * @param name - Name for the connection
+ * @param options - Role / edge-mode / acting-user options
  */
 export async function initializeConnection(
   localTenantId: string,
@@ -300,9 +399,11 @@ export async function initializeConnection(
   remoteEmail: string,
   remotePassword: string,
   remoteTenantId: string,
-  name: string
+  name: string,
+  options: ConnectionInitOptions = {}
 ): Promise<ConnectionInitResult> {
   const db = getDb();
+  const role: ConnectionRole = options.role ?? "following";
 
   try {
     // Validate inputs
@@ -341,134 +442,202 @@ export async function initializeConnection(
       );
     }
 
-    // Create or update remote tenant locally (with same ID)
-    await db
-      .insert(tenants)
-      .values({
-        id: remoteTenantId,
-        name: remoteTenant.name,
-      })
-      .onConflictDoUpdate({
-        target: [tenants.id],
-        set: {
-          name: remoteTenant.name,
-          updatedAt: new Date().toISOString(),
-        },
-      });
-    log.info(
-      `Created/updated local tenant ${remoteTenantId} with name: ${remoteTenant.name}`
-    );
-
-    // Generate connection ID (this will be our remoteConnectionId on the remote side)
-    // We use a UUID that will be shared between both sides
-    const remoteConnectionId = randomUUID();
-
-    // Create connection record (initiated by local)
-    // IMPORTANT: Store under localTenantId (the tenant initiating the connection),
-    // not remoteTenantId. The remoteTenantId is just used to create/update the remote tenant locally.
-    const newConnection: ConnectionsInsert = {
-      tenantId: localTenantId, // Store under local tenant (the one initiating)
-      remoteUrl: remoteUrl,
-      name: name,
-      initiatedBy: "local",
-      remoteConnectionId: remoteConnectionId,
-      remotePublicKey: null, // Will be set after key exchange
-    };
-
-    let connectionId: string;
-    try {
-      const result = await db
-        .insert(connections)
-        .values(newConnection)
-        .onConflictDoUpdate({
-          target: [connections.tenantId, connections.remoteConnectionId, connections.initiatedBy],
-          set: {
-            tenantId: newConnection.tenantId,
-            remoteUrl: newConnection.remoteUrl,
-            name: newConnection.name,
-            updatedAt: new Date().toISOString(),
-          },
-        })
-        .returning();
-
-      if (!result[0]) {
-        throw new Error("Failed to create connection record");
-      }
-
-      connectionId = result[0].id;
-      log.info(
-        `Connection created/updated: ${connectionId} (remoteConnectionId: ${remoteConnectionId})`
-      );
-    } catch (error: any) {
-      log.error("Database error creating connection:", error);
-      throw new Error(
-        `Failed to create connection: ${error?.message || "Unknown error"}`
-      );
-    }
-
-    // Exchange public keys with remote server
-    const localServerUrl = _GLOBAL_SERVER_CONFIG.baseUrl;
-    if (!localServerUrl) {
-      throw new Error("Local server URL not configured");
-    }
-
-    try {
-      const exchangeResult = await exchangePublicKeys(
-        remoteUrl,
-        token,
-        remoteTenantId,
-        serverKey.publicKey,
-        remoteConnectionId,
-        localServerUrl,
-        name,
-        localTenantId,
-        localTenant.name
-      );
-
-      // Update connection with remote public key
-      await db
-        .update(connections)
-        .set({
-          remotePublicKey: exchangeResult.remotePublicKey,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(connections.id, connectionId));
-
-      log.info(
-        `Connection initialized successfully: ${connectionId} with remote public key`
-      );
-
-      await runPostConnectionActions({
-        connectionId,
-        localTenantId,
-        remoteTenantId,
-        remoteUrl,
-        name,
-        initiatedBy: "local",
-      });
-
-      return {
-        connectionId,
-        remoteConnectionId,
-        localPublicKey: serverKey.publicKey,
-        remotePublicKey: exchangeResult.remotePublicKey,
-        status: "active",
-      };
-    } catch (error) {
-      // If key exchange fails, clean up the connection
-      log.error("Key exchange failed, cleaning up connection:", error as object);
-      try {
-        await db.delete(connections).where(eq(connections.id, connectionId));
-      } catch (cleanupError) {
-        log.error("Failed to cleanup connection after key exchange failure:", cleanupError as object);
-      }
-      throw error;
-    }
+    return await runInitiatingHandshake({
+      role,
+      remoteUrl,
+      remoteToken: token,
+      remoteTenantId,
+      remoteTenantName: remoteTenant.name,
+      name,
+      localTenantId,
+      localTenantName: localTenant.name,
+      serverPublicKey: serverKey.publicKey,
+      options,
+    });
   } catch (error) {
     log.error("Error initializing connection:", error as object);
     throw error instanceof Error
       ? error
       : new Error("Failed to initialize connection");
+  }
+}
+
+/**
+ * Shared core of the initiating side, used by both the password-based
+ * (`initializeConnection`) and the OTP-token-based
+ * (`initializeConnectionWithToken`) flows. Handles role-aware shadow creation,
+ * staged (pending) connection setup, key exchange, and post-success adoption.
+ */
+async function runInitiatingHandshake(args: {
+  role: ConnectionRole;
+  remoteUrl: string;
+  remoteToken: string;
+  remoteTenantId: string;
+  remoteTenantName: string;
+  name: string;
+  localTenantId: string;
+  localTenantName: string;
+  serverPublicKey: string;
+  options: ConnectionInitOptions;
+}): Promise<ConnectionInitResult> {
+  const db = getDb();
+  const {
+    role,
+    remoteUrl,
+    remoteToken,
+    remoteTenantId,
+    remoteTenantName,
+    name,
+    localTenantId,
+    localTenantName,
+    serverPublicKey,
+    options,
+  } = args;
+
+  const following = role === "following";
+
+  // A following side mirrors the leader tenant locally and runs the connection
+  // under it; a leading side keeps its own tenant and never shadows the remote.
+  let shadowCreated = false;
+  if (following) {
+    const res = await upsertRemoteShadowTenant(remoteTenantId, remoteTenantName);
+    shadowCreated = res.created;
+    log.info(
+      `Adopted leader tenant ${remoteTenantId} locally (origin=remote, created=${shadowCreated})`
+    );
+  }
+  const ownerTenantId = following ? remoteTenantId : localTenantId;
+
+  // Shared id between both sides.
+  const remoteConnectionId = randomUUID();
+
+  const newConnection: ConnectionsInsert = {
+    tenantId: ownerTenantId,
+    remoteUrl,
+    name,
+    initiatedBy: "local",
+    role,
+    status: "pending",
+    remoteTenantId,
+    remoteConnectionId,
+    remotePublicKey: null,
+  };
+
+  let connectionId: string;
+  try {
+    const result = await db
+      .insert(connections)
+      .values(newConnection)
+      .onConflictDoUpdate({
+        target: [
+          connections.tenantId,
+          connections.remoteConnectionId,
+          connections.initiatedBy,
+        ],
+        set: {
+          tenantId: newConnection.tenantId,
+          remoteUrl: newConnection.remoteUrl,
+          name: newConnection.name,
+          role: newConnection.role,
+          status: "pending",
+          remoteTenantId: newConnection.remoteTenantId,
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      .returning();
+
+    if (!result[0]) {
+      throw new Error("Failed to create connection record");
+    }
+    connectionId = result[0].id;
+    log.info(
+      `Connection staged: ${connectionId} (role=${role}, remoteConnectionId=${remoteConnectionId})`
+    );
+  } catch (error: any) {
+    // Roll back a freshly created shadow so a failed insert leaves no orphan.
+    if (shadowCreated) {
+      await deleteTenant(remoteTenantId).catch(() => {});
+    }
+    log.error("Database error creating connection:", error);
+    throw new Error(
+      `Failed to create connection: ${error?.message || "Unknown error"}`
+    );
+  }
+
+  const localServerUrl = _GLOBAL_SERVER_CONFIG.baseUrl;
+  if (!localServerUrl) {
+    throw new Error("Local server URL not configured");
+  }
+
+  try {
+    const exchangeResult = await exchangePublicKeys(
+      remoteUrl,
+      remoteToken,
+      remoteTenantId,
+      serverPublicKey,
+      remoteConnectionId,
+      localServerUrl,
+      name,
+      localTenantId,
+      localTenantName,
+      oppositeRole(role)
+    );
+
+    // Handshake succeeded: activate and store the remote public key.
+    await db
+      .update(connections)
+      .set({
+        remotePublicKey: exchangeResult.remotePublicKey,
+        status: "active",
+        lastConnectedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(connections.id, connectionId));
+
+    // Following side: secure access to the adopted tenant, then (opt-in)
+    // collapse to a pure mirror. Deletion runs last and is never rolled back.
+    if (following && options.actingUserId) {
+      await ensureOwnerOfAdoptedTenant(remoteTenantId, options.actingUserId);
+    }
+    if (following && options.replaceLocalTenants) {
+      await deleteAllTenantsExcept(remoteTenantId);
+    }
+
+    log.info(`Connection initialized successfully: ${connectionId}`);
+
+    await runPostConnectionActions({
+      connectionId,
+      localTenantId,
+      remoteTenantId,
+      remoteUrl,
+      name,
+      initiatedBy: "local",
+      role,
+    });
+
+    return {
+      connectionId,
+      remoteConnectionId,
+      localPublicKey: serverPublicKey,
+      remotePublicKey: exchangeResult.remotePublicKey,
+      status: "active",
+    };
+  } catch (error) {
+    // Staging failed: undo everything created in this call. Nothing destructive
+    // has run yet (adoption/cleanup only happen after success).
+    log.error("Key exchange failed, rolling back staged connection:", error as object);
+    await db
+      .delete(connections)
+      .where(eq(connections.id, connectionId))
+      .catch((e) =>
+        log.error("Failed to remove staged connection:", e as object)
+      );
+    if (shadowCreated) {
+      await deleteTenant(remoteTenantId).catch((e) =>
+        log.error("Failed to remove staged shadow tenant:", e as object)
+      );
+    }
+    throw error;
   }
 }
 
@@ -487,6 +656,10 @@ export async function initializeConnection(
  * @param remotePublicKey - Public key from remote server
  * @param connectionName - Name for the connection
  * @param remoteTenantName - Name of the remote tenant
+ * @param role - This side's role for the connection (default "leading"). A
+ *   leading side never shadows the remote tenant locally — it only records the
+ *   remote tenant id on the connection. A following side mirrors the remote
+ *   leader tenant (origin="remote").
  */
 export async function acceptConnection(
   localTenantId: string,
@@ -495,13 +668,15 @@ export async function acceptConnection(
   remoteConnectionId: string,
   remotePublicKey: string,
   connectionName: string,
-  remoteTenantName: string
+  remoteTenantName: string,
+  role: ConnectionRole = "leading"
 ): Promise<ConnectionAcceptResult> {
   const db = getDb();
+  const following = role === "following";
 
   try {
     log.info(
-      `acceptConnection called: localTenantId=${localTenantId}, remoteTenantId=${remoteTenantId}, remoteConnectionId=${remoteConnectionId}, connectionName=${connectionName}`
+      `acceptConnection called: localTenantId=${localTenantId}, remoteTenantId=${remoteTenantId}, remoteConnectionId=${remoteConnectionId}, role=${role}, connectionName=${connectionName}`
     );
 
     // Validate inputs
@@ -531,45 +706,27 @@ export async function acceptConnection(
     }
     log.info(`Local tenant verified: ${localTenantId} (${localTenant.name})`);
 
-    // Create or update remote tenant locally (with same ID)
-    const existingTenant = await getTenant(remoteTenantId);
-    if (existingTenant) {
-      // Update name if different
-      if (existingTenant.name !== remoteTenantName) {
-        await updateTenant(remoteTenantId, { name: remoteTenantName });
-        log.info(
-          `Updated local tenant ${remoteTenantId} with name: ${remoteTenantName}`
-        );
-      }
-    } else {
-      // Create tenant with same ID
-      await db
-        .insert(tenants)
-        .values({
-          id: remoteTenantId,
-          name: remoteTenantName,
-        })
-        .onConflictDoUpdate({
-          target: [tenants.id],
-          set: {
-            name: remoteTenantName,
-            updatedAt: new Date().toISOString(),
-          },
-        });
+    // Only a following side mirrors the remote (leader) tenant locally. A
+    // leading side (the common case — the main server) must NOT create a shadow
+    // of the connecting client: that is exactly what caused name collisions.
+    if (following) {
+      await upsertRemoteShadowTenant(remoteTenantId, remoteTenantName);
       log.info(
-        `Created local tenant ${remoteTenantId} with name: ${remoteTenantName}`
+        `Adopted leader tenant ${remoteTenantId} locally (origin=remote) on accept`
       );
     }
+    const ownerTenantId = following ? remoteTenantId : localTenantId;
 
-    // Create connection record (initiated by remote)
-    // IMPORTANT: Store under localTenantId (the tenant accepting the connection),
-    // not remoteTenantId. The remoteTenantId is the tenant on the remote server.
+    // Create connection record (initiated by remote).
     const newConnection: ConnectionsInsert = {
-      tenantId: localTenantId, // Store under local tenant (the one accepting)
+      tenantId: ownerTenantId,
       remoteUrl: remoteUrl,
       remotePublicKey: remotePublicKey,
       name: connectionName,
       initiatedBy: "remote",
+      role,
+      status: "active",
+      remoteTenantId,
       remoteConnectionId: remoteConnectionId, // Must match on both sides
     };
 
@@ -584,6 +741,9 @@ export async function acceptConnection(
             tenantId: newConnection.tenantId,
             remoteUrl: newConnection.remoteUrl,
             name: newConnection.name,
+            role: newConnection.role,
+            status: "active",
+            remoteTenantId: newConnection.remoteTenantId,
             remotePublicKey: newConnection.remotePublicKey,
             updatedAt: new Date().toISOString(),
           },
@@ -612,6 +772,7 @@ export async function acceptConnection(
       remoteUrl,
       name: connectionName,
       initiatedBy: "remote",
+      role,
     });
 
     return {
@@ -1257,80 +1418,27 @@ export async function initializeConnectionWithToken(
   remoteToken: string,
   remoteTenantId: string,
   remoteTenantName: string,
-  name: string
+  name: string,
+  options: ConnectionInitOptions = {}
 ): Promise<ConnectionInitResult> {
-  const db = getDb();
-
   const serverKey = await getServerKeys();
   if (!serverKey) throw new Error("Server keys not found.");
 
   const localTenant = await getTenant(localTenantId);
   if (!localTenant) throw new Error(`Local tenant ${localTenantId} not found`);
 
-  // Upsert remote tenant locally
-  await db.insert(tenants).values({ id: remoteTenantId, name: remoteTenantName })
-    .onConflictDoUpdate({
-      target: [tenants.id],
-      set: { name: remoteTenantName, updatedAt: new Date().toISOString() },
-    });
-
-  const remoteConnectionId = randomUUID();
-
-  const result = await db.insert(connections).values({
-    tenantId: localTenantId,
+  return await runInitiatingHandshake({
+    role: options.role ?? "following",
     remoteUrl,
+    remoteToken,
+    remoteTenantId,
+    remoteTenantName,
     name,
-    initiatedBy: "local",
-    remoteConnectionId,
-    remotePublicKey: null,
-  }).onConflictDoUpdate({
-    target: [connections.tenantId, connections.remoteConnectionId, connections.initiatedBy],
-    set: { remoteUrl, name, updatedAt: new Date().toISOString() },
-  }).returning();
-
-  if (!result[0]) throw new Error("Failed to create connection record");
-  const connectionId = result[0].id;
-
-  const localServerUrl = _GLOBAL_SERVER_CONFIG.baseUrl;
-  if (!localServerUrl) throw new Error("Local server URL not configured");
-
-  try {
-    const exchangeResult = await exchangePublicKeys(
-      remoteUrl,
-      remoteToken,
-      remoteTenantId,
-      serverKey.publicKey,
-      remoteConnectionId,
-      localServerUrl,
-      name,
-      localTenantId,
-      localTenant.name
-    );
-
-    await db.update(connections)
-      .set({ remotePublicKey: exchangeResult.remotePublicKey, updatedAt: new Date().toISOString() })
-      .where(eq(connections.id, connectionId));
-
-    await runPostConnectionActions({
-      connectionId,
-      localTenantId,
-      remoteTenantId,
-      remoteUrl,
-      name,
-      initiatedBy: "local",
-    });
-
-    return {
-      connectionId,
-      remoteConnectionId,
-      localPublicKey: serverKey.publicKey,
-      remotePublicKey: exchangeResult.remotePublicKey,
-      status: "active",
-    };
-  } catch (error) {
-    await db.delete(connections).where(eq(connections.id, connectionId)).catch(() => {});
-    throw error;
-  }
+    localTenantId,
+    localTenantName: localTenant.name,
+    serverPublicKey: serverKey.publicKey,
+    options,
+  });
 }
 
 // ============================================================================

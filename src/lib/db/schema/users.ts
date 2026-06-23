@@ -29,6 +29,16 @@ import {
 } from "drizzle-valibot";
 import * as v from "valibot";
 
+/**
+ * Where a tenant record originates:
+ * - "local": a tenant genuinely owned by this server.
+ * - "remote": a mirror ("shadow") of a tenant that lives on another server,
+ *   created on the *following* side of a server-to-server connection so it can
+ *   receive synced data. Remote shadows reuse the leader's id and name and are
+ *   therefore intentionally excluded from the global name-uniqueness rule.
+ */
+export const tenantOriginEnum = pgEnum("tenant_origin", ["local", "remote"]);
+
 export const tenants = pgBaseTable(
   "tenants",
   {
@@ -37,6 +47,7 @@ export const tenants = pgBaseTable(
       .default(sql`gen_random_uuid()`),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
+    origin: tenantOriginEnum("origin").notNull().default("local"),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),
@@ -44,7 +55,14 @@ export const tenants = pgBaseTable(
       .notNull()
       .defaultNow(),
   },
-  (tenants) => [unique("tenants_name_idx").on(tenants.name)]
+  // Names must stay unique among *locally owned* tenants, but remote shadows
+  // (origin = "remote") may freely collide — two followed leaders called
+  // "Acme" on different servers must both be mirrorable here.
+  (tenants) => [
+    uniqueIndex("tenants_name_local_unique_idx")
+      .on(tenants.name)
+      .where(sql`${tenants.origin} = 'local'`),
+  ]
 );
 
 export type TenantsSelect = typeof tenants.$inferSelect;
