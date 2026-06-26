@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, or, lte, isNull, sql } from "drizzle-orm";
 import { jobs, type Job, type JobStatus } from "../db/schema/jobs";
 import { getDb } from "../db/db-connection";
 import log from "../log";
@@ -89,10 +89,18 @@ export async function startJobQueue() {
   jobQueueRunning = true;
   setInterval(async () => {
     // log.debug("Checking for pending jobs");
+    // Only pick up jobs that are due: either no scheduledAt (run immediately)
+    // or a scheduledAt that is in the past / now.
     const pendingJobs = await getDb()
       .select()
       .from(jobs)
-      .where(eq(jobs.status, "pending"));
+      .where(
+        and(
+          eq(jobs.status, "pending"),
+          or(isNull(jobs.scheduledAt), lte(jobs.scheduledAt, sql`now()`))
+        )
+      )
+      .orderBy(jobs.scheduledAt, jobs.createdAt);
 
     for (const job of pendingJobs) {
       await processJob(job);
@@ -161,10 +169,26 @@ export async function getJobsByOrganisation(
   return await query;
 }
 
-export async function createJob(type: string, metadata: any, tenantId: string) {
+export async function createJob(
+  type: string,
+  metadata: any,
+  tenantId: string,
+  /**
+   * Optional earliest execution time (ISO string). When set, the job will not
+   * be picked up by the worker before this timestamp. When omitted the job is
+   * eligible for execution immediately.
+   */
+  scheduledAt?: string | null
+) {
   const res = await getDb()
     .insert(jobs)
-    .values({ type, metadata, status: "pending", tenantId })
+    .values({
+      type,
+      metadata,
+      status: "pending",
+      tenantId,
+      scheduledAt: scheduledAt ?? null,
+    })
     .returning();
   if (!res[0]) {
     throw new Error("Failed to create job");

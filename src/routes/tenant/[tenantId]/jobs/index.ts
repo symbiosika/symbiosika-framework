@@ -178,6 +178,9 @@ export default function defineJobRoutes(
       v.object({
         type: v.string(),
         metadata: v.optional(v.any()),
+        // Optional earliest execution time (ISO timestamp). The job will not be
+        // picked up by the worker before this point in time.
+        scheduledAt: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -185,11 +188,11 @@ export default function defineJobRoutes(
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
-        const { type, metadata } = c.req.valid("json");
+        const { type, metadata, scheduledAt } = c.req.valid("json");
         const userId = c.get("usersId");
 
         // Create the job
-        const job = await createJob(type, metadata || {}, tenantId);
+        const job = await createJob(type, metadata || {}, tenantId, scheduledAt);
 
         // Update the job with the user ID
         await getDb().update(jobs).set({ userId }).where(eq(jobs.id, job.id));
