@@ -45,6 +45,10 @@ export const jobs = pgBaseTable(
     metadata: jsonb("metadata"),
     result: jsonb("result"),
     error: jsonb("error"),
+    // Earliest point in time at which a pending job may be picked up by the
+    // worker. When null the job is eligible for execution immediately. Use this
+    // to schedule/delay queue entries (e.g. "run not before X").
+    scheduledAt: timestamp("scheduled_at", { mode: "string" }),
     createdAt: timestamp("created_at", { mode: "string" })
       .defaultNow()
       .notNull(),
@@ -56,6 +60,7 @@ export const jobs = pgBaseTable(
     index("jobs_created_at_idx").on(jobs.createdAt),
     index("jobs_user_id_idx").on(jobs.userId),
     index("jobs_status_idx").on(jobs.status),
+    index("jobs_scheduled_at_idx").on(jobs.scheduledAt),
   ]
 );
 
