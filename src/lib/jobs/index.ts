@@ -85,26 +85,38 @@ async function processJob(job: Job) {
   }
 }
 
+/**
+ * Processes one cycle of due, pending jobs: picks up every job that has no
+ * `scheduledAt` (run immediately) or a `scheduledAt` in the past/now, ordered
+ * by schedule then creation time, and executes the matching handler.
+ *
+ * Exposed separately from {@link startJobQueue} so tests can drain the queue
+ * deterministically instead of waiting for the background interval.
+ */
+export async function processDueJobsOnce() {
+  // Only pick up jobs that are due: either no scheduledAt (run immediately)
+  // or a scheduledAt that is in the past / now.
+  const pendingJobs = await getDb()
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.status, "pending"),
+        or(isNull(jobs.scheduledAt), lte(jobs.scheduledAt, sql`now()`))
+      )
+    )
+    .orderBy(jobs.scheduledAt, jobs.createdAt);
+
+  for (const job of pendingJobs) {
+    await processJob(job);
+  }
+}
+
 export async function startJobQueue() {
   jobQueueRunning = true;
   setInterval(async () => {
     // log.debug("Checking for pending jobs");
-    // Only pick up jobs that are due: either no scheduledAt (run immediately)
-    // or a scheduledAt that is in the past / now.
-    const pendingJobs = await getDb()
-      .select()
-      .from(jobs)
-      .where(
-        and(
-          eq(jobs.status, "pending"),
-          or(isNull(jobs.scheduledAt), lte(jobs.scheduledAt, sql`now()`))
-        )
-      )
-      .orderBy(jobs.scheduledAt, jobs.createdAt);
-
-    for (const job of pendingJobs) {
-      await processJob(job);
-    }
+    await processDueJobsOnce();
   }, CHECK_CYCLE_MS);
 }
 
