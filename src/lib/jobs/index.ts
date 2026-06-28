@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, or, lte, isNull, sql } from "drizzle-orm";
 import { jobs, type Job, type JobStatus } from "../db/schema/jobs";
 import { getDb } from "../db/db-connection";
 import log from "../log";
@@ -85,18 +85,38 @@ async function processJob(job: Job) {
   }
 }
 
+/**
+ * Processes one cycle of due, pending jobs: picks up every job that has no
+ * `scheduledAt` (run immediately) or a `scheduledAt` in the past/now, ordered
+ * by schedule then creation time, and executes the matching handler.
+ *
+ * Exposed separately from {@link startJobQueue} so tests can drain the queue
+ * deterministically instead of waiting for the background interval.
+ */
+export async function processDueJobsOnce() {
+  // Only pick up jobs that are due: either no scheduledAt (run immediately)
+  // or a scheduledAt that is in the past / now.
+  const pendingJobs = await getDb()
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.status, "pending"),
+        or(isNull(jobs.scheduledAt), lte(jobs.scheduledAt, sql`now()`))
+      )
+    )
+    .orderBy(jobs.scheduledAt, jobs.createdAt);
+
+  for (const job of pendingJobs) {
+    await processJob(job);
+  }
+}
+
 export async function startJobQueue() {
   jobQueueRunning = true;
   setInterval(async () => {
     // log.debug("Checking for pending jobs");
-    const pendingJobs = await getDb()
-      .select()
-      .from(jobs)
-      .where(eq(jobs.status, "pending"));
-
-    for (const job of pendingJobs) {
-      await processJob(job);
-    }
+    await processDueJobsOnce();
   }, CHECK_CYCLE_MS);
 }
 
@@ -161,10 +181,26 @@ export async function getJobsByOrganisation(
   return await query;
 }
 
-export async function createJob(type: string, metadata: any, tenantId: string) {
+export async function createJob(
+  type: string,
+  metadata: any,
+  tenantId: string,
+  /**
+   * Optional earliest execution time (ISO string). When set, the job will not
+   * be picked up by the worker before this timestamp. When omitted the job is
+   * eligible for execution immediately.
+   */
+  scheduledAt?: string | null
+) {
   const res = await getDb()
     .insert(jobs)
-    .values({ type, metadata, status: "pending", tenantId })
+    .values({
+      type,
+      metadata,
+      status: "pending",
+      tenantId,
+      scheduledAt: scheduledAt ?? null,
+    })
     .returning();
   if (!res[0]) {
     throw new Error("Failed to create job");

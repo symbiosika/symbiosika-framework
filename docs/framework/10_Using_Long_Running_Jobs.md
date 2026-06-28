@@ -59,6 +59,42 @@ Request body:
 }
 ```
 
+### Scheduling / Delayed Execution (Queues)
+
+By default a job is eligible for execution immediately. To use the job system
+as a queue with delayed execution, provide an optional `scheduledAt` timestamp
+(ISO 8601). The job will stay `pending` and will **not** be picked up by the
+worker before that point in time:
+
+```json
+{
+  "type": "myGreatNewJob",
+  "metadata": {
+    // Job-specific data
+  },
+  "scheduledAt": "2026-07-01T08:00:00.000Z"
+}
+```
+
+When `scheduledAt` is omitted (or `null`), the job runs as soon as the worker's
+next cycle picks it up. Due jobs are processed ordered by `scheduledAt`, then by
+`createdAt`. `scheduledAt` only defines the *earliest* execution time — the
+actual start depends on the worker cycle (every 5 seconds by default) and how
+many other jobs are queued.
+
+The same applies when creating jobs programmatically:
+
+```typescript
+import { createJob } from "./lib/jobs";
+
+await createJob(
+  "myGreatNewJob",
+  { foo: "bar" },
+  tenantId,
+  "2026-07-01T08:00:00.000Z" // optional earliest execution time
+);
+```
+
 ## Checking Job Status
 
 Jobs can have the following statuses: `pending`, `running`, `completed`, or `failed`.
@@ -79,7 +115,7 @@ GET /api/v1/collections/jobs
 
 1. Jobs are stored in the database with their type, metadata, status, and results
 2. The job queue worker (`startJobQueue`) runs every 5 seconds to:
-   - Query for pending jobs
+   - Query for pending jobs that are due (`scheduledAt` is null or in the past)
    - Update job status to "running"
    - Execute the corresponding handler
    - Update job status to "completed" (with results) or "failed" (with error)
