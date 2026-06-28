@@ -127,7 +127,7 @@ export const issueRefreshToken = async (
     })
     .returning({ id: oauthRefreshTokens.id });
 
-  return { token, id: inserted[0].id, familyId };
+  return { token, id: inserted[0]!.id, familyId };
 };
 
 /** Revoke every active token of a family (theft mitigation / logout). */

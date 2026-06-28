@@ -206,7 +206,7 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
     if (q.tenant_id && memberships.some((m) => m.id === q.tenant_id)) {
       tenantId = q.tenant_id;
     } else if (memberships.length === 1) {
-      tenantId = memberships[0].id;
+      tenantId = memberships[0]!.id;
     } else if (memberships.length === 0) {
       return redirErr("access_denied");
     } else {
@@ -288,7 +288,7 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
     const wanted = params.get("tenant_id");
     let tenantId: string | null = null;
     if (wanted && memberships.some((m) => m.id === wanted)) tenantId = wanted;
-    else if (memberships.length === 1) tenantId = memberships[0].id;
+    else if (memberships.length === 1) tenantId = memberships[0]!.id;
 
     await saveConsent(userId, client.clientId, requested);
 
