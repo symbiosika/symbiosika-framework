@@ -9,6 +9,46 @@ The main goal of this system is to facilitate:
 2.  **Automated Registration**: Clients can register themselves with the Server.
 3.  **Data Synchronization**: The authenticated connection is the foundation for future WebSocket connections to sync database content (e.g., down-sync from Server to Client).
 
+## Roles: leading vs. following
+
+Every connection has a **role per side**, independent of who started the
+handshake (`initiatedBy`):
+
+*   **leading**: this side owns the data and is the source of truth. It does
+    **not** create a local copy of the other tenant — it only records the
+    remote tenant id on the connection. This is the normal role of the central
+    server, and avoids tenant-name collisions when many clients connect.
+*   **following**: this side mirrors the remote *leader* tenant. It creates a
+    local "shadow" of that tenant (`origin = "remote"`, exempt from local
+    name-uniqueness) and runs the connection under it.
+
+By default the **initiating client is `following`** and the **accepting server
+is `leading`**; the initiator can flip this via the `role` option, and the peer
+is automatically told to take the opposite role during key exchange.
+
+### Edge / mirror mode (`replaceLocalTenants`)
+
+A following client can opt into becoming a *pure mirror* of the leader tenant.
+After a successful handshake it:
+
+1.  keeps the initiating admin as **owner** of the adopted leader tenant (so the
+    login survives the switch), then
+2.  **deletes all other local tenants**. This is destructive (tenant deletion
+    cascades to members, teams, permissions and all tenant data) and is
+    therefore off by default and only runs once the handshake fully succeeded.
+
+### Tenant origin & collisions
+
+`tenants.origin` distinguishes locally-owned tenants from remote shadows. Name
+uniqueness is enforced only among `origin = "local"` tenants, so two different
+leaders named "Acme" can both be mirrored without collision.
+
+## Staging
+
+Connections are created in status `pending` and only flipped to `active` once
+key exchange succeeds. If it fails, the staged connection (and any shadow tenant
+created for it in the same call) is rolled back.
+
 ## Architecture
 
 The system uses **RSA Key Pairs** for authentication:

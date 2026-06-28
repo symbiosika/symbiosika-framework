@@ -110,6 +110,10 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
         remotePassword: v.string("Remote password is required"),
         remoteTenantId: v.string("Remote tenant ID is required"),
         name: v.string("Connection name is required"),
+        // Optional: this side's role (default "following") and whether to
+        // collapse to a pure mirror of the leader tenant after success.
+        role: v.optional(v.picklist(["leading", "following"])),
+        replaceLocalTenants: v.optional(v.boolean()),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -134,6 +138,8 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
           remotePassword,
           remoteTenantId,
           name,
+          role,
+          replaceLocalTenants,
         } = c.req.valid("json");
 
         const result = await connectionsService.initializeConnection(
@@ -142,7 +148,12 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
           remoteEmail,
           remotePassword,
           remoteTenantId,
-          name
+          name,
+          {
+            role,
+            replaceLocalTenants,
+            actingUserId: c.get("usersId"),
+          }
         );
 
         return c.json(result, 201);
@@ -174,6 +185,9 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
         remoteTenantName: v.string("Remote tenant name is required"),
         remoteUrl: v.string("Remote URL is required"),
         connectionName: v.string("Connection name is required"),
+        // The role this (accepting) side should take. Defaults to "leading":
+        // the accepting server is normally the authoritative main server.
+        role: v.optional(v.picklist(["leading", "following"])),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -199,10 +213,11 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
           remoteTenantName,
           remoteUrl,
           connectionName,
+          role,
         } = c.req.valid("json");
 
         log.info(
-          `exchange-keys endpoint called: tenantId=${tenantId}, remoteTenantId=${remoteTenantId}, remoteConnectionId=${remoteConnectionId}, connectionName=${connectionName}`
+          `exchange-keys endpoint called: tenantId=${tenantId}, remoteTenantId=${remoteTenantId}, remoteConnectionId=${remoteConnectionId}, role=${role ?? "leading"}, connectionName=${connectionName}`
         );
 
         // Accept the connection and get our public key
@@ -213,7 +228,8 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
           remoteConnectionId,
           remotePublicKey,
           connectionName,
-          remoteTenantName
+          remoteTenantName,
+          role ?? "leading"
         );
 
         log.info(
@@ -316,6 +332,8 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
         remoteTenantId: v.string("Remote tenant ID is required"),
         remoteTenantName: v.string("Remote tenant name is required"),
         name: v.string("Connection name is required"),
+        role: v.optional(v.picklist(["leading", "following"])),
+        replaceLocalTenants: v.optional(v.boolean()),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -323,14 +341,19 @@ const defineConnectionsRoutes = (app: SymbiosikaFrameworkHonoApp, basePath: stri
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
-        const { remoteUrl, remoteToken, remoteTenantId, remoteTenantName, name } = c.req.valid("json");
+        const { remoteUrl, remoteToken, remoteTenantId, remoteTenantName, name, role, replaceLocalTenants } = c.req.valid("json");
         const result = await connectionsService.initializeConnectionWithToken(
           tenantId,
           remoteUrl,
           remoteToken,
           remoteTenantId,
           remoteTenantName,
-          name
+          name,
+          {
+            role,
+            replaceLocalTenants,
+            actingUserId: c.get("usersId"),
+          }
         );
         return c.json(result, 201);
       } catch (error) {

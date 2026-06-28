@@ -177,11 +177,20 @@ export type ConnectionEstablishedContext = {
   connectionId: string;
   /** The local tenant the connection was stored under. */
   localTenantId: string;
-  /** The remote tenant id (mirrored locally with the same id). */
+  /**
+   * The remote tenant id. Mirrored locally with the same id only on a
+   * *following* side; on a leading side it refers to a tenant that does not
+   * exist locally.
+   */
   remoteTenantId: string;
   remoteUrl: string;
   name: string;
   initiatedBy: "local" | "remote";
+  /**
+   * This side's role for the connection: "leading" owns the data, "following"
+   * mirrors the remote leader tenant.
+   */
+  role: "leading" | "following";
 };
 
 /**

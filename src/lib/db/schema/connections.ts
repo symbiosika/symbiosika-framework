@@ -28,6 +28,18 @@ export const connectionStatusEnum = pgEnum("connection_status", [
 
 export const initiatedByEnum = pgEnum("initiated_by", ["local", "remote"]);
 
+/**
+ * Which side is authoritative ("source of truth") for this connection.
+ * Orthogonal to `initiatedBy` (who started the handshake):
+ * - "leading": this side owns the data; the remote mirrors it.
+ * - "following": this side mirrors the remote leader's tenant.
+ * Only a *following* side creates a local shadow of the remote tenant.
+ */
+export const connectionRoleEnum = pgEnum("connection_role", [
+  "leading",
+  "following",
+]);
+
 export const connections = pgBaseTable(
   "connections",
   {
@@ -43,7 +55,14 @@ export const connections = pgBaseTable(
     remoteUrl: text("remote_url"),
     remoteConnectionId: text("remote_connection_id"),
     remotePublicKey: text("remote_public_key"),
+    // The tenant id on the *remote* server. Stored explicitly so connection
+    // bookkeeping no longer depends on a local shadow tenant row existing.
+    // On a leading side this references a tenant that does NOT exist locally,
+    // so it deliberately has no foreign key.
+    remoteTenantId: uuid("remote_tenant_id"),
     initiatedBy: initiatedByEnum("initiated_by").notNull().default("local"),
+    role: connectionRoleEnum("role").notNull().default("leading"),
+    status: connectionStatusEnum("status").notNull().default("active"),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),
