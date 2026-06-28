@@ -61,7 +61,10 @@ import defineJobRoutes from "./routes/tenant/[tenantId]/jobs";
 import defineDocsRoutes from "./routes/docs";
 import defineWhatsAppRoutes from "./routes/communiation/wa";
 import defineNotificationRoutes from "./routes/user/notifications";
-import { addMessageToAllUsers } from "./lib/notifications";
+import {
+  addMessageToAllUsers,
+  addMessageToAllAdmins,
+} from "./lib/notifications";
 // Jobs
 import { defineJob, startJobQueue } from "./lib/jobs";
 // Cron
@@ -419,6 +422,14 @@ export const defineServer = (config: ServerSpecificConfig) => {
           "info"
         );
         console.log(`Server restart notification sent to all users at ${timeString}`);
+
+        // Additionally send a short notice to all admins/owners so it shows
+        // up in their notification inbox.
+        await addMessageToAllAdmins(
+          `Das System wurde neu gestartet (${timeString}).`,
+          "info"
+        );
+        console.log(`Server restart notification sent to all admins at ${timeString}`);
       } catch (error) {
         console.error("Failed to send server restart notification:", error);
         // Don't fail server startup if notification fails

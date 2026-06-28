@@ -573,6 +573,9 @@ export const tenantMemberRoleEnum = pgEnum("tenant_member_role", [
   "member",
 ]);
 
+/** Role of a user within a tenant ("owner" | "admin" | "member"). */
+export type TenantMemberRole = (typeof tenantMemberRoleEnum.enumValues)[number];
+
 export const tenantInvitations = pgBaseTable(
   "tenant_invitations",
   {
