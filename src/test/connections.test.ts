@@ -28,6 +28,14 @@ import { drizzle } from "drizzle-orm/pglite";
 const client = new PGlite();
 const db = drizzle(client);
 
+// Capture the real module so we can restore it after this file's tests.
+// `bun test` runs every test file in a single process and `mock.module`
+// registrations are global, so without restoring this the PGlite stub would
+// leak into every other test file that runs afterwards — they'd then query a
+// database that only has the few connection-related tables created below
+// (e.g. "relation \"base_invitation_codes\" does not exist").
+const realDbConnection = { ...(await import("../lib/db/db-connection")) };
+
 // Inject the in-process DB everywhere the framework reads getDb().
 mock.module("../lib/db/db-connection", () => ({
   getDb: () => db,
@@ -209,6 +217,8 @@ beforeAll(async () => {
 beforeEach(resetAndSeed);
 afterAll(() => {
   globalThis.fetch = originalFetch;
+  // Restore the real DB module so the mock does not leak into other test files.
+  mock.module("../lib/db/db-connection", () => realDbConnection);
 });
 
 // ---------------------------------------------------------------------------
