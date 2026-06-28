@@ -204,12 +204,12 @@ describe("acceptConnection", () => {
 
     const rows = await connectionsRows();
     expect(rows).toHaveLength(1);
-    expect(rows[0].tenantId).toBe(SERVER_TENANT);
-    expect(rows[0].role).toBe("leading");
-    expect(rows[0].status).toBe("active");
-    expect(rows[0].initiatedBy).toBe("remote");
-    expect(rows[0].remoteTenantId).toBe(CLIENT_REMOTE_ID);
-    expect(rows[0].remotePublicKey).toBe("CLIENT_PUBKEY");
+    expect(rows[0]!.tenantId).toBe(SERVER_TENANT);
+    expect(rows[0]!.role).toBe("leading");
+    expect(rows[0]!.status).toBe("active");
+    expect(rows[0]!.initiatedBy).toBe("remote");
+    expect(rows[0]!.remoteTenantId).toBe(CLIENT_REMOTE_ID);
+    expect(rows[0]!.remotePublicKey).toBe("CLIENT_PUBKEY");
   });
 
   it("following: DOES mirror the remote leader tenant (origin=remote)", async () => {
@@ -226,11 +226,11 @@ describe("acceptConnection", () => {
 
     const shadow = await tenantById(LEADER_TENANT);
     expect(shadow).toBeDefined();
-    expect(shadow.origin).toBe("remote");
+    expect(shadow!.origin).toBe("remote");
 
     const rows = await connectionsRows();
-    expect(rows[0].tenantId).toBe(LEADER_TENANT);
-    expect(rows[0].role).toBe("following");
+    expect(rows[0]!.tenantId).toBe(LEADER_TENANT);
+    expect(rows[0]!.role).toBe("following");
   });
 });
 
@@ -272,16 +272,16 @@ describe("initializeConnection", () => {
     expect(result.status).toBe("active");
 
     const shadow = await tenantById(LEADER_TENANT);
-    expect(shadow.origin).toBe("remote");
+    expect(shadow!.origin).toBe("remote");
 
     const rows = await connectionsRows();
     expect(rows).toHaveLength(1);
-    expect(rows[0].tenantId).toBe(LEADER_TENANT);
-    expect(rows[0].role).toBe("following");
-    expect(rows[0].status).toBe("active");
-    expect(rows[0].initiatedBy).toBe("local");
-    expect(rows[0].remoteTenantId).toBe(LEADER_TENANT);
-    expect(rows[0].remotePublicKey).toBe("REMOTE_PUBLIC_KEY");
+    expect(rows[0]!.tenantId).toBe(LEADER_TENANT);
+    expect(rows[0]!.role).toBe("following");
+    expect(rows[0]!.status).toBe("active");
+    expect(rows[0]!.initiatedBy).toBe("local");
+    expect(rows[0]!.remoteTenantId).toBe(LEADER_TENANT);
+    expect(rows[0]!.remotePublicKey).toBe("REMOTE_PUBLIC_KEY");
 
     // The peer is told to take the opposite (leading) role.
     expect(capturedExchangeBody.role).toBe("leading");
@@ -304,9 +304,9 @@ describe("initializeConnection", () => {
 
     expect(await tenantById(LEADER_TENANT)).toBeUndefined();
     const rows = await connectionsRows();
-    expect(rows[0].tenantId).toBe(CLIENT_TENANT);
-    expect(rows[0].role).toBe("leading");
-    expect(rows[0].remoteTenantId).toBe(LEADER_TENANT);
+    expect(rows[0]!.tenantId).toBe(CLIENT_TENANT);
+    expect(rows[0]!.role).toBe("leading");
+    expect(rows[0]!.remoteTenantId).toBe(LEADER_TENANT);
     expect(capturedExchangeBody.role).toBe("following");
   });
 
@@ -353,7 +353,7 @@ describe("initializeConnection", () => {
     // The connection survived the wipe (it lives under the leader tenant).
     const rows = await connectionsRows();
     expect(rows).toHaveLength(1);
-    expect(rows[0].tenantId).toBe(LEADER_TENANT);
+    expect(rows[0]!.tenantId).toBe(LEADER_TENANT);
 
     // Admin still has access.
     expect(await memberRole(ADMIN_USER, LEADER_TENANT)).toBe("owner");
