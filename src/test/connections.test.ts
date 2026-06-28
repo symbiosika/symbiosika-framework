@@ -1,9 +1,10 @@
 /**
  * Connections — leading/following role logic.
  *
- * Self-contained: runs the REAL connection service against an in-process PGlite
- * database (injected via `mock.module`) with the remote server mocked at the
- * `fetch` boundary. No external Postgres and no second server process required.
+ * Runs the REAL connection service against the REAL Postgres database (the same
+ * one every other test uses, booted via `createDatabaseClient`), with only the
+ * remote server mocked at the `fetch` boundary. No in-process database and no
+ * second server process.
  *
  * Why no "real" end-to-end self-connection test: a connection models two
  * *separate* databases. Pointed at one database, both the initiating and the
@@ -20,26 +21,17 @@ import {
   beforeAll,
   beforeEach,
   afterAll,
-  mock,
 } from "bun:test";
-import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
-
-const client = new PGlite();
-const db = drizzle(client);
-
-// Inject the in-process DB everywhere the framework reads getDb().
-mock.module("../lib/db/db-connection", () => ({
-  getDb: () => db,
-  createDatabaseClient: () => db,
-  waitForDbConnection: async () => {},
-}));
-
-const conn = await import("../lib/connections");
-const { initServerKeysIfNeeded } = await import(
-  "../lib/connections/init-server-keys"
-);
-const { _GLOBAL_SERVER_CONFIG } = await import("../store");
+import { eq, and, inArray, or } from "drizzle-orm";
+import {
+  createDatabaseClient,
+  getDb,
+  waitForDbConnection,
+} from "../lib/db/db-connection";
+import { tenants, users, tenantMembers, connections } from "../lib/db/db-schema";
+import { connectionsService, isSelfConnectionUrl } from "../lib/connections";
+import { initServerKeysIfNeeded } from "../lib/connections/init-server-keys";
+import { _GLOBAL_SERVER_CONFIG } from "../store";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -54,6 +46,23 @@ const SERVER_TENANT = "33333333-3333-3333-3333-333333333333";
 const ADMIN_USER = "44444444-4444-4444-4444-444444444444";
 const EXTRA_TENANT = "55555555-5555-5555-5555-555555555555";
 const CLIENT_REMOTE_ID = "66666666-6666-6666-6666-666666666666";
+
+// Everything this suite may create — used to clean up before each test without
+// touching rows owned by other test files.
+const TEST_TENANT_IDS = [
+  CLIENT_TENANT,
+  LEADER_TENANT,
+  SERVER_TENANT,
+  EXTRA_TENANT,
+  CLIENT_REMOTE_ID,
+];
+const TEST_TENANT_NAMES = [
+  "Client Local",
+  "Server Main",
+  LEADER_NAME,
+  "Acme",
+  "Extra",
+];
 
 // ---------------------------------------------------------------------------
 // Mocked remote server (fetch boundary)
@@ -90,125 +99,88 @@ globalThis.fetch = (async (input: any, init?: any) => {
 }) as any;
 
 // ---------------------------------------------------------------------------
-// Schema + seed (only the tables the connection flow touches)
+// Reset + seed (only the rows the connection flow touches)
 // ---------------------------------------------------------------------------
-async function createSchema() {
-  await client.exec(`
-    CREATE TYPE "tenant_origin" AS ENUM ('local','remote');
-    CREATE TYPE "initiated_by" AS ENUM ('local','remote');
-    CREATE TYPE "connection_role" AS ENUM ('leading','following');
-    CREATE TYPE "connection_status" AS ENUM ('pending','active','disconnected','revoked');
-    CREATE TYPE "tenant_member_role" AS ENUM ('owner','admin','member');
-
-    CREATE TABLE "base_tenants" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "name" varchar(255) NOT NULL,
-      "description" text,
-      "origin" "tenant_origin" NOT NULL DEFAULT 'local',
-      "created_at" timestamp NOT NULL DEFAULT now(),
-      "updated_at" timestamp NOT NULL DEFAULT now()
-    );
-    CREATE UNIQUE INDEX "tenants_name_local_unique_idx"
-      ON "base_tenants" ("name") WHERE "origin" = 'local';
-
-    CREATE TABLE "base_users" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "provider" text NOT NULL DEFAULT 'local',
-      "email" text NOT NULL,
-      "email_verified" boolean NOT NULL DEFAULT false,
-      "firstname" varchar(255) NOT NULL,
-      "surname" varchar(255) NOT NULL,
-      "ext_user_id" text NOT NULL DEFAULT '',
-      "created_at" timestamp NOT NULL DEFAULT now(),
-      "updated_at" timestamp NOT NULL DEFAULT now(),
-      "last_tenant_id" uuid REFERENCES "base_tenants"("id") ON DELETE SET NULL
-    );
-
-    CREATE TABLE "base_tenant_members" (
-      "user_id" uuid NOT NULL REFERENCES "base_users"("id") ON DELETE CASCADE,
-      "tenant_id" uuid NOT NULL REFERENCES "base_tenants"("id") ON DELETE CASCADE,
-      "role" "tenant_member_role" NOT NULL DEFAULT 'member',
-      "joined_at" timestamp NOT NULL DEFAULT now(),
-      PRIMARY KEY ("user_id","tenant_id")
-    );
-
-    CREATE TABLE "base_server_keys" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "private_key" text NOT NULL,
-      "public_key" text NOT NULL,
-      "created_at" timestamp NOT NULL DEFAULT now(),
-      "updated_at" timestamp NOT NULL DEFAULT now()
-    );
-
-    CREATE TABLE "base_connections" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "tenant_id" uuid NOT NULL REFERENCES "base_tenants"("id") ON DELETE CASCADE,
-      "name" varchar(255) NOT NULL,
-      "remote_url" text,
-      "remote_connection_id" text,
-      "remote_public_key" text,
-      "remote_tenant_id" uuid,
-      "initiated_by" "initiated_by" NOT NULL DEFAULT 'local',
-      "role" "connection_role" NOT NULL DEFAULT 'leading',
-      "status" "connection_status" NOT NULL DEFAULT 'active',
-      "created_at" timestamp NOT NULL DEFAULT now(),
-      "updated_at" timestamp NOT NULL DEFAULT now(),
-      "last_connected_at" timestamp,
-      "meta" jsonb NOT NULL DEFAULT '{}'
-    );
-    CREATE UNIQUE INDEX "connections_tenant_name_initiated_by_unique_idx"
-      ON "base_connections" ("tenant_id","name","initiated_by");
-    CREATE UNIQUE INDEX "connections_tenant_rcid_initiated_by_unique_idx"
-      ON "base_connections" ("tenant_id","remote_connection_id","initiated_by");
-  `);
-}
-
 async function resetAndSeed() {
-  await client.exec(`
-    TRUNCATE "base_connections","base_tenant_members","base_server_keys","base_users","base_tenants" CASCADE;
-  `);
-  await client.query(
-    `INSERT INTO "base_tenants" ("id","name","origin") VALUES
-      ($1,'Client Local','local'),
-      ($2,'Server Main','local')`,
-    [CLIENT_TENANT, SERVER_TENANT]
-  );
-  await client.query(
-    `INSERT INTO "base_users" ("id","email","firstname","surname") VALUES ($1,$2,'Ada','Admin')`,
-    [ADMIN_USER, "admin@example.com"]
-  );
-  await client.query(
-    `INSERT INTO "base_tenant_members" ("user_id","tenant_id","role") VALUES ($1,$2,'admin')`,
-    [ADMIN_USER, CLIENT_TENANT]
-  );
+  const db = getDb();
+
+  // Clear connections first: a connection's remote_tenant_id has no FK, so
+  // deleting tenants would not cascade those rows away.
+  await db.delete(connections);
+  // Deleting the tenants cascades their tenant_members.
+  await db
+    .delete(tenants)
+    .where(
+      or(
+        inArray(tenants.id, TEST_TENANT_IDS),
+        inArray(tenants.name, TEST_TENANT_NAMES)
+      )
+    );
+  await db.delete(users).where(eq(users.id, ADMIN_USER));
+
+  await db.insert(tenants).values([
+    { id: CLIENT_TENANT, name: "Client Local", origin: "local" },
+    { id: SERVER_TENANT, name: "Server Main", origin: "local" },
+  ]);
+  await db
+    .insert(users)
+    .values({
+      id: ADMIN_USER,
+      email: "admin@example.com",
+      firstname: "Ada",
+      surname: "Admin",
+    });
+  await db
+    .insert(tenantMembers)
+    .values({ userId: ADMIN_USER, tenantId: CLIENT_TENANT, role: "admin" });
+
   await initServerKeysIfNeeded();
   exchangeShouldFail = false;
   capturedExchangeBody = null;
 }
 
 const tenantById = async (id: string) =>
-  (await client.query(`SELECT * FROM "base_tenants" WHERE id = $1`, [id]))
-    .rows[0] as any;
-const connectionsRows = async () =>
-  (await client.query(`SELECT * FROM "base_connections"`)).rows as any[];
+  (await getDb().select().from(tenants).where(eq(tenants.id, id)))[0];
+const connectionsRows = async () => getDb().select().from(connections);
 const memberRole = async (userId: string, tenantId: string) =>
-  ((
-    await client.query(
-      `SELECT role FROM "base_tenant_members" WHERE user_id=$1 AND tenant_id=$2`,
-      [userId, tenantId]
-    )
-  ).rows[0] as any)?.role;
+  (
+    await getDb()
+      .select({ role: tenantMembers.role })
+      .from(tenantMembers)
+      .where(
+        and(
+          eq(tenantMembers.userId, userId),
+          eq(tenantMembers.tenantId, tenantId)
+        )
+      )
+  )[0]?.role;
 const userLastTenant = async (userId: string) =>
-  ((await client.query(`SELECT last_tenant_id FROM "base_users" WHERE id=$1`, [userId]))
-    .rows[0] as any)?.last_tenant_id;
+  (
+    await getDb()
+      .select({ lastTenantId: users.lastTenantId })
+      .from(users)
+      .where(eq(users.id, userId))
+  )[0]?.lastTenantId;
 
 beforeAll(async () => {
   _GLOBAL_SERVER_CONFIG.baseUrl = SELF_URL;
-  await createSchema();
+  await createDatabaseClient();
+  await waitForDbConnection();
 });
 beforeEach(resetAndSeed);
-afterAll(() => {
+afterAll(async () => {
   globalThis.fetch = originalFetch;
+  // Leave the database clean for the next test file.
+  await getDb().delete(connections);
+  await getDb()
+    .delete(tenants)
+    .where(
+      or(
+        inArray(tenants.id, TEST_TENANT_IDS),
+        inArray(tenants.name, TEST_TENANT_NAMES)
+      )
+    );
+  await getDb().delete(users).where(eq(users.id, ADMIN_USER));
 });
 
 // ---------------------------------------------------------------------------
@@ -216,7 +188,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 describe("acceptConnection", () => {
   it("leading: does NOT create a shadow of the connecting client", async () => {
-    await conn.connectionsService.acceptConnection(
+    await connectionsService.acceptConnection(
       SERVER_TENANT,
       REMOTE_URL,
       CLIENT_REMOTE_ID,
@@ -232,16 +204,16 @@ describe("acceptConnection", () => {
 
     const rows = await connectionsRows();
     expect(rows).toHaveLength(1);
-    expect(rows[0].tenant_id).toBe(SERVER_TENANT);
+    expect(rows[0].tenantId).toBe(SERVER_TENANT);
     expect(rows[0].role).toBe("leading");
     expect(rows[0].status).toBe("active");
-    expect(rows[0].initiated_by).toBe("remote");
-    expect(rows[0].remote_tenant_id).toBe(CLIENT_REMOTE_ID);
-    expect(rows[0].remote_public_key).toBe("CLIENT_PUBKEY");
+    expect(rows[0].initiatedBy).toBe("remote");
+    expect(rows[0].remoteTenantId).toBe(CLIENT_REMOTE_ID);
+    expect(rows[0].remotePublicKey).toBe("CLIENT_PUBKEY");
   });
 
   it("following: DOES mirror the remote leader tenant (origin=remote)", async () => {
-    await conn.connectionsService.acceptConnection(
+    await connectionsService.acceptConnection(
       SERVER_TENANT,
       REMOTE_URL,
       LEADER_TENANT,
@@ -257,7 +229,7 @@ describe("acceptConnection", () => {
     expect(shadow.origin).toBe("remote");
 
     const rows = await connectionsRows();
-    expect(rows[0].tenant_id).toBe(LEADER_TENANT);
+    expect(rows[0].tenantId).toBe(LEADER_TENANT);
     expect(rows[0].role).toBe("following");
   });
 });
@@ -267,18 +239,15 @@ describe("acceptConnection", () => {
 // ---------------------------------------------------------------------------
 describe("tenant name uniqueness", () => {
   it("allows several remote shadows to share a name but rejects a duplicate local name", async () => {
-    await client.query(`INSERT INTO "base_tenants" ("name","origin") VALUES ('Acme','local')`);
+    const db = getDb();
+    await db.insert(tenants).values({ name: "Acme", origin: "local" });
     // Two different remote leaders both called "Acme" must both be mirrorable.
-    await client.query(
-      `INSERT INTO "base_tenants" ("id","name","origin") VALUES (gen_random_uuid(),'Acme','remote')`
-    );
-    await client.query(
-      `INSERT INTO "base_tenants" ("id","name","origin") VALUES (gen_random_uuid(),'Acme','remote')`
-    );
+    await db.insert(tenants).values({ name: "Acme", origin: "remote" });
+    await db.insert(tenants).values({ name: "Acme", origin: "remote" });
 
     let rejected = false;
     try {
-      await client.query(`INSERT INTO "base_tenants" ("name","origin") VALUES ('Acme','local')`);
+      await db.insert(tenants).values({ name: "Acme", origin: "local" });
     } catch {
       rejected = true;
     }
@@ -291,7 +260,7 @@ describe("tenant name uniqueness", () => {
 // ---------------------------------------------------------------------------
 describe("initializeConnection", () => {
   it("following (default): adopts leader tenant, runs under it, tells peer to lead", async () => {
-    const result = await conn.connectionsService.initializeConnection(
+    const result = await connectionsService.initializeConnection(
       CLIENT_TENANT,
       REMOTE_URL,
       "admin@example.com",
@@ -307,12 +276,12 @@ describe("initializeConnection", () => {
 
     const rows = await connectionsRows();
     expect(rows).toHaveLength(1);
-    expect(rows[0].tenant_id).toBe(LEADER_TENANT);
+    expect(rows[0].tenantId).toBe(LEADER_TENANT);
     expect(rows[0].role).toBe("following");
     expect(rows[0].status).toBe("active");
-    expect(rows[0].initiated_by).toBe("local");
-    expect(rows[0].remote_tenant_id).toBe(LEADER_TENANT);
-    expect(rows[0].remote_public_key).toBe("REMOTE_PUBLIC_KEY");
+    expect(rows[0].initiatedBy).toBe("local");
+    expect(rows[0].remoteTenantId).toBe(LEADER_TENANT);
+    expect(rows[0].remotePublicKey).toBe("REMOTE_PUBLIC_KEY");
 
     // The peer is told to take the opposite (leading) role.
     expect(capturedExchangeBody.role).toBe("leading");
@@ -323,7 +292,7 @@ describe("initializeConnection", () => {
   });
 
   it("leading: keeps own tenant, no shadow, tells peer to follow", async () => {
-    await conn.connectionsService.initializeConnection(
+    await connectionsService.initializeConnection(
       CLIENT_TENANT,
       REMOTE_URL,
       "admin@example.com",
@@ -335,16 +304,16 @@ describe("initializeConnection", () => {
 
     expect(await tenantById(LEADER_TENANT)).toBeUndefined();
     const rows = await connectionsRows();
-    expect(rows[0].tenant_id).toBe(CLIENT_TENANT);
+    expect(rows[0].tenantId).toBe(CLIENT_TENANT);
     expect(rows[0].role).toBe("leading");
-    expect(rows[0].remote_tenant_id).toBe(LEADER_TENANT);
+    expect(rows[0].remoteTenantId).toBe(LEADER_TENANT);
     expect(capturedExchangeBody.role).toBe("following");
   });
 
   it("rolls back staged connection AND freshly-created shadow when key exchange fails", async () => {
     exchangeShouldFail = true;
     await expect(
-      conn.connectionsService.initializeConnection(
+      connectionsService.initializeConnection(
         CLIENT_TENANT,
         REMOTE_URL,
         "admin@example.com",
@@ -361,12 +330,11 @@ describe("initializeConnection", () => {
   });
 
   it("edge mode: replaceLocalTenants collapses to a pure mirror of the leader", async () => {
-    await client.query(
-      `INSERT INTO "base_tenants" ("id","name","origin") VALUES ($1,'Extra','local')`,
-      [EXTRA_TENANT]
-    );
+    await getDb()
+      .insert(tenants)
+      .values({ id: EXTRA_TENANT, name: "Extra", origin: "local" });
 
-    await conn.connectionsService.initializeConnection(
+    await connectionsService.initializeConnection(
       CLIENT_TENANT,
       REMOTE_URL,
       "admin@example.com",
@@ -385,7 +353,7 @@ describe("initializeConnection", () => {
     // The connection survived the wipe (it lives under the leader tenant).
     const rows = await connectionsRows();
     expect(rows).toHaveLength(1);
-    expect(rows[0].tenant_id).toBe(LEADER_TENANT);
+    expect(rows[0].tenantId).toBe(LEADER_TENANT);
 
     // Admin still has access.
     expect(await memberRole(ADMIN_USER, LEADER_TENANT)).toBe("owner");
@@ -394,7 +362,7 @@ describe("initializeConnection", () => {
 
   it("refuses to connect a server to itself", async () => {
     await expect(
-      conn.connectionsService.initializeConnection(
+      connectionsService.initializeConnection(
         CLIENT_TENANT,
         SELF_URL, // same as _GLOBAL_SERVER_CONFIG.baseUrl
         "admin@example.com",
@@ -413,8 +381,8 @@ describe("initializeConnection", () => {
 
 describe("isSelfConnectionUrl", () => {
   it("normalizes trailing slashes and case", () => {
-    expect(conn.isSelfConnectionUrl(SELF_URL + "/")).toBe(true);
-    expect(conn.isSelfConnectionUrl(SELF_URL.toUpperCase())).toBe(true);
-    expect(conn.isSelfConnectionUrl(REMOTE_URL)).toBe(false);
+    expect(isSelfConnectionUrl(SELF_URL + "/")).toBe(true);
+    expect(isSelfConnectionUrl(SELF_URL.toUpperCase())).toBe(true);
+    expect(isSelfConnectionUrl(REMOTE_URL)).toBe(false);
   });
 });
