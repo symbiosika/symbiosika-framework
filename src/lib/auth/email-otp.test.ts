@@ -69,8 +69,8 @@ describe("email-otp", () => {
       .from(emailLoginCodes)
       .where(eq(emailLoginCodes.email, TEST_EMAIL));
     expect(rows.length).toBe(1);
-    expect(rows[0].codeHash).not.toBe(code);
-    expect(rows[0].codeHash).toBe(sha256(code));
+    expect(rows[0]!.codeHash).not.toBe(code);
+    expect(rows[0]!.codeHash).toBe(sha256(code));
   });
 
   it("verifies a correct code exactly once (single-use)", async () => {

@@ -97,7 +97,7 @@ describe("createCrudRoutes scope enforcement", () => {
     const app = buildApp(config, ["all"]);
     const res = await app.request("/tenant/t1/things");
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as any;
     expect(body.success).toBe(true);
     expect(body.data).toHaveLength(1);
   });
@@ -132,7 +132,7 @@ describe("createCrudRoutes scope enforcement", () => {
       body: JSON.stringify({ name: "x" }),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as any;
     expect(body.data.id).toBe("new");
   });
 

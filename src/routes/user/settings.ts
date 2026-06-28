@@ -115,7 +115,10 @@ export function defineUserSettingsRoutes(
     async (c) => {
       const userId = c.get("usersId");
       const { key } = c.req.valid("param");
-      const { value, valueJson, description } = c.req.valid("json");
+      const { value, description } = c.req.valid("json");
+      const valueJson = c.req.valid("json").valueJson as
+        | Record<string, unknown>
+        | undefined;
 
       // Validate that at least one value is provided
       if (!value && !valueJson) {
