@@ -61,10 +61,7 @@ import defineJobRoutes from "./routes/tenant/[tenantId]/jobs";
 import defineDocsRoutes from "./routes/docs";
 import defineWhatsAppRoutes from "./routes/communiation/wa";
 import defineNotificationRoutes from "./routes/user/notifications";
-import {
-  addMessageToAllUsers,
-  addMessageToAllAdmins,
-} from "./lib/notifications";
+import { addMessageToAllAdmins } from "./lib/notifications";
 // Jobs
 import { defineJob, startJobQueue } from "./lib/jobs";
 // Cron
@@ -404,7 +401,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
       defineJobRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
-       * Send server restart notification to all users
+       * Send server restart notification to all admins/owners
        */
       try {
         const now = new Date();
@@ -417,14 +414,6 @@ export const defineServer = (config: ServerSpecificConfig) => {
           minute: "2-digit",
           second: "2-digit",
         });
-        await addMessageToAllUsers(
-          `Server restart ${timeString}`,
-          "info"
-        );
-        console.log(`Server restart notification sent to all users at ${timeString}`);
-
-        // Additionally send a short notice to all admins/owners so it shows
-        // up in their notification inbox.
         await addMessageToAllAdmins(
           `Das System wurde neu gestartet (${timeString}).`,
           "info"
