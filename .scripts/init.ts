@@ -20,6 +20,10 @@
  *                                if set and non-empty; otherwise prompt on the
  *                                console. Only applied if not already present.
  *                                Empty input skips without overwriting
+ *     KEY={user_input|cloud_secret} → like {user_input}, but the variable is also
+ *                                present in the Infisical cloud secret manager.
+ *                                A check-icon hint is shown before the prompt and
+ *                                local input is optional (empty skips)
  *     KEY={!}{user_input}      → always prompt (even if already present)
  *     KEY={folder://PATH:SRC}  → read SRC from the .env in folder PATH (relative
  *                                to the current dir, may be a sibling/parent) and
@@ -44,6 +48,9 @@ const envPath = "./.env";
 const frameworkEnvDefaultPath = "./framework/.env.default";
 const envRequiredPath = "./.env.required-variables";
 
+// Green checkmark for console output (ANSI: green, then reset).
+const CHECK = "\x1b[32m✓\x1b[0m";
+
 /**
  * Ensure .env.default exists (copy from framework if missing)
  */
@@ -54,7 +61,7 @@ async function ensureEnvDefault(): Promise<void> {
   const frameworkEnvDefault = Bun.file(frameworkEnvDefaultPath);
   if (await frameworkEnvDefault.exists()) {
     await Bun.write(envDefaultPath, frameworkEnvDefault);
-    console.log("✓ Created .env.default from framework");
+    console.log(`${CHECK} Created .env.default from framework`);
   }
 }
 
@@ -68,7 +75,7 @@ async function ensureEnv(): Promise<void> {
   const envDefault = Bun.file(envDefaultPath);
   if (await envDefault.exists()) {
     await Bun.write(envPath, envDefault);
-    console.log("✓ Created .env from .env.default");
+    console.log(`${CHECK} Created .env from .env.default`);
   }
 }
 
@@ -199,6 +206,7 @@ type RequiredVar = {
   literal: string; // only used for kind "literal"
   folderPath: string; // only used for kind "folder_ref"
   sourceKey: string; // only used for kind "folder_ref"
+  infisical: boolean; // user_input only: also present in the Infisical cloud
 };
 
 /**
@@ -221,12 +229,21 @@ function parseRequiredVariables(content: string): RequiredVar[] {
     const force = value.startsWith("{!}");
     if (force) value = value.slice(3);
 
-    const base = { key, force, literal: "", folderPath: "", sourceKey: "" };
+    const base = {
+      key,
+      force,
+      literal: "",
+      folderPath: "",
+      sourceKey: "",
+      infisical: false,
+    };
 
     if (value === "{shared_secret}") {
       vars.push({ ...base, kind: "shared_secret" });
     } else if (value === "{user_input}") {
       vars.push({ ...base, kind: "user_input" });
+    } else if (value === "{user_input|cloud_secret}") {
+      vars.push({ ...base, kind: "user_input", infisical: true });
     } else if (value.startsWith("{folder://") && value.endsWith("}")) {
       // {folder://PATH:SOURCE_KEY} — PATH may contain ':' (e.g. C:/...),
       // so split on the last ':' before the closing brace.
@@ -367,7 +384,7 @@ async function applyRequiredVariables(path: string): Promise<void> {
   if (deterministicKeys.length > 0) {
     content = mergeEnv(content, deterministic);
     await Bun.write(path, content);
-    console.log(`✓ Applied required variables: ${deterministicKeys.join(", ")}`);
+    console.log(`${CHECK} Applied required variables: ${deterministicKeys.join(", ")}`);
   }
 
   // Phase 2 — interactive {user_input} values. Each answer is written
@@ -383,8 +400,15 @@ async function applyRequiredVariables(path: string): Promise<void> {
     let value: string;
     if (fromEnv !== undefined && fromEnv.trim() !== "") {
       value = fromEnv;
-      console.log(`✓ ${required_var.key}: taken from environment`);
+      console.log(`${CHECK} ${required_var.key}: taken from environment`);
     } else {
+      // Variable is also stored in the Infisical cloud secret manager — local
+      // input is optional here (empty skips and lets the cloud value apply).
+      if (required_var.infisical) {
+        console.log(
+          `${CHECK} ${required_var.key}: also available in the Infisical cloud secret manager — local input is optional (press Enter to skip)`,
+        );
+      }
       const answer = prompt(`Enter value for ${required_var.key}:`);
       // Empty input: skip without overwriting.
       if (answer === null || answer.trim() === "") continue;
@@ -393,7 +417,7 @@ async function applyRequiredVariables(path: string): Promise<void> {
 
     content = mergeEnv(content, { [required_var.key]: value });
     await Bun.write(path, content);
-    console.log(`✓ Applied required variable: ${required_var.key}`);
+    console.log(`${CHECK} Applied required variable: ${required_var.key}`);
   }
 }
 
@@ -420,7 +444,7 @@ async function init(): Promise<void> {
   const keysUpdated = await updateEnvFile(envPath, allSecrets);
 
   if (keysUpdated.length > 0) {
-    console.log(`✓ Generated secrets: ${keysUpdated.join(", ")}`);
+    console.log(`${CHECK} Generated secrets: ${keysUpdated.join(", ")}`);
   } else {
     console.log("ℹ All secrets already set");
   }
@@ -432,7 +456,7 @@ async function init(): Promise<void> {
   if (Object.keys(overrides).length > 0) {
     const keysSet = await applyOverrides(envPath, overrides);
     if (keysSet.length > 0) {
-      console.log(`✓ Applied overrides: ${keysSet.join(", ")}`);
+      console.log(`${CHECK} Applied overrides: ${keysSet.join(", ")}`);
     }
   }
 
