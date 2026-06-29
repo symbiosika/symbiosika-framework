@@ -103,6 +103,9 @@ export const users = pgBaseTable(
     image: text("image"),
     firstname: varchar("firstname", { length: 255 }).notNull(),
     surname: varchar("surname", { length: 255 }).notNull(),
+    // Free-text gender and salutation. Optional, no enum, default null.
+    gender: varchar("gender", { length: 50 }),
+    salutation: varchar("salutation", { length: 50 }),
     phoneNumber: varchar("phone_number", { length: 255 }),
     phoneNumberVerified: boolean("phone_number_verified")
       .notNull()

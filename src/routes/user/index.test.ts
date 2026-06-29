@@ -116,6 +116,60 @@ describe("User API Endpoints", () => {
     expect(data.surname).toBe("Doe");
   });
 
+  // Test that the optional free-text gender and salutation fields can be set
+  // and are persisted / returned via GET /user/me.
+  it("should update gender and salutation", async () => {
+    const response = await app.request("/api/user/me", {
+      method: "PUT",
+      body: JSON.stringify({
+        gender: "non-binary",
+        salutation: "Mx.",
+      }),
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `jwt=${jwt}`,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const data: any = await response.json();
+    expect(data.gender).toBe("non-binary");
+    expect(data.salutation).toBe("Mx.");
+
+    // verify the values are persisted and returned on a fresh read
+    const getResponse = await app.request("/api/user/me", {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `jwt=${jwt}`,
+      },
+    });
+    expect(getResponse.status).toBe(200);
+    const getData: any = await getResponse.json();
+    expect(getData.gender).toBe("non-binary");
+    expect(getData.salutation).toBe("Mx.");
+  });
+
+  // Both fields are optional and default to null - they must be clearable.
+  it("should allow clearing gender and salutation back to null", async () => {
+    const response = await app.request("/api/user/me", {
+      method: "PUT",
+      body: JSON.stringify({
+        gender: null,
+        salutation: null,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `jwt=${jwt}`,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const data: any = await response.json();
+    expect(data.gender).toBeNull();
+    expect(data.salutation).toBeNull();
+  });
+
   // Test user search
   it("should search for user by email", async () => {
     const response = await app.request(

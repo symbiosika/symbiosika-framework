@@ -160,6 +160,8 @@ export function defineSecuredUserRoutes(
       v.object({
         firstname: v.optional(v.string()),
         surname: v.optional(v.string()),
+        gender: v.optional(v.nullable(v.string())),
+        salutation: v.optional(v.nullable(v.string())),
         image: v.optional(v.nullable(v.string())),
         lastTenantId: v.optional(v.nullable(v.string())),
         phoneNumber: v.optional(v.nullable(v.string())),
@@ -168,11 +170,20 @@ export function defineSecuredUserRoutes(
     async (c) => {
       try {
         // ensure to get only the allowed fields
-        const { firstname, surname, image, lastTenantId, phoneNumber } =
-          c.req.valid("json");
+        const {
+          firstname,
+          surname,
+          gender,
+          salutation,
+          image,
+          lastTenantId,
+          phoneNumber,
+        } = c.req.valid("json");
         await updateUser(c.get("usersId"), {
           firstname,
           surname,
+          gender,
+          salutation,
           image,
           lastTenantId,
           phoneNumber,

@@ -35,6 +35,8 @@ export const getUserById = async (userId: string) => {
       profileImageName: users.profileImageName,
       firstname: users.firstname,
       surname: users.surname,
+      gender: users.gender,
+      salutation: users.salutation,
       meta: users.meta,
       lastTenantId: users.lastTenantId,
       phoneNumber: users.phoneNumber,
