@@ -87,6 +87,8 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
   const _ORIGINS_FROM_ENV = process.env.ALLOWED_ORIGINS;
   _GLOBAL_SERVER_CONFIG.allowedOrigins = _ORIGINS_FROM_ENV
     ? _ORIGINS_FROM_ENV.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
     : [];
 
   _GLOBAL_SERVER_CONFIG.authType = config.authType ?? "local";
