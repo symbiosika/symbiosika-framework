@@ -34,7 +34,7 @@ import { validateOrganisationId } from "../../../../lib/utils/doublecheck-tenant
 import { describeRoute } from "hono-openapi";
 import { resolver, validator } from "hono-openapi";
 import { knowledgeEntrySchema } from "../../../../lib/db/db-schema";
-import { isTenantAdmin, isTenantMember } from "../..";
+import { isTenantMember } from "../..";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 import {
   applyPostProcessors,
@@ -342,7 +342,7 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
         abstract: v.optional(v.string()),
       })
     ),
-    isTenantAdmin,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");
@@ -389,7 +389,7 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
         text: v.string(),
       })
     ),
-    isTenantAdmin,
+    isTenantMember,
     async (c) => {
       try {
         const { tenantId, id } = c.req.valid("param");

@@ -2,12 +2,49 @@ import { getDb } from "../db/db-connection";
 import { and, eq } from "drizzle-orm";
 import { knowledgeEntry, knowledgeChunks } from "../db/schema/knowledge";
 import { isUserPartOfTeam } from "../usermanagement/teams";
-import { validateKnowledgeAccess } from "./permissions";
+import {
+  validateKnowledgeAccess,
+  assertCanWriteKnowledge,
+} from "./permissions";
 import { splitTextIntoSectionsOrChunks } from "./splitter";
 import { generateEmbedding } from "./embedding";
 import type { ChunkWithEmbedding } from "../types/chunks";
 import type { KnowledgeChunksInsert } from "../db/schema/knowledge";
 import log from "../log";
+
+/**
+ * Load a knowledge entry (scoped to the tenant) and translate it into the
+ * normalised write-scope used by `assertCanWriteKnowledge`.
+ *
+ * An entry restricted to a team is team-scoped; a user-owned entry is personal;
+ * everything else is treated as tenant-wide content.
+ */
+const assertCanWriteEntry = async (
+  id: string,
+  tenantId: string,
+  userId: string
+) => {
+  const entry = await getDb().query.knowledgeEntry.findFirst({
+    where: and(
+      eq(knowledgeEntry.id, id),
+      eq(knowledgeEntry.tenantId, tenantId)
+    ),
+    columns: { teamId: true, userId: true, userOwned: true },
+  });
+  if (!entry) {
+    throw new Error("Knowledge entry not found");
+  }
+
+  await assertCanWriteKnowledge(
+    {
+      tenantId,
+      tenantWide: !entry.teamId && !entry.userOwned,
+      teamId: entry.teamId ?? null,
+      userId: entry.userId ?? null,
+    },
+    { userId, tenantId }
+  );
+};
 
 /**
  * Delete a knowledge entry by ID
@@ -25,6 +62,8 @@ export const deleteKnowledgeEntry = async (
       "User does not have permission to delete this knowledge entry"
     );
   }
+  // check write permission (configurable per tenant via the wiki edit policy)
+  await assertCanWriteEntry(id, tenantId, userId);
 
   await getDb()
     .delete(knowledgeEntry)
@@ -55,6 +94,8 @@ export const updateKnowledgeEntry = async (
       "User does not have permission to update this knowledge entry"
     );
   }
+  // check write permission (configurable per tenant via the wiki edit policy)
+  await assertCanWriteEntry(id, tenantId, userId);
 
   // is a new teamId provided?
   if (data.teamId) {
@@ -104,6 +145,8 @@ export const updateKnowledgeEntryText = async (
       "User does not have permission to update this knowledge entry"
     );
   }
+  // check write permission (configurable per tenant via the wiki edit policy)
+  await assertCanWriteEntry(id, tenantId, userId);
 
   // Get the existing entry to preserve metadata (scoped to the tenant)
   const existingEntry = await getDb()

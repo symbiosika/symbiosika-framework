@@ -19,19 +19,22 @@ import {
 } from "../db/schema/knowledge";
 import { RESPONSES } from "../responses";
 import { teamMembers } from "../db/schema/users";
-import { checkTenantMemberRole } from "../usermanagement/tenants";
-import { checkTeamMemberRole } from "../usermanagement/teams";
+import { assertCanWriteKnowledge } from "./permissions";
 
 /**
  * Create a new knowledgeText entry
  */
 export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
-  // check permission
-  if (data.userId && data.teamId) {
-    await checkTeamMemberRole(data.teamId, data.userId, ["admin"]);
-  } else if (data.userId && data.tenantWide) {
-    await checkTenantMemberRole(data.tenantId, data.userId, ["admin", "owner"]);
-  }
+  // check permission (configurable per tenant via the wiki edit policy)
+  await assertCanWriteKnowledge(
+    {
+      tenantId: data.tenantId,
+      tenantWide: !!data.tenantWide,
+      teamId: data.teamId ?? null,
+      userId: data.userId ?? null,
+    },
+    { userId: data.userId, tenantId: data.tenantId }
+  );
 
   const e = await getDb()
     .insert(knowledgeText)
@@ -234,17 +237,16 @@ export const updateKnowledgeText = async (
   // Get the current entry (including text) to create history
   const currentEntry = await getKnowledgeTextById(id, context);
 
-  // check permission
-  if (context.userId) {
-    if (currentEntry.tenantWide) {
-      await checkTenantMemberRole(context.tenantId, context.userId, [
-        "admin",
-        "owner",
-      ]);
-    } else if (currentEntry.teamId) {
-      await checkTeamMemberRole(currentEntry.teamId, context.userId, ["admin"]);
-    }
-  }
+  // check permission (configurable per tenant via the wiki edit policy)
+  await assertCanWriteKnowledge(
+    {
+      tenantId: currentEntry.tenantId,
+      tenantWide: currentEntry.tenantWide,
+      teamId: currentEntry.teamId ?? null,
+      userId: currentEntry.userId ?? null,
+    },
+    { userId: context.userId, tenantId: context.tenantId }
+  );
 
   // Create history entry with the current state BEFORE updating
   const historyEntry: KnowledgeTextHistoryInsert = {
@@ -298,16 +300,16 @@ export const deleteKnowledgeText = async (
 ) => {
   const item = await getKnowledgeTextById(id, context);
 
-  if (context.userId) {
-    if (item.tenantWide) {
-      await checkTenantMemberRole(context.tenantId, context.userId, [
-        "admin",
-        "owner",
-      ]);
-    } else if (item.teamId) {
-      await checkTeamMemberRole(item.teamId, context.userId, ["admin"]);
-    }
-  }
+  // check permission (configurable per tenant via the wiki edit policy)
+  await assertCanWriteKnowledge(
+    {
+      tenantId: item.tenantId,
+      tenantWide: item.tenantWide,
+      teamId: item.teamId ?? null,
+      userId: item.userId ?? null,
+    },
+    { userId: context.userId, tenantId: context.tenantId }
+  );
 
   // Delete the entry (history will be cascade deleted due to foreign key)
   await getDb()
