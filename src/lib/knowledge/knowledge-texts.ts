@@ -30,14 +30,61 @@ import {
 } from "./knowledge-text-links";
 
 /**
+ * Central write-permission rule for knowledgeText pages:
+ *
+ *   - the assigned user (owner) may always read and write
+ *   - team pages: every team member may read and write
+ *   - tenant-wide pages: every tenant member may read and write
+ *   - private pages of another user are off limits
+ *
+ * Mirrors the read rule in buildKnowledgeTextVisibilityConditions (team
+ * membership takes precedence over the tenant-wide flag). Contexts without
+ * a userId are internal/service calls and skip the check, matching all
+ * other knowledgeText operations.
+ */
+export const checkKnowledgeTextWritePermission = async (
+  page: {
+    tenantId: string;
+    tenantWide: boolean;
+    teamId: string | null;
+    userId: string | null;
+  },
+  context: { tenantId: string; userId?: string }
+): Promise<void> => {
+  if (!context.userId) return;
+  if (page.userId && page.userId === context.userId) return; // owner
+  if (page.teamId) {
+    await checkTeamMemberRole(page.teamId, context.userId, [
+      "member",
+      "admin",
+    ]);
+    return;
+  }
+  if (page.tenantWide) {
+    await checkTenantMemberRole(page.tenantId, context.userId, [
+      "member",
+      "admin",
+      "owner",
+    ]);
+    return;
+  }
+  throw new Error("Knowledge text not found or access denied");
+};
+
+/**
  * Create a new knowledgeText entry
  */
 export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
-  // check permission
+  // creating a page inside a team / tenant-wide requires access to that
+  // container (ownership alone is not enough here)
   if (data.userId && data.teamId) {
-    await checkTeamMemberRole(data.teamId, data.userId, ["admin"]);
+    await checkTeamMemberRole(data.teamId, data.userId, ["member", "admin"]);
   } else if (data.userId && data.tenantWide) {
-    await checkTenantMemberRole(data.tenantId, data.userId, ["admin", "owner"]);
+    await checkTenantMemberRole(data.tenantId, data.userId, [
+      "member",
+      "admin",
+      "owner",
+    ]);
   }
 
   const e = await getDb()
@@ -251,15 +298,23 @@ export const updateKnowledgeText = async (
   // Get the current entry (including text) to create history
   const currentEntry = await getKnowledgeTextById(id, context);
 
-  // check permission
+  await checkKnowledgeTextWritePermission(currentEntry, context);
+
+  // moving a page into a team or making it tenant-wide additionally
+  // requires access to the TARGET container
   if (context.userId) {
-    if (currentEntry.tenantWide) {
+    if (data.teamId && data.teamId !== currentEntry.teamId) {
+      await checkTeamMemberRole(data.teamId, context.userId, [
+        "member",
+        "admin",
+      ]);
+    }
+    if (data.tenantWide === true && !currentEntry.tenantWide) {
       await checkTenantMemberRole(context.tenantId, context.userId, [
+        "member",
         "admin",
         "owner",
       ]);
-    } else if (currentEntry.teamId) {
-      await checkTeamMemberRole(currentEntry.teamId, context.userId, ["admin"]);
     }
   }
 
@@ -359,16 +414,7 @@ export const deleteKnowledgeText = async (
 ) => {
   const item = await getKnowledgeTextById(id, context);
 
-  if (context.userId) {
-    if (item.tenantWide) {
-      await checkTenantMemberRole(context.tenantId, context.userId, [
-        "admin",
-        "owner",
-      ]);
-    } else if (item.teamId) {
-      await checkTeamMemberRole(item.teamId, context.userId, ["admin"]);
-    }
-  }
+  await checkKnowledgeTextWritePermission(item, context);
 
   // Delete the entry (history and blocks are cascade deleted via FKs)
   await getDb()
