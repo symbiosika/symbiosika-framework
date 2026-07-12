@@ -19,6 +19,7 @@ import {
   syncKnowledgeTextBlocks,
   convertKnowledgeTextToBlocks,
 } from "../../../../../lib/knowledge/knowledge-text-blocks";
+import { getSimplifiedKnowledgeText } from "../../../../../lib/knowledge/knowledge-text-simplified";
 import {
   authAndSetUsersInfo,
   checkUserPermission,
@@ -50,6 +51,15 @@ const contextQuerySchema = v.object({
   teamId: v.optional(v.string()),
   workspaceId: v.optional(v.string()),
   includeHidden: v.optional(v.string()),
+});
+
+const simplifiedKnowledgeTextSchema: v.GenericSchema = v.object({
+  id: v.string(),
+  title: v.string(),
+  content: v.string(),
+  children: v.optional(
+    v.array(v.lazy(() => simplifiedKnowledgeTextSchema))
+  ),
 });
 
 export default function defineRoutesForKnowledgeTexts(
@@ -388,6 +398,71 @@ export default function defineRoutesForKnowledgeTexts(
         return c.json(RESPONSES.SUCCESS);
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Get a page in a simplified, LLM-friendly shape: { id, title, content }.
+   * `content` is the full page text with all blocks already merged.
+   * With ?recursive=true the whole subtree is nested under `children`.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/simplified",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Get a knowledge text page as simplified JSON (id, title, content); ?recursive=true nests all sub-pages under children",
+      responses: {
+        200: {
+          description: "Successful response with the simplified page",
+          content: {
+            "application/json": {
+              schema: resolver(simplifiedKnowledgeTextSchema),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator(
+      "query",
+      v.object({
+        recursive: v.optional(v.string()),
+        teamId: v.optional(v.string()),
+        workspaceId: v.optional(v.string()),
+        includeHidden: v.optional(v.string()),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const {
+          recursive: recursiveStr,
+          teamId,
+          workspaceId,
+          includeHidden: includeHiddenStr,
+        } = c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+        const includeHidden = includeHiddenStr === "true";
+        const recursive = recursiveStr === "true";
+
+        const r = await getSimplifiedKnowledgeText(
+          id,
+          { tenantId, userId, teamId, workspaceId, includeHidden },
+          { recursive }
+        );
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
+        if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
       }
     }
   );
