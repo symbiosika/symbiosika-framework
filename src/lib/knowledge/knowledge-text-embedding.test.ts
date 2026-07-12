@@ -73,15 +73,19 @@ describe("Knowledge Text Embedding (no provider required)", () => {
     expect(knowledgeTextSourceIdentifier("abc")).toBe("knowledge-text:abc");
   });
 
-  it("creating an embedding-enabled page never fails without a provider", async () => {
+  it("creating an embedding-enabled page never fails, with or without a provider", async () => {
     // the initial sync on create is best-effort: without a provider it
-    // logs and the page is still created
+    // logs and the page is still created; with a provider (CI) it embeds
     const page = await createPage({
       text: "content that would be embedded",
       embeddingEnabled: true,
     });
     expect(page.id).toBeDefined();
-    expect(page.knowledgeEntryId).toBeNull();
+    if (hasEmbeddingProvider) {
+      expect(page.knowledgeEntryId).not.toBeNull();
+    } else {
+      expect(page.knowledgeEntryId).toBeNull();
+    }
   });
 });
 
@@ -125,18 +129,19 @@ describe.skipIf(!hasEmbeddingProvider)(
     }, 30000);
 
     it("skips unchanged content and re-syncs in place on change", async () => {
+      // create already runs the initial sync (embeddingEnabled is set)
       const page = await createPage({
         text: "Original content for the change detection test.",
         embeddingEnabled: true,
       });
-
-      const first = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
-      expect(first.synced).toBe(true);
+      expect(page.knowledgeEntryId).not.toBeNull();
+      const entryId = page.knowledgeEntryId!;
 
       // same content again → skipped
       const second = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
       expect(second.unchanged).toBe(true);
-      expect(second.knowledgeEntryId).toBe(first.knowledgeEntryId!);
+      expect(second.synced).toBe(false);
+      expect(second.knowledgeEntryId).toBe(entryId);
 
       // block save changes the text → re-sync replaces the SAME entry
       await syncKnowledgeTextBlocks(
@@ -145,23 +150,24 @@ describe.skipIf(!hasEmbeddingProvider)(
         ctx
       );
       const fresh = await getKnowledgeTextById(page.id, ctx);
-      expect(fresh.knowledgeEntryId).toBe(first.knowledgeEntryId!);
+      expect(fresh.knowledgeEntryId).toBe(entryId);
 
       const chunks = await getDb()
         .select()
         .from(knowledgeChunks)
-        .where(eq(knowledgeChunks.knowledgeEntryId, first.knowledgeEntryId!));
+        .where(eq(knowledgeChunks.knowledgeEntryId, entryId));
       expect(chunks.length).toBeGreaterThan(0);
       expect(chunks[0]?.text).toContain("Completely new content");
     }, 60000);
 
     it("removes the entry when embedding is disabled", async () => {
+      // create already runs the initial sync (embeddingEnabled is set)
       const page = await createPage({
         text: "Content that will be un-embedded.",
         embeddingEnabled: true,
       });
-      const synced = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
-      expect(synced.synced).toBe(true);
+      expect(page.knowledgeEntryId).not.toBeNull();
+      const entryId = page.knowledgeEntryId!;
 
       await updateKnowledgeText(
         page.id,
@@ -175,24 +181,25 @@ describe.skipIf(!hasEmbeddingProvider)(
       const entries = await getDb()
         .select()
         .from(knowledgeEntry)
-        .where(eq(knowledgeEntry.id, synced.knowledgeEntryId!));
+        .where(eq(knowledgeEntry.id, entryId));
       expect(entries.length).toBe(0);
     }, 30000);
 
     it("removes the entry when the page is deleted", async () => {
+      // create already runs the initial sync (embeddingEnabled is set)
       const page = await createPage({
         text: "Content of a page that will be deleted.",
         embeddingEnabled: true,
       });
-      const synced = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
-      expect(synced.synced).toBe(true);
+      expect(page.knowledgeEntryId).not.toBeNull();
+      const entryId = page.knowledgeEntryId!;
 
       await deleteKnowledgeText(page.id, ctx);
 
       const entries = await getDb()
         .select()
         .from(knowledgeEntry)
-        .where(eq(knowledgeEntry.id, synced.knowledgeEntryId!));
+        .where(eq(knowledgeEntry.id, entryId));
       expect(entries.length).toBe(0);
     }, 30000);
   }
