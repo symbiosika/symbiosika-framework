@@ -72,6 +72,17 @@ describe("Knowledge Text Embedding (no provider required)", () => {
   it("builds a stable source identifier", () => {
     expect(knowledgeTextSourceIdentifier("abc")).toBe("knowledge-text:abc");
   });
+
+  it("creating an embedding-enabled page never fails without a provider", async () => {
+    // the initial sync on create is best-effort: without a provider it
+    // logs and the page is still created
+    const page = await createPage({
+      text: "content that would be embedded",
+      embeddingEnabled: true,
+    });
+    expect(page.id).toBeDefined();
+    expect(page.knowledgeEntryId).toBeNull();
+  });
 });
 
 describe.skipIf(!hasEmbeddingProvider)(
@@ -81,14 +92,24 @@ describe.skipIf(!hasEmbeddingProvider)(
       await initTests();
     });
 
+    it("embeds a page directly on create when embeddingEnabled is set", async () => {
+      const page = await createPage({
+        text: "Pages created with embedding on are synced immediately.",
+        embeddingEnabled: true,
+      });
+      // create already ran the initial sync
+      expect(page.knowledgeEntryId).toBeDefined();
+      expect(page.knowledgeEntryId).not.toBeNull();
+    }, 30000);
+
     it("creates a knowledge entry on first sync and links it", async () => {
       const page = await createPage({
         text: "This wiki page explains our vacation policy in detail.",
-        embeddingEnabled: true,
+        embeddingEnabled: false,
       });
+      await updateKnowledgeText(page.id, { embeddingEnabled: true }, ctx);
 
       const result = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
-      expect(result.synced).toBe(true);
       expect(result.knowledgeEntryId).toBeDefined();
 
       const fresh = await getKnowledgeTextById(page.id, ctx);

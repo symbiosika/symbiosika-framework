@@ -53,6 +53,22 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
   await syncKnowledgeTextLinks(e[0]);
   await resolvePhantomLinks(e[0]);
 
+  // initial embedding sync for pages created with embedding already on
+  if (e[0].embeddingEnabled) {
+    const syncResult = await syncKnowledgeTextEmbeddingSafe(
+      e[0].id,
+      e[0].tenantId
+    );
+    if (syncResult?.synced) {
+      // the sync wrote knowledgeEntryId/meta — return the fresh row
+      const fresh = await getDb()
+        .select()
+        .from(knowledgeText)
+        .where(eq(knowledgeText.id, e[0].id));
+      return fresh[0] ?? e[0];
+    }
+  }
+
   return e[0];
 };
 
