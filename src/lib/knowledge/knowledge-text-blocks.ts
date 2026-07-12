@@ -28,9 +28,10 @@ import {
   type KnowledgeTextSelect,
 } from "../db/schema/knowledge";
 import { assignPositions } from "../utils/fractional-index";
-import { getKnowledgeTextById } from "./knowledge-texts";
-import { checkTenantMemberRole } from "../usermanagement/tenants";
-import { checkTeamMemberRole } from "../usermanagement/teams";
+import {
+  getKnowledgeTextById,
+  checkKnowledgeTextWritePermission,
+} from "./knowledge-texts";
 import { syncKnowledgeTextEmbeddingSafe } from "./knowledge-text-embedding";
 import { syncKnowledgeTextLinks } from "./knowledge-text-links";
 
@@ -98,22 +99,6 @@ const toSnapshot = (
   position: block.position,
   meta: (block.meta ?? {}) as Record<string, unknown>,
 });
-
-/** Same write-permission rule as updateKnowledgeText */
-const checkWritePermission = async (
-  page: KnowledgeTextSelect,
-  context: Context
-) => {
-  if (!context.userId) return;
-  if (page.tenantWide) {
-    await checkTenantMemberRole(context.tenantId, context.userId, [
-      "admin",
-      "owner",
-    ]);
-  } else if (page.teamId) {
-    await checkTeamMemberRole(page.teamId, context.userId, ["admin"]);
-  }
-};
 
 /**
  * Get all blocks of a page in display order.
@@ -208,7 +193,7 @@ export const syncKnowledgeTextBlocks = async (
   options?: SyncKnowledgeTextBlocksOptions
 ): Promise<SyncKnowledgeTextBlocksResult> => {
   const page = await getKnowledgeTextById(knowledgeTextId, context);
-  await checkWritePermission(page, context);
+  await checkKnowledgeTextWritePermission(page, context);
 
   const db = getDb();
   const existing = await db
