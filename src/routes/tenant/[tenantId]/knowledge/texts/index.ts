@@ -21,6 +21,16 @@ import {
 } from "../../../../../lib/knowledge/knowledge-text-blocks";
 import { getSimplifiedKnowledgeText } from "../../../../../lib/knowledge/knowledge-text-simplified";
 import {
+  readKnowledgeTextContent,
+  editKnowledgeTextContent,
+} from "../../../../../lib/knowledge/knowledge-text-edit";
+import { searchKnowledgeTexts } from "../../../../../lib/knowledge/knowledge-text-search";
+import {
+  getKnowledgeTextLinks,
+  getKnowledgeTextBacklinks,
+  getRelatedKnowledgeTexts,
+} from "../../../../../lib/knowledge/knowledge-text-links";
+import {
   authAndSetUsersInfo,
   checkUserPermission,
 } from "../../../../../lib/utils/hono-middlewares";
@@ -162,6 +172,75 @@ export default function defineRoutesForKnowledgeTexts(
           workspaceId,
           includeHidden,
         });
+        return c.json(r);
+      } catch (e) {
+        throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Hybrid search over wiki pages (full-text + semantic, RRF-fused).
+   * IMPORTANT: hono matches routes in registration order, so this static
+   * "/search" route MUST be registered before GET /texts/:id — otherwise
+   * ":id" swallows the request.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/search",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Search knowledge text pages: hybrid full-text + semantic search with Reciprocal Rank Fusion (mode=hybrid|fulltext|semantic)",
+      responses: {
+        200: {
+          description:
+            "Ranked results with id, title, score, snippet and matchedBy legs",
+        },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator(
+      "query",
+      v.object({
+        q: v.pipe(v.string(), v.minLength(1)),
+        mode: v.optional(v.picklist(["hybrid", "fulltext", "semantic"])),
+        limit: v.optional(v.string()),
+        teamId: v.optional(v.string()),
+        workspaceId: v.optional(v.string()),
+        includeHidden: v.optional(v.string()),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const {
+          q,
+          mode,
+          limit: limitStr,
+          teamId,
+          workspaceId,
+          includeHidden: includeHiddenStr,
+        } = c.req.valid("query");
+        const { tenantId } = c.req.valid("param");
+        const userId = c.get("usersId");
+
+        const r = await searchKnowledgeTexts(
+          q,
+          {
+            tenantId,
+            userId,
+            teamId,
+            workspaceId,
+            includeHidden: includeHiddenStr === "true",
+          },
+          {
+            mode,
+            limit: limitStr ? parseInt(limitStr) : undefined,
+          }
+        );
         return c.json(r);
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
@@ -398,6 +477,290 @@ export default function defineRoutesForKnowledgeTexts(
         return c.json(RESPONSES.SUCCESS);
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Read a page's content like a file: optional line range with metadata
+   * so agents can page through long documents
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/content",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Read a page's text content, optionally a line range (fromLine/maxLines), with line metadata",
+      responses: {
+        200: {
+          description:
+            "Content slice with fromLine, toLine and totalLines metadata",
+        },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator(
+      "query",
+      v.object({
+        fromLine: v.optional(v.string()),
+        maxLines: v.optional(v.string()),
+        teamId: v.optional(v.string()),
+        workspaceId: v.optional(v.string()),
+        includeHidden: v.optional(v.string()),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const {
+          fromLine: fromLineStr,
+          maxLines: maxLinesStr,
+          teamId,
+          workspaceId,
+          includeHidden: includeHiddenStr,
+        } = c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+
+        const r = await readKnowledgeTextContent(
+          id,
+          {
+            tenantId,
+            userId,
+            teamId,
+            workspaceId,
+            includeHidden: includeHiddenStr === "true",
+          },
+          {
+            fromLine: fromLineStr ? parseInt(fromLineStr) : undefined,
+            maxLines: maxLinesStr ? parseInt(maxLinesStr) : undefined,
+          }
+        );
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
+        if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
+      }
+    }
+  );
+
+  /**
+   * Edit a page's content like a file: exact string replacement.
+   * Works on plain text pages and inside the blocks of block pages.
+   */
+  app.patch(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/content",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Edit a page via exact string replacement (oldString/newString, optional replaceAll)",
+      responses: {
+        200: {
+          description:
+            "Successful response with replacement count and the new content",
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator(
+      "json",
+      v.object({
+        oldString: v.pipe(v.string(), v.minLength(1)),
+        newString: v.string(),
+        replaceAll: v.optional(v.boolean()),
+      })
+    ),
+    validator("query", contextQuerySchema),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { teamId, workspaceId, includeHidden: includeHiddenStr } =
+          c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const { oldString, newString, replaceAll } = c.req.valid("json");
+        const userId = c.get("usersId");
+
+        const r = await editKnowledgeTextContent(
+          id,
+          { oldString, newString, replaceAll },
+          {
+            tenantId,
+            userId,
+            teamId,
+            workspaceId,
+            includeHidden: includeHiddenStr === "true",
+          }
+        );
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
+        if (errorMsg.includes("not found in the document")) {
+          // edit conflicts are client errors with actionable messages
+          throw new HTTPException(409, { message: errorMsg });
+        }
+        if (errorMsg.includes("not unique") || errorMsg.includes("spans multiple blocks")) {
+          throw new HTTPException(409, { message: errorMsg });
+        }
+        if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
+      }
+    }
+  );
+
+  /**
+   * Outgoing wikilinks of a page ([[Title]] markers in its content)
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/links",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Get the outgoing wikilinks of a page (resolved and phantom links)",
+      responses: {
+        200: { description: "List of outgoing links" },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator("query", contextQuerySchema),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { teamId, workspaceId, includeHidden: includeHiddenStr } =
+          c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+
+        const r = await getKnowledgeTextLinks(id, {
+          tenantId,
+          userId,
+          teamId,
+          workspaceId,
+          includeHidden: includeHiddenStr === "true",
+        });
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
+        if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
+      }
+    }
+  );
+
+  /**
+   * Backlinks: every visible page that links to this page
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/backlinks",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Get all pages that link to this page (backlinks)",
+      responses: {
+        200: { description: "List of linking pages" },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator("query", contextQuerySchema),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { teamId, workspaceId, includeHidden: includeHiddenStr } =
+          c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+
+        const r = await getKnowledgeTextBacklinks(id, {
+          tenantId,
+          userId,
+          teamId,
+          workspaceId,
+          includeHidden: includeHiddenStr === "true",
+        });
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
+        if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
+      }
+    }
+  );
+
+  /**
+   * Semantically related pages via stored chunk embeddings
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/related",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Get semantically related pages (embedding similarity; requires embedding-enabled pages)",
+      responses: {
+        200: { description: "List of related pages ordered by similarity" },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator(
+      "query",
+      v.object({
+        limit: v.optional(v.string()),
+        teamId: v.optional(v.string()),
+        workspaceId: v.optional(v.string()),
+        includeHidden: v.optional(v.string()),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const {
+          limit: limitStr,
+          teamId,
+          workspaceId,
+          includeHidden: includeHiddenStr,
+        } = c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+
+        const r = await getRelatedKnowledgeTexts(
+          id,
+          {
+            tenantId,
+            userId,
+            teamId,
+            workspaceId,
+            includeHidden: includeHiddenStr === "true",
+          },
+          { limit: limitStr ? parseInt(limitStr) : undefined }
+        );
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
+        if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
       }
     }
   );

@@ -127,6 +127,13 @@
       "when": 1783861346982,
       "tag": "0017_handy_thunderball",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783863956571,
+      "tag": "0018_massive_sebastian_shaw",
+      "breakpoints": true
     }
   ]
 }

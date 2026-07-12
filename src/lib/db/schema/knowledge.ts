@@ -110,6 +110,12 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_team_id_idx").on(knowledgeText.teamId),
     index("knowledge_text_user_id_idx").on(knowledgeText.userId),
     index("knowledge_text_parent_id_idx").on(knowledgeText.parentId),
+    // full-text search over title + content ('simple' config: language-
+    // agnostic, works for mixed German/English wikis)
+    index("knowledge_text_fts_idx").using(
+      "gin",
+      sql`to_tsvector('simple', coalesce(${knowledgeText.title}, '') || ' ' || coalesce(${knowledgeText.text}, ''))`
+    ),
   ]
 );
 
@@ -233,6 +239,54 @@ export const knowledgeTextBlock = pgBaseTable(
 
 export type KnowledgeTextBlockSelect = typeof knowledgeTextBlock.$inferSelect;
 export type KnowledgeTextBlockInsert = typeof knowledgeTextBlock.$inferInsert;
+
+// Obsidian-style wikilinks between knowledgeText pages, extracted from
+// [[Target Title]] / [[Target Title|alias]] markers on every content save.
+// targetId is null while the linked title has no matching page yet
+// ("phantom link"); it is resolved automatically when such a page appears
+// and cleared again (ON DELETE SET NULL) when the target is deleted.
+export const knowledgeTextLink = pgBaseTable(
+  "knowledge_text_link",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    sourceId: uuid("source_id")
+      .notNull()
+      .references(() => knowledgeText.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id").references(() => knowledgeText.id, {
+      onDelete: "set null",
+    }),
+    // the raw link target as written in the content — survives target
+    // deletion and is used to (re-)resolve the link by title
+    targetTitle: varchar("target_title", { length: 1000 }).notNull(),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("knowledge_text_link_source_target_unique").on(
+      table.sourceId,
+      table.targetTitle
+    ),
+    index("knowledge_text_link_source_id_idx").on(table.sourceId),
+    index("knowledge_text_link_target_id_idx").on(table.targetId),
+    index("knowledge_text_link_tenant_target_title_idx").on(
+      table.tenantId,
+      table.targetTitle
+    ),
+  ]
+);
+
+export type KnowledgeTextLinkSelect = typeof knowledgeTextLink.$inferSelect;
+export type KnowledgeTextLinkInsert = typeof knowledgeTextLink.$inferInsert;
+
+export const knowledgeTextLinkSchema = createSelectSchema(knowledgeTextLink);
+export const knowledgeTextLinkInsertSchema =
+  createInsertSchema(knowledgeTextLink);
 
 export const knowledgeTextBlockSchema = createSelectSchema(knowledgeTextBlock);
 export const knowledgeTextBlockInsertSchema =
@@ -568,6 +622,20 @@ export const knowledgeTextRelations = relations(
     knowledgeEntry: one(knowledgeEntry, {
       fields: [knowledgeText.knowledgeEntryId],
       references: [knowledgeEntry.id],
+    }),
+  })
+);
+
+export const knowledgeTextLinkRelations = relations(
+  knowledgeTextLink,
+  ({ one }) => ({
+    source: one(knowledgeText, {
+      fields: [knowledgeTextLink.sourceId],
+      references: [knowledgeText.id],
+    }),
+    target: one(knowledgeText, {
+      fields: [knowledgeTextLink.targetId],
+      references: [knowledgeText.id],
     }),
   })
 );

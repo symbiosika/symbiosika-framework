@@ -24,6 +24,10 @@ import { teamMembers } from "../db/schema/users";
 import { checkTenantMemberRole } from "../usermanagement/tenants";
 import { checkTeamMemberRole } from "../usermanagement/teams";
 import { syncKnowledgeTextEmbeddingSafe } from "./knowledge-text-embedding";
+import {
+  syncKnowledgeTextLinks,
+  resolvePhantomLinks,
+} from "./knowledge-text-links";
 
 /**
  * Create a new knowledgeText entry
@@ -43,6 +47,12 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
   if (!e[0]) {
     throw new Error("Failed to create knowledge text");
   }
+
+  // wikilink bookkeeping: extract this page's outgoing links and snap
+  // phantom links of other pages that were waiting for this title
+  await syncKnowledgeTextLinks(e[0]);
+  await resolvePhantomLinks(e[0]);
+
   return e[0];
 };
 
@@ -291,6 +301,14 @@ export const updateKnowledgeText = async (
 
   if (!result[0]) {
     throw new Error("Failed to update knowledge text");
+  }
+
+  // wikilink bookkeeping
+  if (data.text !== undefined) {
+    await syncKnowledgeTextLinks(result[0]);
+  }
+  if (data.title !== undefined && data.title !== currentEntry.title) {
+    await resolvePhantomLinks(result[0]);
   }
 
   // Keep the RAG mirror in sync: covers newly enabled embedding, changed
