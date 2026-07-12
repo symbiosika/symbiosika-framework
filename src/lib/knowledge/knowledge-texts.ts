@@ -47,19 +47,16 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
 };
 
 /**
- * Get list of all knowledge text entries WITHOUT text content
- * Sorted alphabetically by title
+ * Build the WHERE conditions that decide which knowledgeText entries are
+ * visible in a given context (tenant, hidden flag, user/team access).
+ * Shared by every read path so the visibility rules cannot drift apart.
  */
-export const getKnowledgeText = async (filters: {
+export const buildKnowledgeTextVisibilityConditions = (filters: {
   tenantId: string;
   teamId?: string;
   userId?: string;
-  workspaceId?: string;
-  limit?: number;
-  page?: number;
-  includeHidden?: boolean; // Optional: include system/hidden entries
-}) => {
-  // Exclude 'text' field to reduce payload size
+  includeHidden?: boolean;
+}): SQLWrapper[] => {
   const permissionConditions: SQLWrapper[] = [
     eq(knowledgeText.tenantId, filters.tenantId),
   ];
@@ -92,6 +89,25 @@ export const getKnowledgeText = async (filters: {
   if (filters.teamId) {
     permissionConditions.push(eq(knowledgeText.teamId, filters.teamId));
   }
+
+  return permissionConditions;
+};
+
+/**
+ * Get list of all knowledge text entries WITHOUT text content
+ * Sorted alphabetically by title
+ */
+export const getKnowledgeText = async (filters: {
+  tenantId: string;
+  teamId?: string;
+  userId?: string;
+  workspaceId?: string;
+  limit?: number;
+  page?: number;
+  includeHidden?: boolean; // Optional: include system/hidden entries
+}) => {
+  // Exclude 'text' field to reduce payload size
+  const permissionConditions = buildKnowledgeTextVisibilityConditions(filters);
 
   const { text, ...rest } = getTableColumns(knowledgeText); // exclude "text" column
   const query = getDb()
@@ -126,38 +142,9 @@ export const getKnowledgeTextById = async (
   }
 ) => {
   const permissionConditions: SQLWrapper[] = [
-    eq(knowledgeText.tenantId, context.tenantId),
+    ...buildKnowledgeTextVisibilityConditions(context),
     eq(knowledgeText.id, id),
   ];
-
-  // Check hidden flag unless explicitly allowed
-  if (!context.includeHidden) {
-    permissionConditions.push(eq(knowledgeText.hidden, false));
-  }
-
-  if (context.userId) {
-    permissionConditions.push(
-      or(
-        eq(knowledgeText.userId, context.userId),
-        and(isNull(knowledgeText.teamId), eq(knowledgeText.tenantWide, true)),
-        exists(
-          getDb()
-            .select()
-            .from(teamMembers)
-            .where(
-              and(
-                eq(teamMembers.userId, context.userId),
-                eq(teamMembers.teamId, knowledgeText.teamId)
-              )
-            )
-        )
-      )!
-    );
-  }
-
-  if (context.teamId) {
-    permissionConditions.push(eq(knowledgeText.teamId, context.teamId));
-  }
 
   const result = await getDb()
     .select()
