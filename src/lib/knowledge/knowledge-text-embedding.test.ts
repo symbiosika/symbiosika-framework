@@ -1,0 +1,178 @@
+import { describe, it, expect, beforeAll } from "bun:test";
+import { eq } from "drizzle-orm";
+import {
+  syncKnowledgeTextEmbedding,
+  syncKnowledgeTextEmbeddingSafe,
+  knowledgeTextSourceIdentifier,
+} from "./knowledge-text-embedding";
+import {
+  createKnowledgeText,
+  getKnowledgeTextById,
+  updateKnowledgeText,
+  deleteKnowledgeText,
+} from "./knowledge-texts";
+import { syncKnowledgeTextBlocks } from "./knowledge-text-blocks";
+import { getDb } from "../db/db-connection";
+import { knowledgeEntry, knowledgeChunks } from "../db/schema/knowledge";
+import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
+
+const ctx = { tenantId: TEST_ORGANISATION_1.id };
+
+// The full sync path needs a real embedding provider (same pattern as
+// add-knowledge.test.ts, which runs in CI where MISTRAL_API_KEY is set)
+const hasEmbeddingProvider = !!process.env.MISTRAL_API_KEY;
+
+const createPage = async (overrides?: Record<string, unknown>) =>
+  await createKnowledgeText({
+    text: "",
+    title: `Embedding Test Page ${crypto.randomUUID()}`,
+    tenantId: TEST_ORGANISATION_1.id,
+    ...overrides,
+  });
+
+describe("Knowledge Text Embedding (no provider required)", () => {
+  beforeAll(async () => {
+    await initTests();
+  });
+
+  it("does nothing for a page with embedding disabled", async () => {
+    const page = await createPage({ text: "some content" });
+    const result = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
+    expect(result.synced).toBe(false);
+    expect(result.removed).toBe(false);
+    expect(result.knowledgeEntryId).toBeNull();
+  });
+
+  it("does nothing for an enabled page with empty text", async () => {
+    const page = await createPage({ text: "", embeddingEnabled: true });
+    const result = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
+    expect(result.synced).toBe(false);
+    expect(result.removed).toBe(false);
+  });
+
+  it("throws for an unknown page and the safe variant swallows it", async () => {
+    const unknownId = crypto.randomUUID();
+    await expect(
+      syncKnowledgeTextEmbedding(unknownId, ctx.tenantId)
+    ).rejects.toThrow();
+    const safe = await syncKnowledgeTextEmbeddingSafe(unknownId, ctx.tenantId);
+    expect(safe).toBeNull();
+  });
+
+  it("block saves on a page without embedding do not fail", async () => {
+    const page = await createPage();
+    const result = await syncKnowledgeTextBlocks(
+      page.id,
+      [{ type: "markdown", content: "no embedding here" }],
+      ctx
+    );
+    expect(result.knowledgeText.knowledgeEntryId).toBeNull();
+  });
+
+  it("builds a stable source identifier", () => {
+    expect(knowledgeTextSourceIdentifier("abc")).toBe("knowledge-text:abc");
+  });
+});
+
+describe.skipIf(!hasEmbeddingProvider)(
+  "Knowledge Text Embedding (full sync, needs MISTRAL_API_KEY)",
+  () => {
+    beforeAll(async () => {
+      await initTests();
+    });
+
+    it("creates a knowledge entry on first sync and links it", async () => {
+      const page = await createPage({
+        text: "This wiki page explains our vacation policy in detail.",
+        embeddingEnabled: true,
+      });
+
+      const result = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
+      expect(result.synced).toBe(true);
+      expect(result.knowledgeEntryId).toBeDefined();
+
+      const fresh = await getKnowledgeTextById(page.id, ctx);
+      expect(fresh.knowledgeEntryId).toBe(result.knowledgeEntryId!);
+      expect((fresh.meta as any).embeddingContentHash).toBeDefined();
+
+      // chunks exist for the entry
+      const chunks = await getDb()
+        .select()
+        .from(knowledgeChunks)
+        .where(eq(knowledgeChunks.knowledgeEntryId, result.knowledgeEntryId!));
+      expect(chunks.length).toBeGreaterThan(0);
+    }, 30000);
+
+    it("skips unchanged content and re-syncs in place on change", async () => {
+      const page = await createPage({
+        text: "Original content for the change detection test.",
+        embeddingEnabled: true,
+      });
+
+      const first = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
+      expect(first.synced).toBe(true);
+
+      // same content again → skipped
+      const second = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
+      expect(second.unchanged).toBe(true);
+      expect(second.knowledgeEntryId).toBe(first.knowledgeEntryId!);
+
+      // block save changes the text → re-sync replaces the SAME entry
+      await syncKnowledgeTextBlocks(
+        page.id,
+        [{ type: "markdown", content: "Completely new content." }],
+        ctx
+      );
+      const fresh = await getKnowledgeTextById(page.id, ctx);
+      expect(fresh.knowledgeEntryId).toBe(first.knowledgeEntryId!);
+
+      const chunks = await getDb()
+        .select()
+        .from(knowledgeChunks)
+        .where(eq(knowledgeChunks.knowledgeEntryId, first.knowledgeEntryId!));
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(chunks[0]?.text).toContain("Completely new content");
+    }, 60000);
+
+    it("removes the entry when embedding is disabled", async () => {
+      const page = await createPage({
+        text: "Content that will be un-embedded.",
+        embeddingEnabled: true,
+      });
+      const synced = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
+      expect(synced.synced).toBe(true);
+
+      await updateKnowledgeText(
+        page.id,
+        { embeddingEnabled: false },
+        ctx
+      );
+
+      const fresh = await getKnowledgeTextById(page.id, ctx);
+      expect(fresh.knowledgeEntryId).toBeNull();
+
+      const entries = await getDb()
+        .select()
+        .from(knowledgeEntry)
+        .where(eq(knowledgeEntry.id, synced.knowledgeEntryId!));
+      expect(entries.length).toBe(0);
+    }, 30000);
+
+    it("removes the entry when the page is deleted", async () => {
+      const page = await createPage({
+        text: "Content of a page that will be deleted.",
+        embeddingEnabled: true,
+      });
+      const synced = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
+      expect(synced.synced).toBe(true);
+
+      await deleteKnowledgeText(page.id, ctx);
+
+      const entries = await getDb()
+        .select()
+        .from(knowledgeEntry)
+        .where(eq(knowledgeEntry.id, synced.knowledgeEntryId!));
+      expect(entries.length).toBe(0);
+    }, 30000);
+  }
+);

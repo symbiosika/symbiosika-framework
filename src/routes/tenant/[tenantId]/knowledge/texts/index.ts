@@ -15,6 +15,11 @@ import {
   deleteKnowledgeText,
 } from "../../../../../lib/knowledge/knowledge-texts";
 import {
+  getKnowledgeTextBlocks,
+  syncKnowledgeTextBlocks,
+  convertKnowledgeTextToBlocks,
+} from "../../../../../lib/knowledge/knowledge-text-blocks";
+import {
   authAndSetUsersInfo,
   checkUserPermission,
 } from "../../../../../lib/utils/hono-middlewares";
@@ -25,9 +30,27 @@ import {
   knowledgeEntrySchema,
   knowledgeTextInsertSchema,
   knowledgeTextUpdateSchema,
+  knowledgeTextBlockSchema,
 } from "../../../../../lib/db/db-schema";
 import { isTenantMember } from "../../..";
 import { validateScope } from "../../../../../lib/utils/validate-scope";
+
+const blockInputSchema = v.object({
+  id: v.optional(v.pipe(v.string(), v.uuid())),
+  type: v.picklist(["markdown", "html"]),
+  content: v.string(),
+  meta: v.optional(v.record(v.string(), v.unknown())),
+});
+
+const syncBlocksBodySchema = v.object({
+  blocks: v.array(blockInputSchema),
+});
+
+const contextQuerySchema = v.object({
+  teamId: v.optional(v.string()),
+  workspaceId: v.optional(v.string()),
+  includeHidden: v.optional(v.string()),
+});
 
 export default function defineRoutesForKnowledgeTexts(
   app: SymbiosikaFrameworkHonoApp,
@@ -365,6 +388,157 @@ export default function defineRoutesForKnowledgeTexts(
         return c.json(RESPONSES.SUCCESS);
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Get all blocks of a knowledge text page in display order
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/blocks",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Get all content blocks of a knowledge text page in order",
+      responses: {
+        200: {
+          description: "Successful response with the ordered block list",
+          content: {
+            "application/json": {
+              schema: resolver(v.array(knowledgeTextBlockSchema)),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator("query", contextQuerySchema),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { teamId, workspaceId, includeHidden: includeHiddenStr } =
+          c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+        const includeHidden = includeHiddenStr === "true";
+
+        const r = await getKnowledgeTextBlocks(id, {
+          tenantId,
+          userId,
+          teamId,
+          workspaceId,
+          includeHidden,
+        });
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
+        if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
+      }
+    }
+  );
+
+  /**
+   * Batch-save the full block list of a knowledge text page.
+   * The block editor sends its complete document state; the server diffs
+   * by block id (insert/update/delete), re-materializes the text cache,
+   * snapshots history (coalesced) and re-syncs the embedding if enabled.
+   */
+  app.put(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/blocks",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Batch-save the full block list of a knowledge text page",
+      responses: {
+        200: {
+          description:
+            "Successful response with the updated page and its blocks",
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator("json", syncBlocksBodySchema),
+    validator("query", contextQuerySchema),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { teamId, workspaceId, includeHidden: includeHiddenStr } =
+          c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const { blocks } = c.req.valid("json");
+        const userId = c.get("usersId");
+        const includeHidden = includeHiddenStr === "true";
+
+        const r = await syncKnowledgeTextBlocks(id, blocks, {
+          tenantId,
+          userId,
+          teamId,
+          workspaceId,
+          includeHidden,
+        });
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
+        if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
+      }
+    }
+  );
+
+  /**
+   * Convert a legacy plain-text page into block mode
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/convert-to-blocks",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Convert a plain-text knowledge text page into block mode (no-op if already blocks)",
+      responses: {
+        200: {
+          description:
+            "Successful response with the converted page and its blocks",
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator("query", contextQuerySchema),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { teamId, workspaceId, includeHidden: includeHiddenStr } =
+          c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+        const includeHidden = includeHiddenStr === "true";
+
+        const r = await convertKnowledgeTextToBlocks(id, {
+          tenantId,
+          userId,
+          teamId,
+          workspaceId,
+          includeHidden,
+        });
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
+        if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
       }
     }
   );
