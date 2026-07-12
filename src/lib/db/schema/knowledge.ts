@@ -35,6 +35,21 @@ export const fileSourceTypeEnum = pgEnum("file_source_type", [
   "external",
 ]);
 
+// How the content of a knowledgeText entry is stored:
+// - "text": single markdown blob in the `text` column (legacy / simple entries)
+// - "blocks": content lives in knowledge_text_block rows; `text` is a
+//   materialized cache assembled from the blocks on every block save
+export const knowledgeContentModeEnum = pgEnum("knowledge_content_mode", [
+  "text",
+  "blocks",
+]);
+
+// Type of a single content block inside a knowledgeText page
+export const knowledgeBlockTypeEnum = pgEnum("knowledge_block_type", [
+  "markdown",
+  "html",
+]);
+
 // Table to store input texts
 export const knowledgeText = pgBaseTable(
   "knowledge_text",
@@ -61,6 +76,23 @@ export const knowledgeText = pgBaseTable(
     title: varchar("title", { length: 1000 }).notNull().default(""),
     meta: jsonb("meta").notNull().default("{}"),
     hidden: boolean("hidden").notNull().default(false),
+    // "text" = plain markdown blob; "blocks" = block-editor page whose content
+    // lives in knowledge_text_block and is materialized into `text` on save
+    contentMode: knowledgeContentModeEnum("content_mode")
+      .notNull()
+      .default("text"),
+    // fractional-index key for manual ordering among sibling pages in the
+    // wiki tree; null = unsorted (falls back to title sort)
+    position: varchar("position", { length: 64 }),
+    // opt-in: mirror this page into the RAG pipeline (knowledge_entry +
+    // knowledge_chunks) so it shows up in similarity search
+    embeddingEnabled: boolean("embedding_enabled").notNull().default(false),
+    // link to the knowledge_entry created by the embedding sync, so re-syncs
+    // replace chunks in place and page deletion can clean the entry up
+    knowledgeEntryId: uuid("knowledge_entry_id").references(
+      (): AnyPgColumn => knowledgeEntry.id,
+      { onDelete: "set null" }
+    ),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),
@@ -102,6 +134,12 @@ export const knowledgeTextHistory = pgBaseTable(
     title: varchar("title", { length: 1000 }).notNull().default(""),
     meta: jsonb("meta").notNull().default("{}"),
     hidden: boolean("hidden").notNull().default(false),
+    contentMode: knowledgeContentModeEnum("content_mode")
+      .notNull()
+      .default("text"),
+    // Snapshot of the page's blocks at the time of history creation
+    // (null for plain text entries)
+    blocks: jsonb("blocks").$type<KnowledgeTextBlockSnapshot[] | null>(),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(), // When this history entry was created
@@ -137,7 +175,70 @@ export type KnowledgeTextMeta = {
   sourceUri?: string;
   textLength?: number;
   includesLocalImages?: boolean; // when the document has mardown ![image](image.png) which can be found in the storage
+  // sha256 of the materialized content at the time of the last embedding
+  // sync; used to skip re-embedding unchanged pages
+  embeddingContentHash?: string;
 };
+
+// Shape of a block snapshot stored in knowledge_text_history.blocks
+export type KnowledgeTextBlockSnapshot = {
+  id: string;
+  type: "markdown" | "html";
+  content: string;
+  position: string;
+  meta?: Record<string, unknown>;
+};
+
+// Content blocks of a knowledgeText page (contentMode = "blocks").
+// One row = one block in the block editor. Ordering inside a page uses
+// fractional-index keys (see lib/utils/fractional-index.ts), so moving a
+// block is a single-row update instead of renumbering the whole page.
+export const knowledgeTextBlock = pgBaseTable(
+  "knowledge_text_block",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    knowledgeTextId: uuid("knowledge_text_id")
+      .notNull()
+      .references(() => knowledgeText.id, { onDelete: "cascade" }),
+    // denormalized for direct tenant filtering without a join
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    type: knowledgeBlockTypeEnum("type").notNull().default("markdown"),
+    content: text("content").notNull().default(""),
+    // fractional-index key; unique per page, lexicographic order = block order
+    position: varchar("position", { length: 64 }).notNull(),
+    // editor props per block, e.g. { language: "ts" } for code blocks
+    meta: jsonb("meta").notNull().default("{}"),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("knowledge_text_block_page_position_idx").on(
+      table.knowledgeTextId,
+      table.position
+    ),
+    index("knowledge_text_block_knowledge_text_id_idx").on(
+      table.knowledgeTextId
+    ),
+    index("knowledge_text_block_tenant_id_idx").on(table.tenantId),
+  ]
+);
+
+export type KnowledgeTextBlockSelect = typeof knowledgeTextBlock.$inferSelect;
+export type KnowledgeTextBlockInsert = typeof knowledgeTextBlock.$inferInsert;
+
+export const knowledgeTextBlockSchema = createSelectSchema(knowledgeTextBlock);
+export const knowledgeTextBlockInsertSchema =
+  createInsertSchema(knowledgeTextBlock);
+export const knowledgeTextBlockUpdateSchema =
+  createUpdateSchema(knowledgeTextBlock);
 
 // Table for knowledge groups (grouping of knowledge entries)
 export const knowledgeGroup = pgBaseTable(
@@ -463,6 +564,25 @@ export const knowledgeTextRelations = relations(
       references: [users.id],
     }),
     history: many(knowledgeTextHistory),
+    blocks: many(knowledgeTextBlock),
+    knowledgeEntry: one(knowledgeEntry, {
+      fields: [knowledgeText.knowledgeEntryId],
+      references: [knowledgeEntry.id],
+    }),
+  })
+);
+
+export const knowledgeTextBlockRelations = relations(
+  knowledgeTextBlock,
+  ({ one }) => ({
+    knowledgeText: one(knowledgeText, {
+      fields: [knowledgeTextBlock.knowledgeTextId],
+      references: [knowledgeText.id],
+    }),
+    tenant: one(tenants, {
+      fields: [knowledgeTextBlock.tenantId],
+      references: [tenants.id],
+    }),
   })
 );
 

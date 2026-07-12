@@ -13,7 +13,9 @@ import {
 import { getDb } from "../db/db-connection";
 import {
   knowledgeText,
+  knowledgeTextBlock,
   knowledgeTextHistory,
+  knowledgeEntry,
   type KnowledgeTextInsert,
   type KnowledgeTextHistoryInsert,
 } from "../db/schema/knowledge";
@@ -21,6 +23,7 @@ import { RESPONSES } from "../responses";
 import { teamMembers } from "../db/schema/users";
 import { checkTenantMemberRole } from "../usermanagement/tenants";
 import { checkTeamMemberRole } from "../usermanagement/teams";
+import { syncKnowledgeTextEmbeddingSafe } from "./knowledge-text-embedding";
 
 /**
  * Create a new knowledgeText entry
@@ -95,7 +98,8 @@ export const getKnowledgeText = async (filters: {
     .select({ ...rest })
     .from(knowledgeText)
     .where(and(...permissionConditions))
-    .orderBy(asc(knowledgeText.title)) // Sort alphabetically by title
+    // manual wiki order first (NULLs last in PG), then alphabetically
+    .orderBy(asc(knowledgeText.position), asc(knowledgeText.title))
     .$dynamic();
 
   if (filters.limit) {
@@ -246,6 +250,17 @@ export const updateKnowledgeText = async (
     }
   }
 
+  // For block pages, snapshot the blocks alongside the text so history
+  // entries stay restorable
+  const currentBlocks =
+    currentEntry.contentMode === "blocks"
+      ? await getDb()
+          .select()
+          .from(knowledgeTextBlock)
+          .where(eq(knowledgeTextBlock.knowledgeTextId, currentEntry.id))
+          .orderBy(asc(knowledgeTextBlock.position))
+      : [];
+
   // Create history entry with the current state BEFORE updating
   const historyEntry: KnowledgeTextHistoryInsert = {
     knowledgeTextId: currentEntry.id,
@@ -258,6 +273,17 @@ export const updateKnowledgeText = async (
     title: currentEntry.title,
     meta: currentEntry.meta,
     hidden: currentEntry.hidden,
+    contentMode: currentEntry.contentMode,
+    blocks:
+      currentEntry.contentMode === "blocks"
+        ? currentBlocks.map((b) => ({
+            id: b.id,
+            type: b.type,
+            content: b.content,
+            position: b.position,
+            meta: (b.meta ?? {}) as Record<string, unknown>,
+          }))
+        : null,
   };
 
   await getDb().insert(knowledgeTextHistory).values(historyEntry);
@@ -278,6 +304,20 @@ export const updateKnowledgeText = async (
 
   if (!result[0]) {
     throw new Error("Failed to update knowledge text");
+  }
+
+  // Keep the RAG mirror in sync: covers newly enabled embedding, changed
+  // content, and cleanup after embedding was turned off. No-op otherwise;
+  // failures are logged and never fail the update itself.
+  if (result[0].embeddingEnabled || currentEntry.knowledgeEntryId) {
+    const syncResult = await syncKnowledgeTextEmbeddingSafe(
+      result[0].id,
+      result[0].tenantId
+    );
+    if (syncResult && (syncResult.synced || syncResult.removed)) {
+      // the sync wrote knowledgeEntryId/meta — return the fresh row
+      return await getKnowledgeTextById(id, { ...context, includeHidden: true });
+    }
   }
 
   return result[0];
@@ -309,7 +349,7 @@ export const deleteKnowledgeText = async (
     }
   }
 
-  // Delete the entry (history will be cascade deleted due to foreign key)
+  // Delete the entry (history and blocks are cascade deleted via FKs)
   await getDb()
     .delete(knowledgeText)
     .where(
@@ -318,6 +358,19 @@ export const deleteKnowledgeText = async (
         eq(knowledgeText.tenantId, context.tenantId)
       )
     );
+
+  // Clean up the RAG mirror created by the embedding sync (the FK points
+  // from knowledge_text to knowledge_entry, so it does not cascade)
+  if (item.knowledgeEntryId) {
+    await getDb()
+      .delete(knowledgeEntry)
+      .where(
+        and(
+          eq(knowledgeEntry.id, item.knowledgeEntryId),
+          eq(knowledgeEntry.tenantId, context.tenantId)
+        )
+      );
+  }
 
   return RESPONSES.SUCCESS;
 };
