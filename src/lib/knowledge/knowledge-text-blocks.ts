@@ -32,6 +32,7 @@ import { getKnowledgeTextById } from "./knowledge-texts";
 import { checkTenantMemberRole } from "../usermanagement/tenants";
 import { checkTeamMemberRole } from "../usermanagement/teams";
 import { syncKnowledgeTextEmbeddingSafe } from "./knowledge-text-embedding";
+import { syncKnowledgeTextLinks } from "./knowledge-text-links";
 
 /** Minimum age of the newest history entry before a new snapshot is written */
 export const HISTORY_COALESCE_MINUTES = 10;
@@ -325,6 +326,12 @@ export const syncKnowledgeTextBlocks = async (
           updatedAt: sql`now()`,
         })
         .where(eq(knowledgeText.id, knowledgeTextId));
+    });
+
+    await syncKnowledgeTextLinks({
+      id: knowledgeTextId,
+      tenantId: page.tenantId,
+      text: newText,
     });
 
     if (page.embeddingEnabled && !options?.skipEmbeddingSync) {
