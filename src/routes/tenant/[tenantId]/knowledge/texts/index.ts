@@ -31,6 +31,14 @@ import {
   getRelatedKnowledgeTexts,
 } from "../../../../../lib/knowledge/knowledge-text-links";
 import {
+  importKnowledgeTextFromFile,
+  importKnowledgeTextFromUrl,
+} from "../../../../../lib/knowledge/knowledge-text-import";
+import {
+  upsertKnowledgeTextFromSource,
+  deleteOrphanedKnowledgeTexts,
+} from "../../../../../lib/knowledge/knowledge-text-sync";
+import {
   authAndSetUsersInfo,
   checkUserPermission,
 } from "../../../../../lib/utils/hono-middlewares";
@@ -173,6 +181,209 @@ export default function defineRoutesForKnowledgeTexts(
           includeHidden,
         });
         return c.json(r);
+      } catch (e) {
+        throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Import an uploaded file (markdown, html, txt, PDF, …) as a wiki page.
+   * NOTE: registered before GET/POST /texts/:id-style routes on purpose —
+   * hono matches in registration order.
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/import",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Import a file (markdown, html, txt, PDF, ...) as a knowledge text wiki page",
+      requestBody: {
+        content: {
+          "multipart/form-data": {
+            schema: v.object({
+              file: v.any(),
+              title: v.optional(v.string()),
+              parentId: v.optional(v.string()),
+              teamId: v.optional(v.string()),
+              tenantWide: v.optional(v.string()),
+              embeddingEnabled: v.optional(v.string()),
+              splitIntoBlocks: v.optional(v.string()),
+            }),
+          },
+        },
+      },
+      responses: {
+        200: {
+          description:
+            "Successful response with the created page and its blocks",
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const userId = c.get("usersId");
+        const form = await c.req.formData();
+
+        const file = form.get("file");
+        if (!(file instanceof File)) {
+          throw new Error("Missing 'file' form field");
+        }
+
+        const r = await importKnowledgeTextFromFile(file, {
+          tenantId,
+          userId,
+          title: form.get("title")?.toString() || undefined,
+          parentId: form.get("parentId")?.toString() || undefined,
+          teamId: form.get("teamId")?.toString() || undefined,
+          tenantWide: form.get("tenantWide")?.toString() === "true",
+          embeddingEnabled:
+            form.get("embeddingEnabled")?.toString() === "true",
+          splitIntoBlocks:
+            form.get("splitIntoBlocks")?.toString() !== "false",
+        });
+        return c.json(r);
+      } catch (e) {
+        throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Import a web page as a wiki page (Readability + Turndown, SSRF-guarded)
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/import-url",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Import a web page as a knowledge text wiki page",
+      responses: {
+        200: {
+          description:
+            "Successful response with the created page and its blocks",
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator(
+      "json",
+      v.object({
+        url: v.pipe(v.string(), v.url()),
+        title: v.optional(v.string()),
+        parentId: v.optional(v.string()),
+        teamId: v.optional(v.string()),
+        tenantWide: v.optional(v.boolean()),
+        embeddingEnabled: v.optional(v.boolean()),
+        splitIntoBlocks: v.optional(v.boolean()),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const userId = c.get("usersId");
+        const body = c.req.valid("json");
+
+        const r = await importKnowledgeTextFromUrl(body.url, {
+          tenantId,
+          userId,
+          title: body.title,
+          parentId: body.parentId,
+          teamId: body.teamId,
+          tenantWide: body.tenantWide,
+          embeddingEnabled: body.embeddingEnabled,
+          splitIntoBlocks: body.splitIntoBlocks,
+        });
+        return c.json(r);
+      } catch (e) {
+        throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Batch-sync pages from an external source. Each item is upserted by its
+   * stable sourceIdentifier; optionally deletes synced pages that vanished
+   * from the source (never touches hand-written pages).
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/sync",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Batch-sync wiki pages from an external source (upsert by sourceIdentifier, optional orphan cleanup)",
+      responses: {
+        200: {
+          description:
+            "Per-item results (id, created, changed) and the orphan-cleanup count",
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator(
+      "json",
+      v.object({
+        items: v.pipe(
+          v.array(
+            v.object({
+              sourceIdentifier: v.pipe(v.string(), v.minLength(1)),
+              title: v.pipe(v.string(), v.minLength(1)),
+              text: v.string(),
+              parentId: v.optional(v.string()),
+              teamId: v.optional(v.string()),
+              tenantWide: v.optional(v.boolean()),
+              embeddingEnabled: v.optional(v.boolean()),
+              meta: v.optional(v.record(v.string(), v.unknown())),
+            })
+          ),
+          v.maxLength(200)
+        ),
+        matchScope: v.optional(v.record(v.string(), v.string())),
+        deleteOrphans: v.optional(v.boolean()),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const userId = c.get("usersId");
+        const { items, matchScope, deleteOrphans } = c.req.valid("json");
+
+        const results = [];
+        for (const item of items) {
+          results.push(
+            await upsertKnowledgeTextFromSource({
+              ...item,
+              tenantId,
+              userId,
+              matchScope,
+            })
+          );
+        }
+
+        let orphansDeleted = 0;
+        if (deleteOrphans) {
+          const cleanup = await deleteOrphanedKnowledgeTexts({
+            tenantId,
+            activeSourceIdentifiers: items.map((i) => i.sourceIdentifier),
+            matchScope,
+          });
+          orphansDeleted = cleanup.deleted;
+        }
+
+        return c.json({ results, orphansDeleted });
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
       }
