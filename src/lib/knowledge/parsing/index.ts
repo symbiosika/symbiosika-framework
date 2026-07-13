@@ -197,16 +197,36 @@ export const parseDocument = async (data: {
   log.debug(`File parsed. Content length: ${content.length}`);
 
   // Apply post processors if requested
+  let meta: Record<string, unknown> = {};
   if (data.usePostProcessors && data.usePostProcessors.length > 0) {
-    content = await applyPostProcessors(
-      content,
-      data.tenantId,
+    const processed = await applyPostProcessors(
+      {
+        text: content,
+        pages,
+        title,
+        source: {
+          type: data.sourceType,
+          url: data.sourceUrl,
+          includesImages: docIncludesImages,
+        },
+        context: {
+          tenantId: data.tenantId,
+          teamId: data.teamId,
+          workspaceId: data.workspaceId,
+        },
+        model: data.model,
+      },
       data.usePostProcessors
     );
-    // set pages to undefined since we don't have pages after post processing
-    pages = undefined;
-    // Optionally, also update pages if needed (not implemented here)
+    content = processed.text;
+    // The page mapping only survives if a processor returned an updated one;
+    // otherwise it is dropped (page-level chunk metadata is no longer valid).
+    pages = processed.pages;
+    if (processed.title) {
+      title = processed.title;
+    }
+    meta = processed.meta;
   }
 
-  return { content, pages, title, includesImages: docIncludesImages };
+  return { content, pages, title, includesImages: docIncludesImages, meta };
 };
