@@ -67,7 +67,10 @@ import { defineJob, startJobQueue } from "./lib/jobs";
 // Cron
 import scheduler from "./lib/cron";
 import { cleanupExpiredFiles } from "./lib/knowledge/knowledge-text-files";
-import { registerPostProcessor } from "./lib/knowledge/parsing/post-processors";
+import {
+  registerPostProcessor,
+  registerPostProcessorResolver,
+} from "./lib/knowledge/parsing/post-processors";
 // Store
 import { _GLOBAL_SERVER_CONFIG, setGlobalServerConfig } from "./store";
 
@@ -116,6 +119,16 @@ export const defineServer = (config: ServerSpecificConfig) => {
   if (config.customPostProcessors) {
     config.customPostProcessors.forEach((processor) => {
       registerPostProcessor(processor);
+    });
+  }
+
+  /**
+   * Register all custom post-processor resolvers (dynamic name → processor,
+   * e.g. tenant-scoped `agent:<uuid>` processors resolved from the DB).
+   */
+  if (config.customPostProcessorResolvers) {
+    config.customPostProcessorResolvers.forEach((resolver) => {
+      registerPostProcessorResolver(resolver);
     });
   }
 
@@ -498,6 +511,7 @@ export const GLOBAL_SERVER_CONFIG = _GLOBAL_SERVER_CONFIG;
 export { connectionsService } from "./lib/connections";
 export {
   registerPostProcessor,
+  registerPostProcessorResolver,
   getAllPostProcessors,
   applyPostProcessors,
 } from "./lib/knowledge/parsing/post-processors";
@@ -505,5 +519,6 @@ export type {
   PostProcessor,
   PostProcessorInput,
   PostProcessorOutput,
+  PostProcessorResolver,
   ApplyPostProcessorsResult,
 } from "./lib/knowledge/parsing/post-processors";

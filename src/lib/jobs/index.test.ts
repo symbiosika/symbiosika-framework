@@ -1,10 +1,17 @@
-import { describe, it, expect, beforeAll } from "bun:test";
-import { defineJob, createJob, getJob, startJobQueue } from ".";
+import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { defineJob, createJob, getJob, startJobQueue, stopJobQueue } from ".";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
 
 describe("Job Queue System", () => {
   beforeAll(async () => {
     await initTests();
+  });
+
+  // Bun runs every test file in one shared process, so a polling interval left
+  // running here would keep processing jobs created by later test files and
+  // could fail unrelated tests. Stop it once this suite is done.
+  afterAll(() => {
+    stopJobQueue();
   });
 
   it("should execute a job and update the database", async () => {

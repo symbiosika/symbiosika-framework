@@ -100,6 +100,29 @@ export function registerPostProcessor(processor: PostProcessor) {
 }
 
 /**
+ * A resolver produces a PostProcessor for a name that is NOT in the static
+ * registry (e.g. tenant-scoped agents named `agent:<uuid>`). Registered by the
+ * consuming app; consulted lazily by applyPostProcessors. First resolver to
+ * return a processor wins.
+ */
+export type PostProcessorResolver = (
+  name: string
+) => Promise<PostProcessor | undefined> | PostProcessor | undefined;
+
+const postProcessorResolvers: PostProcessorResolver[] = [];
+
+/**
+ * Register a dynamic resolver. Called at app start. Resolvers are only consulted
+ * for names missing from the static registry, so they never shadow a statically
+ * registered processor.
+ */
+export function registerPostProcessorResolver(
+  resolver: PostProcessorResolver
+): void {
+  postProcessorResolvers.push(resolver);
+}
+
+/**
  * Get all registered post processors (read-only)
  */
 export function getAllPostProcessors(): Omit<PostProcessor, "execute">[] {
@@ -128,7 +151,16 @@ export async function applyPostProcessors(
   }
 
   for (const name of processorNames) {
-    const processor = postProcessorRegistry[name];
+    let processor = postProcessorRegistry[name];
+    if (!processor) {
+      for (const resolve of postProcessorResolvers) {
+        const resolved = await resolve(name);
+        if (resolved) {
+          processor = resolved;
+          break;
+        }
+      }
+    }
     if (!processor) {
       throw new Error(`Post processor '${name}' is not registered.`);
     }
