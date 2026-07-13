@@ -20,6 +20,8 @@ const jobHandlers: Record<string, JobHandler> = {};
 
 // Whether the background job queue interval has been started (see startJobQueue).
 let jobQueueRunning = false;
+// Handle of the background polling interval, so it can be stopped again.
+let jobQueueInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Returns true once startJobQueue() has been called.
@@ -113,11 +115,38 @@ export async function processDueJobsOnce() {
 }
 
 export async function startJobQueue() {
+  // Idempotent: never run more than one polling interval, even if called
+  // repeatedly (e.g. from several tests in the same process).
+  if (jobQueueRunning) {
+    return;
+  }
   jobQueueRunning = true;
-  setInterval(async () => {
+  jobQueueInterval = setInterval(async () => {
     // log.debug("Checking for pending jobs");
-    await processDueJobsOnce();
+    // A single failing job (e.g. one with no registered handler) must never
+    // reject the interval callback: an unhandled rejection from this
+    // background timer would otherwise surface as a failure in whatever
+    // unrelated code happens to be running at the time.
+    try {
+      await processDueJobsOnce();
+    } catch (error) {
+      log.error(`Job queue cycle failed: ${(error as Error).message}`);
+    }
   }, CHECK_CYCLE_MS);
+}
+
+/**
+ * Stop the background job queue interval started by {@link startJobQueue}.
+ * Safe to call when the queue is not running. Tests should call this once
+ * they are done so the timer does not keep polling the shared database and
+ * mutating jobs created by later tests.
+ */
+export function stopJobQueue() {
+  if (jobQueueInterval) {
+    clearInterval(jobQueueInterval);
+    jobQueueInterval = null;
+  }
+  jobQueueRunning = false;
 }
 
 export async function getJob(id: string) {
