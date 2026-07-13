@@ -39,7 +39,7 @@ import { validateScope } from "../../../../lib/utils/validate-scope";
 import {
   applyPostProcessors,
   getAllPostProcessors,
-} from "../../../../lib/knowledge/parsing/pre-processors";
+} from "../../../../lib/knowledge/parsing/post-processors";
 
 const FileSourceType = {
   DB: "db",

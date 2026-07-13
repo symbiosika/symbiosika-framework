@@ -7,7 +7,7 @@ import { knowledgeText } from "../../../lib/db/db-schema";
 import { getDb } from "../../../lib/db/db-connection";
 import { eq } from "drizzle-orm";
 import type { PageContent } from "./pdf/types";
-import { applyPostProcessors } from "./pre-processors";
+import { applyPostProcessors } from "./post-processors";
 import { urlToMarkdown } from "./url";
 
 /**
