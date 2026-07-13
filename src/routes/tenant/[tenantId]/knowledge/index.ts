@@ -715,16 +715,21 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
         const { tenantId } = c.req.valid("param");
         validateOrganisationId(data, tenantId);
 
-        const text = await applyPostProcessors(
-          data.text,
-          tenantId,
+        const processed = await applyPostProcessors(
+          {
+            text: data.text,
+            title: data.title,
+            source: { type: "text", includesImages: false },
+            context: { tenantId, userId: c.get("usersId") },
+          },
           data.usePostProcessors
         );
+        const text = processed.text;
 
         const r = await extractKnowledgeFromText({
           userId: c.get("usersId"),
           tenantId: data.tenantId,
-          title: data.title,
+          title: processed.title ?? data.title,
           text,
           filters: data.filters,
           teamId: data.teamId,
@@ -793,16 +798,21 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
           );
         }
 
-        const text = await applyPostProcessors(
-          parsed.markdown,
-          tenantId,
+        const processed = await applyPostProcessors(
+          {
+            text: parsed.markdown,
+            title: parsed.title,
+            source: { type: "url", url: data.url, includesImages: false },
+            context: { tenantId, userId: c.get("usersId") },
+          },
           data.usePostProcessors
         );
+        const text = processed.text;
 
         const r = await extractKnowledgeFromText({
           userId: c.get("usersId"),
           tenantId: data.tenantId,
-          title: parsed.title,
+          title: processed.title ?? parsed.title,
           text,
           filters: data.filters,
           teamId: data.teamId,

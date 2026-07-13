@@ -67,6 +67,7 @@ import { defineJob, startJobQueue } from "./lib/jobs";
 // Cron
 import scheduler from "./lib/cron";
 import { cleanupExpiredFiles } from "./lib/knowledge/knowledge-text-files";
+import { registerPostProcessor } from "./lib/knowledge/parsing/post-processors";
 // Store
 import { _GLOBAL_SERVER_CONFIG, setGlobalServerConfig } from "./store";
 
@@ -108,6 +109,15 @@ export const defineServer = (config: ServerSpecificConfig) => {
   initializeFullDbSchema(config.customDbSchema ?? {});
   initializeCollectionPermissions(config.customCollectionPermissions ?? {});
   createDatabaseClient(config.customDbSchema);
+
+  /**
+   * Register all custom knowledge post processors
+   */
+  if (config.customPostProcessors) {
+    config.customPostProcessors.forEach((processor) => {
+      registerPostProcessor(processor);
+    });
+  }
 
   /**
    * Register all custom cron jobs
@@ -486,3 +496,14 @@ export { log };
 export { smtpService };
 export const GLOBAL_SERVER_CONFIG = _GLOBAL_SERVER_CONFIG;
 export { connectionsService } from "./lib/connections";
+export {
+  registerPostProcessor,
+  getAllPostProcessors,
+  applyPostProcessors,
+} from "./lib/knowledge/parsing/post-processors";
+export type {
+  PostProcessor,
+  PostProcessorInput,
+  PostProcessorOutput,
+  ApplyPostProcessorsResult,
+} from "./lib/knowledge/parsing/post-processors";

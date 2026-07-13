@@ -5,6 +5,7 @@ import type { JobHandlerRegister } from "./lib/jobs";
 import type { Task } from "./lib/cron";
 import type { SyncItem } from "./lib/types/sync";
 import type { ProcessedWhatsAppMessage } from "./lib/communication/whatsapp";
+import type { PostProcessor } from "./lib/knowledge/parsing/post-processors";
 
 export type { SyncItem };
 export type { JobHandlerRegister };
@@ -106,6 +107,14 @@ export interface ServerSpecificConfig {
   customPreRegisterCustomVerifications?: CustomPreRegisterVerification[];
   customPostRegisterActions?: CustomPostRegisterAction[];
   customPostConnectionActions?: CustomPostConnectionAction[];
+
+  // Knowledge post processors
+  /**
+   * Post processors registered at server start. They run after a document is
+   * parsed to markdown (PDF/OCR, URL, uploaded file, plain text) and before it
+   * is stored, and are selected per-import by `name` via `usePostProcessors`.
+   */
+  customPostProcessors?: PostProcessor[];
 
   // CRON
   customCronJobs?: Task[];

@@ -18,6 +18,7 @@ import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { parseFile } from "./parsing";
 import { urlToMarkdown } from "./parsing/url";
+import { applyPostProcessors } from "./parsing/post-processors";
 import {
   createKnowledgeText,
   updateKnowledgeText,
@@ -47,6 +48,13 @@ export type ImportKnowledgeTextOptions = {
   splitIntoBlocks?: boolean;
   /** extra meta merged into the page meta */
   meta?: Record<string, unknown>;
+  /**
+   * Names of post processors to run on the parsed markdown before the page is
+   * created (e.g. clean up / restructure a datasheet via an LLM). Any
+   * structured `meta` they emit is merged into the page meta, and a returned
+   * title overrides the derived one.
+   */
+  usePostProcessors?: string[];
 };
 
 export type ImportKnowledgeTextResult = {
@@ -135,6 +143,35 @@ export const importMarkdownAsKnowledgeText = async (
     workspaceId: options.workspaceId,
   };
 
+  // Run post processors on the parsed markdown before storing (e.g. clean up
+  // / restructure a datasheet via an LLM). The cleaned text also feeds the
+  // block splitting below, so imported pages get well-structured blocks.
+  let text = data.text;
+  let title = data.title;
+  let processorMeta: Record<string, unknown> = {};
+  if (options.usePostProcessors && options.usePostProcessors.length > 0) {
+    const isUrl = /^https?:\/\//i.test(data.sourceUri ?? "");
+    const processed = await applyPostProcessors(
+      {
+        text,
+        title,
+        source: {
+          type: isUrl ? "url" : "file",
+          url: isUrl ? data.sourceUri : undefined,
+          fileName: isUrl ? undefined : data.sourceUri,
+          includesImages: false,
+        },
+        context,
+      },
+      options.usePostProcessors
+    );
+    text = processed.text;
+    if (processed.title) {
+      title = processed.title;
+    }
+    processorMeta = processed.meta;
+  }
+
   // create first WITHOUT the embedding flag so the page is embedded exactly
   // once, after its final content (blocks) is in place
   const page = await createKnowledgeText({
@@ -143,17 +180,18 @@ export const importMarkdownAsKnowledgeText = async (
     teamId: options.teamId,
     tenantWide: options.tenantWide ?? false,
     parentId: options.parentId,
-    title: data.title,
-    text: data.text,
+    title,
+    text,
     meta: {
       ...(options.meta ?? {}),
+      ...processorMeta,
       ...(data.sourceUri ? { sourceUri: data.sourceUri } : {}),
     },
   });
 
   let blocks: KnowledgeTextBlockSelect[] = [];
   if (options.splitIntoBlocks !== false) {
-    const sections = splitMarkdownIntoSections(data.text);
+    const sections = splitMarkdownIntoSections(text);
     const blockInputs: KnowledgeTextBlockInput[] = sections.map(
       (content) => ({ type: "markdown", content })
     );

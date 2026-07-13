@@ -23,6 +23,7 @@ import {
   type KnowledgeEntryInsert,
 } from "../db/schema/knowledge";
 import { parseDocument, parseFile } from "./parsing";
+import { applyPostProcessors } from "./parsing/post-processors";
 import type { PageContent } from "./parsing/pdf/types";
 import { generateEmbedding } from "./embedding";
 
@@ -299,11 +300,44 @@ export const extractKnowledgeInOneStep = async (
       workspaceId: data.workspaceId,
     });
 
-    // 2. Extract knowledge
+    // 2. optional post processing (e.g. clean up a datasheet via an LLM)
+    let text = parsed.text;
+    let pages = parsed.pages;
+    let title = data.file.name ?? "Unknown";
+    if (data.usePostProcessors && data.usePostProcessors.length > 0) {
+      const processed = await applyPostProcessors(
+        {
+          text,
+          pages,
+          title,
+          source: {
+            type: "external",
+            fileName: data.file.name,
+            mimeType: data.file.type,
+            includesImages: parsed.includesImages,
+          },
+          context: {
+            tenantId: data.tenantId,
+            teamId: data.teamId,
+            workspaceId: data.workspaceId,
+          },
+          model: data.model,
+        },
+        data.usePostProcessors
+      );
+      text = processed.text;
+      pages = processed.pages;
+      if (processed.title) {
+        title = processed.title;
+      }
+    }
+
+    // 3. Extract knowledge
     const result = await extractKnowledgeFromText({
       tenantId: data.tenantId,
-      title: data.file.name ?? "Unknown",
-      text: parsed.text,
+      title,
+      text,
+      pages,
       filters: data.filters,
       teamId: data.teamId,
       workspaceId: data.workspaceId,
@@ -322,10 +356,34 @@ export const extractKnowledgeInOneStep = async (
   }
   // if the text is provided, extract knowledge from it
   else if (data.data) {
+    // optional post processing before extraction
+    let text = data.data.text;
+    let title = data.data.title;
+    if (data.usePostProcessors && data.usePostProcessors.length > 0) {
+      const processed = await applyPostProcessors(
+        {
+          text,
+          title,
+          source: { type: "text", includesImages: false },
+          context: {
+            tenantId: data.tenantId,
+            teamId: data.teamId,
+            workspaceId: data.workspaceId,
+          },
+          model: data.model,
+        },
+        data.usePostProcessors
+      );
+      text = processed.text;
+      if (processed.title) {
+        title = processed.title;
+      }
+    }
+
     return extractKnowledgeFromText({
       tenantId: data.tenantId,
-      title: data.data.title,
-      text: data.data.text,
+      title,
+      text,
       filters: data.filters,
       teamId: data.teamId,
       workspaceId: data.workspaceId,

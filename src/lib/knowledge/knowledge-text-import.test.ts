@@ -6,6 +6,7 @@ import {
 } from "./knowledge-text-import";
 import { getKnowledgeTextBlocks } from "./knowledge-text-blocks";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
+import { registerPostProcessor } from "./parsing/post-processors";
 
 const ctx = { tenantId: TEST_ORGANISATION_1.id };
 
@@ -126,5 +127,99 @@ describe("Knowledge Text Import", () => {
       { ...ctx, parentId: parent.knowledgeText.id }
     );
     expect(child.knowledgeText.parentId).toBe(parent.knowledgeText.id);
+  });
+});
+
+describe("Knowledge Text Import with post processors", () => {
+  beforeAll(async () => {
+    await initTests();
+
+    // Rewrites the text to uppercase and records that it ran.
+    registerPostProcessor({
+      name: "it-upper",
+      label: "Upper",
+      description: "uppercases the text",
+      execute: async ({ text }) => ({
+        text: text.toUpperCase(),
+        meta: { upperRan: true },
+      }),
+    });
+
+    // Restructures the text into headed sections and suggests a title + meta,
+    // standing in for an LLM datasheet processor.
+    registerPostProcessor({
+      name: "it-structure",
+      label: "Structure",
+      description: "adds headings and extracts structured data",
+      execute: async ({ text }) => ({
+        text: `# Overview\n\n${text}\n\n## Specs\n\nvoltage: 5V`,
+        title: "Structured Datasheet",
+        meta: { voltage: "5V", processedBy: "it-structure" },
+      }),
+    });
+  });
+
+  it("applies the processed text to the stored page and its blocks", async () => {
+    const result = await importMarkdownAsKnowledgeText(
+      {
+        title: `PP Upper ${crypto.randomUUID()}`,
+        text: "# heading\n\nlower case body",
+      },
+      { ...ctx, usePostProcessors: ["it-upper"] }
+    );
+
+    expect(result.knowledgeText.text).toContain("LOWER CASE BODY");
+    expect(result.knowledgeText.text).not.toContain("lower case body");
+    // blocks are split from the *processed* text
+    expect(result.blocks[0]?.content).toContain("# HEADING");
+    expect((result.knowledgeText.meta as any).upperRan).toBe(true);
+  });
+
+  it("lets a processor override the title and merge structured meta", async () => {
+    const result = await importMarkdownAsKnowledgeText(
+      { title: `PP Title ${crypto.randomUUID()}`, text: "raw datasheet dump" },
+      { ...ctx, usePostProcessors: ["it-structure"] }
+    );
+
+    expect(result.knowledgeText.title).toBe("Structured Datasheet");
+    expect((result.knowledgeText.meta as any).voltage).toBe("5V");
+    expect((result.knowledgeText.meta as any).processedBy).toBe("it-structure");
+    // the restructured text produced two heading sections
+    expect(result.blocks.length).toBe(2);
+    expect(result.blocks[0]?.content).toContain("# Overview");
+    expect(result.blocks[1]?.content).toContain("## Specs");
+  });
+
+  it("runs multiple processors in the given order", async () => {
+    const result = await importMarkdownAsKnowledgeText(
+      { title: `PP Chain ${crypto.randomUUID()}`, text: "body" },
+      { ...ctx, usePostProcessors: ["it-structure", "it-upper"] }
+    );
+
+    // it-structure wraps first, then it-upper uppercases the whole thing
+    expect(result.knowledgeText.text).toContain("# OVERVIEW");
+    expect(result.knowledgeText.text).toContain("VOLTAGE: 5V");
+    // both processors' meta survives the merge
+    expect((result.knowledgeText.meta as any).upperRan).toBe(true);
+    expect((result.knowledgeText.meta as any).voltage).toBe("5V");
+  });
+
+  it("stores the raw text when no post processors are requested", async () => {
+    const result = await importMarkdownAsKnowledgeText(
+      { title: `PP None ${crypto.randomUUID()}`, text: "untouched body" },
+      ctx
+    );
+    expect(result.knowledgeText.text).toContain("untouched body");
+  });
+
+  it("applies post processors on the file import path too", async () => {
+    const file = new File(["quiet note"], `pp-${crypto.randomUUID()}.txt`, {
+      type: "text/plain",
+    });
+    const result = await importKnowledgeTextFromFile(file, {
+      ...ctx,
+      usePostProcessors: ["it-upper"],
+    });
+    expect(result.knowledgeText.text).toContain("QUIET NOTE");
   });
 });

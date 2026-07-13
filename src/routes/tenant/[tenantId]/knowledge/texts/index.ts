@@ -212,6 +212,7 @@ export default function defineRoutesForKnowledgeTexts(
               tenantWide: v.optional(v.string()),
               embeddingEnabled: v.optional(v.string()),
               splitIntoBlocks: v.optional(v.string()),
+              usePostProcessors: v.optional(v.string()),
             }),
           },
         },
@@ -248,6 +249,12 @@ export default function defineRoutesForKnowledgeTexts(
             form.get("embeddingEnabled")?.toString() === "true",
           splitIntoBlocks:
             form.get("splitIntoBlocks")?.toString() !== "false",
+          usePostProcessors: form
+            .get("usePostProcessors")
+            ?.toString()
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0),
         });
         return c.json(r);
       } catch (e) {
@@ -284,6 +291,7 @@ export default function defineRoutesForKnowledgeTexts(
         tenantWide: v.optional(v.boolean()),
         embeddingEnabled: v.optional(v.boolean()),
         splitIntoBlocks: v.optional(v.boolean()),
+        usePostProcessors: v.optional(v.array(v.string())),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -303,6 +311,7 @@ export default function defineRoutesForKnowledgeTexts(
           tenantWide: body.tenantWide,
           embeddingEnabled: body.embeddingEnabled,
           splitIntoBlocks: body.splitIntoBlocks,
+          usePostProcessors: body.usePostProcessors,
         });
         return c.json(r);
       } catch (e) {
