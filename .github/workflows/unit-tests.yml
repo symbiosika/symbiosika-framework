@@ -5,7 +5,17 @@ on:
     branches:
       - develop
 
+  pull_request:
+    branches:
+      - develop
+
   workflow_dispatch:
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR) so CI
+# does not pile up outdated runs.
+concurrency:
+  group: unit-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -32,8 +42,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: develop
 
       - name: Create .env file
         run: |
