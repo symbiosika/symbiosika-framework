@@ -5,7 +5,10 @@ import type { JobHandlerRegister } from "./lib/jobs";
 import type { Task } from "./lib/cron";
 import type { SyncItem } from "./lib/types/sync";
 import type { ProcessedWhatsAppMessage } from "./lib/communication/whatsapp";
-import type { PostProcessor } from "./lib/knowledge/parsing/post-processors";
+import type {
+  PostProcessor,
+  PostProcessorResolver,
+} from "./lib/knowledge/parsing/post-processors";
 
 export type { SyncItem };
 export type { JobHandlerRegister };
@@ -115,6 +118,13 @@ export interface ServerSpecificConfig {
    * is stored, and are selected per-import by `name` via `usePostProcessors`.
    */
   customPostProcessors?: PostProcessor[];
+
+  /**
+   * Dynamic resolvers for post-processor names missing from the static
+   * registry (e.g. tenant-scoped `agent:<uuid>` processors resolved from the
+   * DB at import time). Consulted in order; first non-undefined wins.
+   */
+  customPostProcessorResolvers?: PostProcessorResolver[];
 
   // CRON
   customCronJobs?: Task[];

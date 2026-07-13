@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import {
   applyPostProcessors,
   registerPostProcessor,
+  registerPostProcessorResolver,
   getAllPostProcessors,
   type PostProcessor,
   type PostProcessorInput,
@@ -249,6 +250,57 @@ describe("applyPostProcessors", () => {
     await expect(
       applyPostProcessors(baseInput(), ["does-not-exist"])
     ).rejects.toThrow("Post processor 'does-not-exist' is not registered.");
+  });
+
+  it("consults a resolver when a name is not in the static registry", async () => {
+    registerPostProcessorResolver((name) =>
+      name === "dynamic:foo"
+        ? {
+            name,
+            label: "Dynamic",
+            description: "",
+            execute: async ({ text }) => ({ text: `${text}!` }),
+          }
+        : undefined
+    );
+
+    const result = await applyPostProcessors(
+      baseInput({ text: "hi" }),
+      ["dynamic:foo"]
+    );
+    expect(result.text).toBe("hi!");
+  });
+
+  it("still throws when neither registry nor any resolver knows the name", async () => {
+    let threw = false;
+    try {
+      await applyPostProcessors(baseInput(), ["nope:unknown"]);
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+  });
+
+  it("prefers a statically registered processor over resolvers", async () => {
+    registerPostProcessor({
+      name: "static-wins",
+      label: "Static",
+      description: "",
+      execute: async ({ text }) => ({ text: "STATIC" }),
+    });
+    registerPostProcessorResolver((name) =>
+      name === "static-wins"
+        ? {
+            name,
+            label: "R",
+            description: "",
+            execute: async () => ({ text: "RESOLVER" }),
+          }
+        : undefined
+    );
+
+    const result = await applyPostProcessors(baseInput(), ["static-wins"]);
+    expect(result.text).toBe("STATIC");
   });
 });
 
