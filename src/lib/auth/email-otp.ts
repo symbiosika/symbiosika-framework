@@ -109,7 +109,11 @@ export const sendEmailLoginCode = async (
     code,
   });
 
-  await smtpService.sendMail({
+  // The login code is already persisted above, so the SMTP dispatch is
+  // decoupled from the request: the POST handler returns immediately instead
+  // of blocking on the SMTP round-trip (which can retry for up to ~30 minutes
+  // on failure). The user still enters the code they receive by email.
+  smtpService.sendMailInBackground({
     sender: process.env.SMTP_FROM,
     recipients: [normalized],
     subject,

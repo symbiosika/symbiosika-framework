@@ -199,7 +199,11 @@ export const sendMagicLink = async (
     link: magicLink,
   });
 
-  await smtpService.sendMail({
+  // The magic-link token is already persisted at this point, so the actual
+  // SMTP dispatch is decoupled from the request: the caller (e.g. the login
+  // POST handler) returns immediately instead of blocking on the SMTP
+  // round-trip (which can retry for up to ~30 minutes on failure).
+  smtpService.sendMailInBackground({
     sender: process.env.SMTP_FROM,
     recipients: [email],
     subject,
