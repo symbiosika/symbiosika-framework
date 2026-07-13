@@ -230,6 +230,33 @@ class SMTPService {
     return false;
   }
 
+  /**
+   * Dispatch an email without blocking the caller ("fire and forget").
+   *
+   * Login-related mails (magic link, email login code) are triggered from
+   * within a request handler, but the HTTP response must not wait for the SMTP
+   * round-trip. In the failure path {@link sendMail} retries up to 3 times with
+   * a 15-minute pause between attempts (~30 minutes total), which would hang the
+   * POST for the entire duration. This wrapper hands the send off to the
+   * background and logs the outcome instead of surfacing it to the request.
+   *
+   * The caller is expected to have already completed any state that must be
+   * durable (e.g. persisting the login code) before invoking this.
+   */
+  sendMailInBackground(options: EmailOptions): void {
+    void this.sendMail(options)
+      .then((sent) => {
+        if (!sent) {
+          log.error(
+            `Background email send failed for subject "${options.subject}"`
+          );
+        }
+      })
+      .catch((err) => {
+        log.error(`Unexpected error sending background email: ${err}`);
+      });
+  }
+
   async sendTestMail(recipient: string): Promise<boolean> {
     const testEmailOptions: EmailOptions = {
       recipients: [recipient],
