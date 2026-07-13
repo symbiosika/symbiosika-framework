@@ -109,6 +109,12 @@ export interface ServerSpecificConfig {
 
   // CRON
   customCronJobs?: Task[];
+  /**
+   * Schedule (standard Linux cron syntax) for the expired-files cleanup
+   * job that removes orphaned wiki images and other expired files.
+   * Default: "0 3 * * 0" (weekly, Sunday 03:00).
+   */
+  fileCleanupCron?: string;
 
   // stripe
   useStripe?: boolean;

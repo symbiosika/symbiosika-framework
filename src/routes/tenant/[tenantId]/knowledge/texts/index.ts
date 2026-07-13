@@ -38,6 +38,7 @@ import {
   upsertKnowledgeTextFromSource,
   deleteOrphanedKnowledgeTexts,
 } from "../../../../../lib/knowledge/knowledge-text-sync";
+import { uploadKnowledgeTextImage } from "../../../../../lib/knowledge/knowledge-text-files";
 import {
   authAndSetUsersInfo,
   checkUserPermission,
@@ -821,6 +822,69 @@ export default function defineRoutesForKnowledgeTexts(
         if (errorMsg.includes("not unique") || errorMsg.includes("spans multiple blocks")) {
           throw new HTTPException(409, { message: errorMsg });
         }
+        if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
+      }
+    }
+  );
+
+  /**
+   * Upload an image for a wiki page (block editor image upload).
+   * Returns the file id, the auth-protected path and a ready-to-insert
+   * markdown snippet. The upload expires automatically unless a following
+   * page save references it; removing the image from the content later
+   * schedules it for cleanup again.
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/images",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Upload an image for a wiki page; returns a markdown snippet to embed",
+      requestBody: {
+        content: {
+          "multipart/form-data": {
+            schema: v.object({
+              file: v.any(),
+              alt: v.optional(v.string()),
+            }),
+          },
+        },
+      },
+      responses: {
+        200: {
+          description:
+            "Successful response with fileId, path and markdown snippet",
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+        const form = await c.req.formData();
+
+        const file = form.get("file");
+        if (!(file instanceof File)) {
+          throw new Error("Missing 'file' form field");
+        }
+
+        const r = await uploadKnowledgeTextImage(
+          id,
+          file,
+          { tenantId, userId },
+          { alt: form.get("alt")?.toString() || undefined }
+        );
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
         if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
           throw new HTTPException(404, { message: errorMsg });
         }

@@ -66,6 +66,7 @@ import { addMessageToAllAdmins } from "./lib/notifications";
 import { defineJob, startJobQueue } from "./lib/jobs";
 // Cron
 import scheduler from "./lib/cron";
+import { cleanupExpiredFiles } from "./lib/knowledge/knowledge-text-files";
 // Store
 import { _GLOBAL_SERVER_CONFIG, setGlobalServerConfig } from "./store";
 
@@ -116,6 +117,19 @@ export const defineServer = (config: ServerSpecificConfig) => {
       scheduler.registerTask(cronJob.name, cronJob.schedule, cronJob.handler);
     });
   }
+
+  /**
+   * Built-in cleanup of expired files (orphaned wiki images etc.).
+   * Weekly by default; override the schedule via config.fileCleanupCron
+   * (standard Linux cron syntax).
+   */
+  scheduler.registerTask(
+    "expired-files-cleanup",
+    config.fileCleanupCron ?? "0 3 * * 0",
+    async () => {
+      await cleanupExpiredFiles();
+    }
+  );
 
   /**
    * Init the main Hono app

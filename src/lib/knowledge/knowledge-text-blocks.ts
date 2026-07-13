@@ -34,6 +34,7 @@ import {
 } from "./knowledge-texts";
 import { syncKnowledgeTextEmbeddingSafe } from "./knowledge-text-embedding";
 import { syncKnowledgeTextLinks } from "./knowledge-text-links";
+import { syncKnowledgeTextFileReferences } from "./knowledge-text-files";
 
 /** Minimum age of the newest history entry before a new snapshot is written */
 export const HISTORY_COALESCE_MINUTES = 10;
@@ -314,6 +315,11 @@ export const syncKnowledgeTextBlocks = async (
     });
 
     await syncKnowledgeTextLinks({
+      id: knowledgeTextId,
+      tenantId: page.tenantId,
+      text: newText,
+    });
+    await syncKnowledgeTextFileReferences({
       id: knowledgeTextId,
       tenantId: page.tenantId,
       text: newText,

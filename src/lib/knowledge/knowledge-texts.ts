@@ -28,6 +28,10 @@ import {
   syncKnowledgeTextLinks,
   resolvePhantomLinks,
 } from "./knowledge-text-links";
+import {
+  syncKnowledgeTextFileReferences,
+  markKnowledgeTextFilesForCleanup,
+} from "./knowledge-text-files";
 
 /**
  * Central write-permission rule for knowledgeText pages:
@@ -95,10 +99,12 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
     throw new Error("Failed to create knowledge text");
   }
 
-  // wikilink bookkeeping: extract this page's outgoing links and snap
-  // phantom links of other pages that were waiting for this title
+  // wikilink + file-reference bookkeeping: extract this page's outgoing
+  // links and image references, and snap phantom links of other pages
+  // that were waiting for this title
   await syncKnowledgeTextLinks(e[0]);
   await resolvePhantomLinks(e[0]);
+  await syncKnowledgeTextFileReferences(e[0]);
 
   // initial embedding sync for pages created with embedding already on
   if (e[0].embeddingEnabled) {
@@ -374,9 +380,10 @@ export const updateKnowledgeText = async (
     throw new Error("Failed to update knowledge text");
   }
 
-  // wikilink bookkeeping
+  // wikilink + file-reference bookkeeping
   if (data.text !== undefined) {
     await syncKnowledgeTextLinks(result[0]);
+    await syncKnowledgeTextFileReferences(result[0]);
   }
   if (data.title !== undefined && data.title !== currentEntry.title) {
     await resolvePhantomLinks(result[0]);
@@ -415,6 +422,10 @@ export const deleteKnowledgeText = async (
   const item = await getKnowledgeTextById(id, context);
 
   await checkKnowledgeTextWritePermission(item, context);
+
+  // files exclusively referenced by this page get a grace-period expiry
+  // for the cleanup cron (reference rows cascade with the page)
+  await markKnowledgeTextFilesForCleanup(item.id);
 
   // Delete the entry (history and blocks are cascade deleted via FKs)
   await getDb()
