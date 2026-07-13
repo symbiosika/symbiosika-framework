@@ -18,6 +18,7 @@ import {
 import { relations } from "drizzle-orm";
 import { pgBaseTable } from ".";
 import { tenants, teams, users } from "./users";
+import { files } from "./files";
 import {
   createSelectSchema,
   createInsertSchema,
@@ -283,6 +284,50 @@ export const knowledgeTextLink = pgBaseTable(
 
 export type KnowledgeTextLinkSelect = typeof knowledgeTextLink.$inferSelect;
 export type KnowledgeTextLinkInsert = typeof knowledgeTextLink.$inferInsert;
+
+// Tracks which files (images, attachments in the "wiki" bucket) are
+// referenced by which knowledgeText page. Rebuilt from the page content on
+// every save — the same pattern as wikilinks. Files without any reference
+// get an expiry (grace period) and are removed by the cleanup cron, so no
+// orphaned blobs accumulate.
+export const knowledgeTextFile = pgBaseTable(
+  "knowledge_text_file",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    knowledgeTextId: uuid("knowledge_text_id")
+      .notNull()
+      .references(() => knowledgeText.id, { onDelete: "cascade" }),
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("knowledge_text_file_page_file_unique").on(
+      table.knowledgeTextId,
+      table.fileId
+    ),
+    index("knowledge_text_file_knowledge_text_id_idx").on(
+      table.knowledgeTextId
+    ),
+    index("knowledge_text_file_file_id_idx").on(table.fileId),
+    index("knowledge_text_file_tenant_id_idx").on(table.tenantId),
+  ]
+);
+
+export type KnowledgeTextFileSelect = typeof knowledgeTextFile.$inferSelect;
+export type KnowledgeTextFileInsert = typeof knowledgeTextFile.$inferInsert;
+
+export const knowledgeTextFileSchema = createSelectSchema(knowledgeTextFile);
+export const knowledgeTextFileInsertSchema =
+  createInsertSchema(knowledgeTextFile);
 
 export const knowledgeTextLinkSchema = createSelectSchema(knowledgeTextLink);
 export const knowledgeTextLinkInsertSchema =
