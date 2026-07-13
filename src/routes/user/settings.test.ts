@@ -13,10 +13,12 @@ const TEST_KEY = "test-setting";
 describe("User Settings Routes", () => {
   const app: SymbiosikaFrameworkHonoApp = new Hono();
   let jwt: string;
+  let otherJwt: string;
 
   beforeAll(async () => {
-    const { adminToken } = await initTests();
+    const { adminToken, user1Token } = await initTests();
     jwt = adminToken;
+    otherJwt = user1Token;
 
     // Clean up test settings
     const db = await getDb();
@@ -350,5 +352,51 @@ describe("User Settings Routes", () => {
     await db
       .delete(userSettings)
       .where(inArray(userSettings.key, [stringKey, jsonKey]));
+  });
+
+  // Test per-user isolation: the same key must not collide across users
+  it("should isolate settings per user", async () => {
+    const sharedKey = "shared-key";
+
+    // User A stores a value under the shared key
+    const setA = await app.request(`/api/user/settings/${sharedKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `jwt=${jwt}`,
+      },
+      body: JSON.stringify({ value: "value-A" }),
+    });
+    expect(setA.status).toBe(200);
+
+    // User B stores a different value under the SAME key
+    const setB = await app.request(`/api/user/settings/${sharedKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `jwt=${otherJwt}`,
+      },
+      body: JSON.stringify({ value: "value-B" }),
+    });
+    expect(setB.status).toBe(200);
+
+    // Each user must read back their own value, not the other's
+    const getA = await app.request(`/api/user/settings/${sharedKey}`, {
+      method: "GET",
+      headers: { Cookie: `jwt=${jwt}` },
+    });
+    expect(getA.status).toBe(200);
+    expect(((await getA.json()) as any).value).toBe("value-A");
+
+    const getB = await app.request(`/api/user/settings/${sharedKey}`, {
+      method: "GET",
+      headers: { Cookie: `jwt=${otherJwt}` },
+    });
+    expect(getB.status).toBe(200);
+    expect(((await getB.json()) as any).value).toBe("value-B");
+
+    // Cleanup
+    const db = await getDb();
+    await db.delete(userSettings).where(eq(userSettings.key, sharedKey));
   });
 });

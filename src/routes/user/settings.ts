@@ -59,7 +59,9 @@ export function defineUserSettingsRoutes(
       const setting = await db
         .select()
         .from(userSettings)
-        .where(eq(userSettings.key, key))
+        .where(
+          and(eq(userSettings.userId, userId), eq(userSettings.key, key))
+        )
         .limit(1)
         .then((rows) => rows[0]);
 
@@ -129,11 +131,13 @@ export function defineUserSettingsRoutes(
 
       const db = await getDb();
 
-      // Check if setting exists
+      // Check if setting exists for this user
       const existing = await db
         .select()
         .from(userSettings)
-        .where(eq(userSettings.key, key))
+        .where(
+          and(eq(userSettings.userId, userId), eq(userSettings.key, key))
+        )
         .limit(1)
         .then((rows) => rows[0]);
 
@@ -147,10 +151,13 @@ export function defineUserSettingsRoutes(
             description: description ?? existing.description,
             updatedAt: new Date().toISOString(),
           })
-          .where(eq(userSettings.key, key));
+          .where(
+            and(eq(userSettings.userId, userId), eq(userSettings.key, key))
+          );
       } else {
         // Create new
         await db.insert(userSettings).values({
+          userId,
           key,
           value: value || null,
           valueJson: valueJson || null,
