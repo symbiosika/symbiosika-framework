@@ -478,6 +478,11 @@ export const knowledgeEntry = pgBaseTable(
     ),
     name: varchar("name", { length: 1000 }).notNull(),
     description: text("description"),
+    // Optional sha256 (hex) of the source file/content, written by the sync
+    // when source hashing is enabled. A re-sync compares this against the new
+    // hash to detect an unchanged source and skip re-parsing/re-embedding.
+    // Nullable + partial index → zero cost when the feature is off (default).
+    sourceHash: varchar("source_hash", { length: 64 }),
     meta: jsonb("meta").$type<KnowledgeTextMeta>().default({}),
     version: integer("version").notNull().default(1),
     versionText: text("version_text").notNull().default("1"),
@@ -505,6 +510,12 @@ export const knowledgeEntry = pgBaseTable(
     index("knowledgeentry_tenant_id_idx").on(knowledgeEntry.tenantId),
     index("knowledge_entry_team_id_idx").on(knowledgeEntry.teamId),
     index("knowledge_entry_user_id_idx").on(knowledgeEntry.userId),
+    // Partial index: only rows that opted into source hashing are indexed, so
+    // lookups by hash (unchanged-source detection, duplicate analysis) stay
+    // fast while the feature-off default carries no index overhead.
+    index("knowledge_entry_source_hash_idx")
+      .on(knowledgeEntry.sourceHash)
+      .where(sql`source_hash IS NOT NULL`),
     check(
       "knowledge_entry_description_max_length",
       sql`length(description) <= 10000`

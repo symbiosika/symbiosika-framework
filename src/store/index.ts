@@ -53,6 +53,10 @@ export const _GLOBAL_SERVER_CONFIG = {
   // Chunking strategy for splitting parsed documents into knowledge chunks.
   // "simple" (default) = word/character splitter; "smart" = markdown/table-aware.
   chunkingStrategy: <"simple" | "smart">"simple",
+  // Opt-in source hashing for the knowledge sync. When true, the sync stores a
+  // sha256 of the source and skips re-embedding an unchanged source on the next
+  // run. Default false because computing the hash costs a little performance.
+  enableSourceHashing: false,
   // OAuth2 / OIDC Authorization Server (opt-in, default off)
   oauth2: {
     enabled: false,
@@ -105,6 +109,8 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
   _GLOBAL_SERVER_CONFIG.publicKey = config.publicKey ?? "";
 
   _GLOBAL_SERVER_CONFIG.chunkingStrategy = config.chunkingStrategy ?? "simple";
+  _GLOBAL_SERVER_CONFIG.enableSourceHashing =
+    config.enableSourceHashing ?? false;
 
   // Email Templates
   if (config.emailTemplates?.verifyEmail) {

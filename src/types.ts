@@ -143,6 +143,16 @@ export interface ServerSpecificConfig {
    */
   chunkingStrategy?: "simple" | "smart";
 
+  /**
+   * Opt-in source hashing for the knowledge sync (`upsertKnowledgeFromText`).
+   * When true, the sync stores a sha256 of the source in the indexed
+   * `knowledge_entry.source_hash` column and, on the next run, skips
+   * re-parsing/re-chunking/re-embedding a source whose hash is unchanged.
+   * Can be overridden per call via `computeSourceHash`.
+   * Default: false (computing the hash costs a little performance).
+   */
+  enableSourceHashing?: boolean;
+
   // CRON
   customCronJobs?: Task[];
   /**
