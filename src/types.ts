@@ -132,6 +132,17 @@ export interface ServerSpecificConfig {
    */
   customPostProcessorResolvers?: PostProcessorResolver[];
 
+  /**
+   * Chunking strategy used when a parsed document is split into knowledge
+   * chunks before embedding.
+   *   - "simple": word/character splitter (default).
+   *   - "smart":  markdown/table-aware splitter that keeps tables atomic,
+   *               repeats the header on oversized tables and chunks free text
+   *               at paragraph/heading boundaries.
+   * Default: "simple".
+   */
+  chunkingStrategy?: "simple" | "smart";
+
   // CRON
   customCronJobs?: Task[];
   /**

@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { knowledgeEntry, knowledgeChunks } from "../db/schema/knowledge";
 import { isUserPartOfTeam } from "../usermanagement/teams";
 import { validateKnowledgeAccess } from "./permissions";
-import { splitTextIntoSectionsOrChunks } from "./splitter";
+import { splitDocumentIntoChunks } from "./chunking";
 import { generateEmbedding } from "./embedding";
 import type { ChunkWithEmbedding } from "../types/chunks";
 import type { KnowledgeChunksInsert } from "../db/schema/knowledge";
@@ -126,7 +126,7 @@ export const updateKnowledgeEntryText = async (
   log.debug(`Deleted existing chunks for knowledge entry: ${id}`);
 
   // Split the new text into chunks
-  const chunks = splitTextIntoSectionsOrChunks(text);
+  const chunks = splitDocumentIntoChunks(text);
 
   // Generate embeddings for all chunks
   const allEmbeddings: ChunkWithEmbedding[] = await Promise.all(

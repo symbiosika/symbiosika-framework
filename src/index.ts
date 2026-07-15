@@ -522,3 +522,13 @@ export type {
   PostProcessorResolver,
   ApplyPostProcessorsResult,
 } from "./lib/knowledge/parsing/post-processors";
+export {
+  splitDocumentIntoChunks,
+} from "./lib/knowledge/chunking";
+export type { ChunkingStrategy } from "./lib/knowledge/chunking";
+export {
+  splitTextIntoSectionsOrChunks,
+} from "./lib/knowledge/splitter";
+export {
+  smartSplitTextIntoSectionsOrChunks,
+} from "./lib/knowledge/smart-splitter";
