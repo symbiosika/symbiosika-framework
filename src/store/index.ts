@@ -50,6 +50,9 @@ export const _GLOBAL_SERVER_CONFIG = {
   whatsAppIncomingWebhookHandler: undefined as
     | WhatsAppIncomingWebhookHandler
     | undefined,
+  // Chunking strategy for splitting parsed documents into knowledge chunks.
+  // "simple" (default) = word/character splitter; "smart" = markdown/table-aware.
+  chunkingStrategy: <"simple" | "smart">"simple",
   // OAuth2 / OIDC Authorization Server (opt-in, default off)
   oauth2: {
     enabled: false,
@@ -100,6 +103,8 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
 
   _GLOBAL_SERVER_CONFIG.useLicenseSystem = config.useLicenseSystem ?? false;
   _GLOBAL_SERVER_CONFIG.publicKey = config.publicKey ?? "";
+
+  _GLOBAL_SERVER_CONFIG.chunkingStrategy = config.chunkingStrategy ?? "simple";
 
   // Email Templates
   if (config.emailTemplates?.verifyEmail) {

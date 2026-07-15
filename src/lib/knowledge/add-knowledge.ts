@@ -14,7 +14,7 @@
 import { getDb } from "../db/db-connection";
 import log from "../log";
 import type { FileSourceType } from "../storage";
-import { splitTextIntoSectionsOrChunks } from "./splitter";
+import { splitDocumentIntoChunks } from "./chunking";
 import type { ChunkWithEmbedding } from "../types/chunks";
 import {
   knowledgeChunks,
@@ -99,7 +99,7 @@ export const extractKnowledgeFromText = async (data: {
   }
 
   // Split the content into chunks - now handles both text and pages
-  const chunks = splitTextIntoSectionsOrChunks(data.pages || fullText);
+  const chunks = splitDocumentIntoChunks(data.pages || fullText);
 
   // Generate embeddings for all chunks
   const allEmbeddings: ChunkWithEmbedding[] = await Promise.all(

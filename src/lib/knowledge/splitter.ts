@@ -1,7 +1,7 @@
 import type { Chunk } from "../types/chunks";
 import type { PageContent } from "./parsing/pdf/types";
 
-const MAX_WORDS_PER_CHUNK = 500;
+export const MAX_WORDS_PER_CHUNK = 500;
 
 /**
  * Hard upper bound on a single chunk's character length.
@@ -15,10 +15,10 @@ const MAX_WORDS_PER_CHUNK = 500;
  * below the 8192 token ceiling to leave headroom for these worst-case
  * inputs.
  */
-const MAX_CHARS_PER_CHUNK = 6000;
+export const MAX_CHARS_PER_CHUNK = 6000;
 
 // Counts words in a given text (consecutive sequences separated by whitespace).
-const countWords = (text: string): number => {
+export const countWords = (text: string): number => {
   return text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
 };
 
@@ -108,7 +108,7 @@ export const hardSplitText = (text: string): string[] => {
  * preserving the original `header` and `meta`. Sequential `order` values
  * are assigned across the resulting list.
  */
-const enforceCharLimit = (chunks: Chunk[]): Chunk[] => {
+export const enforceCharLimit = (chunks: Chunk[]): Chunk[] => {
   const result: Chunk[] = [];
   let order = 0;
   for (const chunk of chunks) {

@@ -40,7 +40,7 @@ import {
 import type { ChunkWithEmbedding } from "../types/chunks";
 import type { PageContent } from "./parsing/pdf/types";
 import type { FileSourceType } from "../storage";
-import { splitTextIntoSectionsOrChunks } from "./splitter";
+import { splitDocumentIntoChunks } from "./chunking";
 import { generateEmbedding } from "./embedding";
 import { extractKnowledgeFromText } from "./add-knowledge";
 import log from "../log";
@@ -98,7 +98,7 @@ const generateChunksAndEmbeddings = async (
   pages: PageContent[] | undefined,
   context: { tenantId: string; userId?: string }
 ): Promise<ChunkWithEmbedding[]> => {
-  const chunks = splitTextIntoSectionsOrChunks(pages || text);
+  const chunks = splitDocumentIntoChunks(pages || text);
 
   return await Promise.all(
     chunks.map(async (chunk) => {
