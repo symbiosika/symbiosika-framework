@@ -790,7 +790,9 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
           throw new Error("URL must start with http:// or https://");
         }
 
-        const parsed = await urlToMarkdown(data.url);
+        const parsed = await urlToMarkdown(data.url, {
+          parseContext: { tenantId },
+        });
 
         if (!parsed.markdown || parsed.markdown.trim().length === 0) {
           throw new Error(

@@ -184,7 +184,14 @@ export const parseDocument = async (data: {
     docIncludesImages = includesImages;
   } else if (data.sourceType === "url" && data.sourceUrl) {
     log.debug(`Fetch and parse content from URL: ${data.sourceUrl}`);
-    const result = await urlToMarkdown(data.sourceUrl);
+    const result = await urlToMarkdown(data.sourceUrl, {
+      parseContext: {
+        tenantId: data.tenantId,
+        teamId: data.teamId,
+        workspaceId: data.workspaceId,
+      },
+      pdfModel: data.model,
+    });
     content = result.markdown;
     title = result.title || data.sourceUrl;
     if (hashingEnabled) sourceHash = computeSourceHash(content);
