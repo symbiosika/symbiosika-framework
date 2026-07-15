@@ -61,6 +61,7 @@ export const _GLOBAL_SERVER_CONFIG = {
     emailLoginCodeTtl: 60 * 10, // 10 minutes
     emailLoginCodeMaxAttempts: 5,
     introspectionSecret: "",
+    dcrDefaultScopes: [] as string[], // empty = all supported scopes
     views: defaultOAuthViews,
   },
 };
@@ -173,6 +174,7 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
     emailLoginCodeTtl: o.emailLoginCodeTtl ?? 60 * 10,
     emailLoginCodeMaxAttempts: o.emailLoginCodeMaxAttempts ?? 5,
     introspectionSecret: o.introspectionSecret ?? "",
+    dcrDefaultScopes: o.dcrDefaultScopes ?? [],
     views: { ...defaultOAuthViews, ...(o.views ?? {}) },
   };
 };

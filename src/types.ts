@@ -86,6 +86,12 @@ export interface ServerSpecificConfig {
     emailLoginCodeMaxAttempts?: number; // default 5
     // Shared secret for RFC 7662 token introspection (resource servers send this as Bearer).
     introspectionSecret?: string;
+    // Scopes assigned to dynamically registered clients (RFC 7591) that omit
+    // `scope` in their registration request. Empty/unset = all supported
+    // scopes. MCP clients like claude.ai register without `scope` and then
+    // request the scopes advertised by the resource server, so an empty
+    // client allow-list would fail every authorize request with invalid_scope.
+    dcrDefaultScopes?: string[];
     // Override the default login/consent/tenant-select HTML (like emailTemplates).
     views?: Partial<import("./lib/oauth2/views").OAuthViews>;
   };
