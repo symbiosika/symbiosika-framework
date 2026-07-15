@@ -63,6 +63,41 @@ const isScopeAllowed = (scope: string, client: OAuthClientRow): boolean =>
   (OIDC_SCOPES as readonly string[]).includes(scope) ||
   (client.scopes as string[]).includes(scope);
 
+/** Scopes granted to RFC 7591 clients that register without `scope`. */
+const dcrDefaultScopes = (): string[] => {
+  const configured = oauthCfg().dcrDefaultScopes;
+  if (configured && configured.length > 0) {
+    return configured;
+  }
+  return [...OIDC_SCOPES, ...availableScopes.all];
+};
+
+/**
+ * RFC 8707 resource indicator: must be an absolute URI without a fragment.
+ * Returns the resource or undefined (absent), throws on a malformed value.
+ */
+const parseResourceParam = (value: unknown): string | undefined => {
+  if (typeof value !== "string" || value === "") {
+    return undefined;
+  }
+  let u: URL;
+  try {
+    u = new URL(value);
+  } catch {
+    throw new InvalidTargetError(value);
+  }
+  if (u.hash) {
+    throw new InvalidTargetError(value);
+  }
+  return value;
+};
+
+class InvalidTargetError extends Error {
+  constructor(resource: string) {
+    super(`Invalid resource indicator: ${resource}`);
+  }
+}
+
 const appendParams = (
   uri: string,
   params: Record<string, string | undefined | null>
@@ -176,7 +211,10 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
     }
 
     // From here redirect_uri is trusted → recoverable errors go via redirect.
-    const redirErr = (error: string) => {
+    const redirErr = (error: string, detail = "") => {
+      console.error(
+        `[oauth2] authorize rejected (client=${client.clientId}, error=${error})${detail ? ": " + detail : ""}`
+      );
       if (wantsJson(c)) return c.json({ step: "error", error }, 400);
       return c.redirect(appendParams(redirectUri, { error, state: q.state }));
     };
@@ -188,7 +226,10 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
 
     const requested = parseScopes(q.scope);
     if (requested.some((s) => !isScopeAllowed(s, client)))
-      return redirErr("invalid_scope");
+      return redirErr(
+        "invalid_scope",
+        `requested="${q.scope ?? ""}" allowed="${(client.scopes as string[]).join(" ")}"`
+      );
 
     const userId = await currentUserId(c);
     if (!userId) {
@@ -208,7 +249,7 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
     } else if (memberships.length === 1) {
       tenantId = memberships[0]!.id;
     } else if (memberships.length === 0) {
-      return redirErr("access_denied");
+      return redirErr("access_denied", `user ${userId} has no tenant membership`);
     } else {
       if (wantsJson(c))
         return c.json({ step: "tenant", tenants: memberships });
@@ -370,6 +411,10 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
     const grantType = body.grant_type;
 
     try {
+      // RFC 8707: bind the access token's audience to the requested resource
+      // (MCP clients like claude.ai send their MCP server URL here).
+      const resource = parseResourceParam(body.resource);
+
       if (grantType === "authorization_code") {
         const payload = await consumeAuthCode(
           body.code ?? "",
@@ -392,6 +437,7 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
             tenantId: payload.tenantId,
             scopes: payload.scopes,
             nonce: payload.nonce,
+            resource,
           })
         );
       }
@@ -409,6 +455,7 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
             scopes: rotated.scopes,
             nonce: null,
             existingRefreshToken: rotated.refreshToken,
+            resource,
           })
         );
       }
@@ -416,7 +463,11 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
       return c.json({ error: "unsupported_grant_type" }, 400);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return c.json({ error: "invalid_grant", error_description: message }, 400);
+      const error = err instanceof InvalidTargetError ? "invalid_target" : "invalid_grant";
+      console.error(
+        `[oauth2] token request failed (client=${clientId ?? "?"}, grant=${grantType ?? "?"}): ${message}`
+      );
+      return c.json({ error, error_description: message }, 400);
     }
   });
 
@@ -451,11 +502,17 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
       );
     }
     try {
+      // RFC 7591: `scope` is optional — fall back to the default scope set so
+      // dynamically registered clients can actually request the scopes the
+      // resource server advertises.
+      const requestedScopes = parseScopes(body.scope);
+      const scopes =
+        requestedScopes.length > 0 ? requestedScopes : dcrDefaultScopes();
       const result = await createOAuthClient({
         tenantId: null,
         clientName: body.client_name || "Dynamic Client",
         redirectUris: body.redirect_uris,
-        scopes: body.scope ? body.scope.split(/\s+/).filter(Boolean) : [],
+        scopes,
         clientType: "public",
         clientId: body.client_id || undefined,
       });
@@ -468,7 +525,7 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
           grant_types: body.grant_types ?? ["authorization_code", "refresh_token"],
           response_types: body.response_types ?? ["code"],
           token_endpoint_auth_method: "none",
-          scope: body.scope ?? "",
+          scope: scopes.join(" "),
           client_id_issued_at: Math.floor(Date.now() / 1000),
           registration_client_uri: `${issuer}/oauth/register/${result.clientId}`,
         },
@@ -618,6 +675,8 @@ const buildTokenResponse = async (args: {
   scopes: string[];
   nonce: string | null;
   existingRefreshToken?: string;
+  /** RFC 8707 resource indicator — becomes the access token audience. */
+  resource?: string;
 }) => {
   const user = await loadOidcUser(args.userId);
   const { token: accessToken, expiresIn } = generateAccessToken({
@@ -626,6 +685,7 @@ const buildTokenResponse = async (args: {
     tenantId: args.tenantId,
     clientId: args.clientId,
     scopes: args.scopes,
+    resource: args.resource,
   });
 
   const refreshToken =

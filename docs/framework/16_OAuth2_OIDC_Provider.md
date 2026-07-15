@@ -14,7 +14,7 @@
 | Thema | Entscheidung |
 |---|---|
 | Protokoll | OAuth 2.1 **+ OIDC** (id_token, /userinfo, JWKS, openid-configuration) |
-| Client-Registrierung | **Nur Admin-erzeugt pro Tenant** — kein Dynamic Client Registration |
+| Client-Registrierung | **Admin-erzeugt pro Tenant** *oder* **Dynamic Client Registration** (RFC 7591, `POST /oauth/register`, immer `public`+PKCE). DCR ohne `scope` erhält die `dcrDefaultScopes` (leer = alle unterstützten Scopes). |
 | Login im Authorize-Flow | **Email-Code (OTP) ist fester Default.** Passwort und Passkey sind manuelle Alternativen, die der Nutzer selbst auf der Login-Seite wählt. **Kein** `login/methods`-/Methoden-Probing-Endpunkt — vermeidet User-Enumeration. Code wird im selben Fenster eingegeben (kein Magic-Link). |
 | Tenant | Nutzer in mehreren Tenants → **Auswahl im Authorize-Flow**; Token an Tenant gebunden |
 | Consent | **Persistenz** (gemerkte Zustimmung pro User+Client+Scopes, Re-Consent nur bei neuen Scopes) |
@@ -44,7 +44,8 @@
 - `POST /oauth/login/start` `{email}` → OTP per Mail (Hash, TTL 10m, max 5 Versuche)
 - `POST /oauth/login/verify` `{email,code}` → Session-Cookie
 - `POST /oauth/consent` — Erlauben/Ablehnen (+ persistente Zustimmung)
-- `POST /oauth/token` — `authorization_code` (+PKCE S256) & `refresh_token` (Rotation+Reuse-Detection); bei `openid`-Scope zusätzlich **id_token**
+- `POST /oauth/token` — `authorization_code` (+PKCE S256) & `refresh_token` (Rotation+Reuse-Detection); bei `openid`-Scope zusätzlich **id_token**. Ein `resource`-Parameter (RFC 8707, von MCP-Clients gesendet) wird zur Token-Audience (`aud`); ohne ihn bleibt `aud` = Issuer. Ungültige Werte → `invalid_target`.
+- `POST /oauth/register` — Dynamic Client Registration (RFC 7591); immer `public` + PKCE. Ohne `scope` werden die `dcrDefaultScopes` vergeben (leer = alle unterstützten Scopes).
 - `POST /oauth/revoke` (RFC 7009)
 - `GET /oauth/userinfo` — Bearer Access-Token → OIDC-Claims
 
