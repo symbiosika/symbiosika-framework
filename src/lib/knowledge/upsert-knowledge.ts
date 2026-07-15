@@ -43,6 +43,8 @@ import type { FileSourceType } from "../storage";
 import { splitDocumentIntoChunks } from "./chunking";
 import { generateEmbedding } from "./embedding";
 import { extractKnowledgeFromText } from "./add-knowledge";
+import { computeSourceHash, isSourceUnchanged } from "./source-hash";
+import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import log from "../log";
 
 /** JSON key used in `knowledge_entry.meta` to identify the external source. */
@@ -142,6 +144,19 @@ export type UpsertKnowledgeFromTextInput = {
   sourceId?: string;
   sourceExternalId?: string;
   sourceUrl?: string;
+  /**
+   * Pre-computed sha256 of the raw source (the true "hash over the file",
+   * computed where the bytes exist). When given it is stored as-is and used
+   * for unchanged-source detection, taking precedence over any hash the sync
+   * would derive from the parsed text. See `computeSourceHash`.
+   */
+  sourceHash?: string;
+  /**
+   * Per-call override for source hashing. When undefined, the global
+   * `enableSourceHashing` config decides. When hashing is active and no
+   * `sourceHash` is supplied, the sync hashes the parsed text as a fallback.
+   */
+  computeSourceHash?: boolean;
   userId?: string;
   teamId?: string;
   workspaceId?: string;
@@ -162,6 +177,12 @@ export type UpsertKnowledgeFromTextResult = {
   ok: true;
   /** `true` if a new entry was created, `false` if an existing entry was replaced. */
   created: boolean;
+  /**
+   * `true` when source hashing detected an unchanged source and the expensive
+   * re-chunk/re-embed was skipped (only the "last seen" timestamp advanced).
+   * Always `false` on insert.
+   */
+  skipped: boolean;
 };
 
 /**
@@ -188,6 +209,17 @@ export const upsertKnowledgeFromText = async (
     );
   }
 
+  const fullText = data.text ?? data.pages!.map((p) => p.text).join("\n\n");
+
+  // Source hashing (opt-in). A caller-supplied `sourceHash` (hash of the raw
+  // file) wins; otherwise, when hashing is active, fall back to hashing the
+  // parsed text. `undefined` means "not hashing" → nothing is stored and no
+  // skip can happen.
+  const hashingEnabled =
+    data.computeSourceHash ?? _GLOBAL_SERVER_CONFIG.enableSourceHashing;
+  const effectiveHash =
+    data.sourceHash ?? (hashingEnabled ? computeSourceHash(fullText) : undefined);
+
   const existing = await findKnowledgeEntryBySourceIdentifier(
     data.tenantId,
     data.sourceIdentifier,
@@ -198,6 +230,7 @@ export const upsertKnowledgeFromText = async (
   if (!existing) {
     const result = await extractKnowledgeFromText({
       ...data,
+      sourceHash: effectiveHash,
       // Store the upsert key + scope inside `meta` so the next sync run can
       // find this entry again.
       metadata: {
@@ -206,13 +239,25 @@ export const upsertKnowledgeFromText = async (
         [SOURCE_IDENTIFIER_META_KEY]: data.sourceIdentifier,
       },
     });
-    return { id: result.id, ok: true, created: true };
+    return { id: result.id, ok: true, created: true, skipped: false };
+  }
+
+  // ----- Unchanged source → skip the expensive work ----------------------
+  // When the stored hash equals the new one the source is byte-for-byte (or
+  // content-for-content) identical; keep the existing chunks/embeddings and
+  // only advance the "last seen" timestamp so orphan-cleanup keeps the entry.
+  if (isSourceUnchanged(existing.sourceHash, effectiveHash)) {
+    await getDb()
+      .update(knowledgeEntry)
+      .set({ updatedAt: new Date().toISOString() })
+      .where(eq(knowledgeEntry.id, existing.id));
+    log.debug(
+      `Upsert knowledge entry ${existing.id}: source hash unchanged, skipped re-embed`
+    );
+    return { id: existing.id, ok: true, created: false, skipped: true };
   }
 
   // ----- Update / replace path -------------------------------------------
-  const fullText =
-    data.text ?? data.pages!.map((p) => p.text).join("\n\n");
-
   // Re-chunk + re-embed with the new text BEFORE we touch the DB so a
   // failure here doesn't leave a half-updated entry behind.
   const allEmbeddings = await generateChunksAndEmbeddings(
@@ -248,6 +293,11 @@ export const upsertKnowledgeFromText = async (
     meta: mergedMeta,
     updatedAt: new Date().toISOString(),
   };
+  // Persist the new hash so the *next* sync can detect an unchanged source.
+  // Only write it when hashing is active — otherwise leave any previous value
+  // untouched (a stale hash is harmless: skipping requires both sides present
+  // AND equal, which a fresh non-hashing run never satisfies).
+  if (effectiveHash !== undefined) updateSet.sourceHash = effectiveHash;
   if (data.knowledgeGroupId !== undefined) {
     updateSet.knowledgeGroupId = data.knowledgeGroupId;
   }
@@ -283,7 +333,7 @@ export const upsertKnowledgeFromText = async (
     `Upserted knowledge entry ${existing.id} (replaced); ${allEmbeddings.length} chunks`
   );
 
-  return { id: existing.id, ok: true, created: false };
+  return { id: existing.id, ok: true, created: false, skipped: false };
 };
 
 export type DeleteOrphanedKnowledgeEntriesInput = {

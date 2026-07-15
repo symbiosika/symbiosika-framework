@@ -80,6 +80,8 @@ export const extractKnowledgeFromText = async (data: {
   sourceId?: string;
   sourceExternalId?: string;
   sourceUrl?: string;
+  /** Optional sha256 of the source, persisted to `knowledge_entry.source_hash`. */
+  sourceHash?: string;
   userId?: string;
   teamId?: string;
   workspaceId?: string;
@@ -181,6 +183,7 @@ export const extractKnowledgeFromText = async (data: {
       tenantId: data.tenantId,
       name: title,
       meta,
+      sourceHash: data.sourceHash,
       userId: data.userId,
       teamId: data.teamId,
       knowledgeGroupId: data.knowledgeGroupId,

@@ -1,0 +1,2 @@
+ALTER TABLE "base_knowledge_entry" ADD COLUMN "source_hash" varchar(64);--> statement-breakpoint
+CREATE INDEX "knowledge_entry_source_hash_idx" ON "base_knowledge_entry" USING btree ("source_hash") WHERE source_hash IS NOT NULL;

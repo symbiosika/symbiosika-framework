@@ -532,3 +532,8 @@ export {
 export {
   smartSplitTextIntoSectionsOrChunks,
 } from "./lib/knowledge/smart-splitter";
+export {
+  computeSourceHash,
+  isSourceUnchanged,
+  SOURCE_HASH_ALGORITHM,
+} from "./lib/knowledge/source-hash";

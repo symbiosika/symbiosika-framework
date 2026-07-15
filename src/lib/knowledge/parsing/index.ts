@@ -9,6 +9,8 @@ import { eq } from "drizzle-orm";
 import type { PageContent } from "./pdf/types";
 import { applyPostProcessors } from "./post-processors";
 import { urlToMarkdown } from "./url";
+import { computeSourceHash } from "../source-hash";
+import { _GLOBAL_SERVER_CONFIG } from "../../../store";
 
 /**
  * Helper function to parse a file and return the text content and pages if available
@@ -98,12 +100,23 @@ export const parseDocument = async (data: {
   model?: string;
   extractImages?: boolean;
   usePostProcessors?: string[];
+  /**
+   * Compute a sha256 over the raw source (file bytes for db/local, fetched
+   * content for url/text) and return it as `sourceHash`. When undefined the
+   * global `enableSourceHashing` config decides. Feed the returned hash into
+   * `upsertKnowledgeFromText({ sourceHash })` to enable unchanged-source skip.
+   */
+  computeSourceHash?: boolean;
 }) => {
   // Get the file (from DB or local disc) or content from URL
   let content: string = "";
   let pages: PageContent[] | undefined;
   let title: string;
   let docIncludesImages = false;
+  let sourceHash: string | undefined;
+
+  const hashingEnabled =
+    data.computeSourceHash ?? _GLOBAL_SERVER_CONFIG.enableSourceHashing;
 
   if (data.sourceType === "db" && data.sourceId && data.sourceFileBucket) {
     log.debug(
@@ -114,6 +127,7 @@ export const parseDocument = async (data: {
       data.sourceFileBucket,
       data.tenantId
     );
+    if (hashingEnabled) sourceHash = computeSourceHash(await file.arrayBuffer());
     const {
       text,
       pages: filePages,
@@ -147,6 +161,7 @@ export const parseDocument = async (data: {
       data.sourceFileBucket,
       data.tenantId
     );
+    if (hashingEnabled) sourceHash = computeSourceHash(await file.arrayBuffer());
     const {
       text,
       pages: filePages,
@@ -172,6 +187,7 @@ export const parseDocument = async (data: {
     const result = await urlToMarkdown(data.sourceUrl);
     content = result.markdown;
     title = result.title || data.sourceUrl;
+    if (hashingEnabled) sourceHash = computeSourceHash(content);
     log.debug(
       `URL parsed. title="${title}" markdown length=${content.length}`
     );
@@ -186,6 +202,7 @@ export const parseDocument = async (data: {
     }
     content = dbResults[0].text;
     title = dbResults[0].title;
+    if (hashingEnabled) sourceHash = computeSourceHash(content);
   } else {
     log.error(
       `Can´t get file. Unsupported file source type '${data.sourceType}' or missing parameters.`
@@ -228,5 +245,12 @@ export const parseDocument = async (data: {
     meta = processed.meta;
   }
 
-  return { content, pages, title, includesImages: docIncludesImages, meta };
+  return {
+    content,
+    pages,
+    title,
+    includesImages: docIncludesImages,
+    meta,
+    sourceHash,
+  };
 };
