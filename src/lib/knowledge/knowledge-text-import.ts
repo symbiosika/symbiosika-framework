@@ -253,7 +253,14 @@ export const importKnowledgeTextFromUrl = async (
   url: string,
   options: ImportKnowledgeTextOptions
 ): Promise<ImportKnowledgeTextResult> => {
-  const result = await urlToMarkdown(url);
+  const result = await urlToMarkdown(url, {
+    parseContext: {
+      tenantId: options.tenantId,
+      userId: options.userId,
+      teamId: options.teamId,
+      workspaceId: options.workspaceId,
+    },
+  });
   if (result.markdown.trim().length === 0) {
     throw new Error("The page contains no extractable text");
   }
