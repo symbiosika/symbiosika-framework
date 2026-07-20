@@ -14,6 +14,7 @@ import {
   createDatabaseClient,
   waitForDbConnection,
 } from "../../../../lib/db/db-connection";
+import { processDueJobsOnce, getJob } from "../../../../lib/jobs";
 
 let appKnowledge = new Hono<{ Variables: SFContextVariables }>();
 let appKnowledgeTexts = new Hono<{ Variables: SFContextVariables }>();
@@ -64,7 +65,11 @@ beforeAll(async () => {
     parseData
   );
 
-  createdKnowledgeEntryId = parseResponse.jsonResponse.id;
+  // Ingestion is asynchronous now: the endpoint returns a Job. Run it and read
+  // the created knowledge entry id from the job result.
+  await processDueJobsOnce();
+  const finishedJob = await getJob(parseResponse.jsonResponse.id);
+  createdKnowledgeEntryId = (finishedJob.result as any)?.id;
 });
 
 describe("Knowledge API Security Tests", () => {
