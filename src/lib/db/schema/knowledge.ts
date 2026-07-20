@@ -116,7 +116,7 @@ export const knowledgeText = pgBaseTable(
     summaryModel: varchar("summary_model", { length: 128 }),
     // --- controlled facets ---
     // Small, controlled vocabulary (closed lists configured per tenant in the
-    // wiki config, see wiki-config.ts) — NOT free tags. Delivered in every
+    // knowledge config, see knowledge-config.ts) — NOT free tags. Delivered in every
     // list-type response and usable as filter parameters in search / tree /
     // lists / recent-changes. Stored as text validated against the tenant
     // vocabulary on write.

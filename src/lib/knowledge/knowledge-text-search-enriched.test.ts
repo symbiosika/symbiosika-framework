@@ -12,7 +12,7 @@ const ctx = { tenantId: TENANT };
 // distinctive token so results don't collide with other seeded pages
 const TOKEN = "zylophonqx";
 
-describe("enriched wiki search", () => {
+describe("enriched knowledge search", () => {
   beforeAll(async () => {
     await initTests();
   });
@@ -22,8 +22,8 @@ describe("enriched wiki search", () => {
       tenantId: TENANT,
       title: `Enriched ${TOKEN} page`,
       text: `Body mentioning ${TOKEN} once.`,
-      pageType: "anleitung",
-      status: "entwurf",
+      pageType: "manual",
+      status: "draft",
       summary: "A test summary.",
     });
     const results = await searchKnowledgeTexts(TOKEN, ctx, { mode: "fulltext" });
@@ -42,7 +42,7 @@ describe("enriched wiki search", () => {
       tenantId: TENANT,
       title: `Facet A ${tok}`,
       text: `text ${tok}`,
-      pageType: "anleitung",
+      pageType: "manual",
     });
     await createKnowledgeText({
       tenantId: TENANT,
@@ -64,17 +64,17 @@ describe("enriched wiki search", () => {
       tenantId: TENANT,
       title: `Draft ${tok}`,
       text: `content ${tok}`,
-      status: "entwurf",
+      status: "draft",
     });
     await createKnowledgeText({
       tenantId: TENANT,
       title: `Verified ${tok}`,
       text: `content ${tok}`,
-      status: "verifiziert",
+      status: "verified",
     });
     const results = await searchKnowledgeTexts(tok, ctx, { mode: "fulltext" });
-    const verifiedIdx = results.findIndex((r) => r.status === "verifiziert");
-    const draftIdx = results.findIndex((r) => r.status === "entwurf");
+    const verifiedIdx = results.findIndex((r) => r.status === "verified");
+    const draftIdx = results.findIndex((r) => r.status === "draft");
     expect(verifiedIdx).toBeGreaterThanOrEqual(0);
     expect(draftIdx).toBeGreaterThanOrEqual(0);
     expect(verifiedIdx).toBeLessThan(draftIdx);
@@ -86,13 +86,13 @@ describe("enriched wiki search", () => {
       tenantId: TENANT,
       title: `Old ${tok}`,
       text: `guide ${tok}`,
-      status: "veraltet",
+      status: "outdated",
     });
     const fresh = await createKnowledgeText({
       tenantId: TENANT,
       title: `New ${tok}`,
       text: `guide ${tok}`,
-      status: "verifiziert",
+      status: "verified",
       supersedesId: old.id,
     });
     const results = await searchKnowledgeTexts(tok, ctx, { mode: "fulltext" });

@@ -4,7 +4,7 @@ import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
 import { getDb } from "../db/db-connection";
 import { knowledgeText } from "../db/schema/knowledge";
 import { createKnowledgeText } from "./knowledge-texts";
-import { getWikiOverview } from "./wiki-overview";
+import { getKnowledgeOverview } from "./knowledge-overview";
 
 const TENANT = TEST_ORGANISATION_1.id;
 const ctx = { tenantId: TENANT };
@@ -27,7 +27,7 @@ describe("wiki overview", () => {
       parentId: top.id,
     });
 
-    const overview = await getWikiOverview(ctx);
+    const overview = await getKnowledgeOverview(ctx);
     expect(overview.metrics.totalPages).toBeGreaterThanOrEqual(2);
     expect(overview.metrics.topLevelCount).toBeGreaterThanOrEqual(1);
     expect(overview.metrics.lastActivityAt).not.toBeNull();
@@ -51,7 +51,7 @@ describe("wiki overview", () => {
       .set({ isAgentInstructions: true })
       .where(eq(knowledgeText.id, instr.id));
 
-    const overview = await getWikiOverview(ctx);
+    const overview = await getKnowledgeOverview(ctx);
     expect(overview.agentInstructions).not.toBeNull();
     expect(overview.agentInstructions?.id).toBe(instr.id);
     expect(overview.agentInstructions?.content).toContain("Where things live");

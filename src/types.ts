@@ -173,11 +173,11 @@ export interface ServerSpecificConfig {
    */
   fileCleanupCron?: string;
   /**
-   * Schedule (standard Linux cron syntax) for the debounced wiki page-summary
+   * Schedule (standard Linux cron syntax) for the debounced knowledge page-summary
    * sweeper. Only active when a global LLM is configured (AI_PROVIDER).
    * Default: "* * * * *" (every minute).
    */
-  wikiSummarySweepCron?: string;
+  knowledgeSummarySweepCron?: string;
 
   // stripe
   useStripe?: boolean;

@@ -34,7 +34,7 @@ export const DEFAULT_AI_PROVIDER: AiProviderId = AI_PROVIDER.NONE;
 /**
  * Providers usable for embeddings.
  *
- * Embeddings power knowledge/wiki similarity search and are a distinct concern
+ * Embeddings power knowledge similarity search and are a distinct concern
  * from text generation — a deployment may run without a global LLM
  * (`AI_PROVIDER=none`) yet still need embeddings for search. There is
  * therefore no `none` here; the default is Mistral, preserving the historical

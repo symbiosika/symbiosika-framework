@@ -7,7 +7,7 @@ import {
   getKnowledgeTextById,
 } from "./knowledge-texts";
 import { FacetValidationError } from "./facets";
-import { setWikiTenantConfig, getWikiTenantConfig } from "./wiki-config";
+import { setKnowledgeTenantConfig, getKnowledgeTenantConfig } from "./knowledge-config";
 
 const TENANT = TEST_ORGANISATION_1.id;
 
@@ -21,12 +21,12 @@ describe("controlled facets", () => {
       tenantId: TENANT,
       title: "Facet ok",
       text: "content",
-      pageType: "anleitung",
-      status: "entwurf",
+      pageType: "manual",
+      status: "draft",
     });
     const fetched = await getKnowledgeTextById(page.id, { tenantId: TENANT });
-    expect(fetched.pageType).toBe("anleitung");
-    expect(fetched.status).toBe("entwurf");
+    expect(fetched.pageType).toBe("manual");
+    expect(fetched.status).toBe("draft");
   });
 
   test("rejects a page type outside the controlled vocabulary", async () => {
@@ -69,16 +69,16 @@ describe("controlled facets", () => {
   test("list is filterable by facet", async () => {
     await createKnowledgeText({
       tenantId: TENANT,
-      title: "Konzept page",
+      title: "FAQ page",
       text: "c",
-      pageType: "konzept",
+      pageType: "FAQ",
     });
-    const konzepte = await getKnowledgeText({
+    const faqs = await getKnowledgeText({
       tenantId: TENANT,
-      pageType: "konzept",
+      pageType: "FAQ",
     });
-    expect(konzepte.length).toBeGreaterThanOrEqual(1);
-    expect(konzepte.every((p) => p.pageType === "konzept")).toBe(true);
+    expect(faqs.length).toBeGreaterThanOrEqual(1);
+    expect(faqs.every((p) => p.pageType === "FAQ")).toBe(true);
   });
 
   test("list carries the facet fields (delivered everywhere)", async () => {
@@ -90,8 +90,8 @@ describe("controlled facets", () => {
   });
 
   test("tenant vocabulary is configurable and then enforced", async () => {
-    await setWikiTenantConfig(TENANT, { pageTypes: ["sondertyp"] });
-    const cfg = await getWikiTenantConfig(TENANT);
+    await setKnowledgeTenantConfig(TENANT, { pageTypes: ["sondertyp"] });
+    const cfg = await getKnowledgeTenantConfig(TENANT);
     expect(cfg.pageTypes).toEqual(["sondertyp"]);
 
     // now the new value is accepted...
@@ -109,13 +109,13 @@ describe("controlled facets", () => {
         tenantId: TENANT,
         title: "Old vocab page",
         text: "c",
-        pageType: "anleitung",
+        pageType: "manual",
       })
     ).rejects.toBeInstanceOf(FacetValidationError);
 
     // restore defaults for other tests
-    await setWikiTenantConfig(TENANT, {
-      pageTypes: ["anleitung", "konzept", "policy", "meeting-notiz", "referenz"],
+    await setKnowledgeTenantConfig(TENANT, {
+      pageTypes: ["manual", "FAQ", "policy", "note", "text"],
     });
   });
 });

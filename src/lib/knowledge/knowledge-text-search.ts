@@ -1,5 +1,5 @@
 /**
- * Hybrid search over knowledgeText wiki pages.
+ * Hybrid search over knowledgeText pages.
  *
  * Combines two retrieval signals with Reciprocal Rank Fusion (RRF), the
  * standard recipe for hybrid lexical + semantic search:
@@ -7,7 +7,7 @@
  *   1. Full-text search: Postgres tsvector over title + content with
  *      `websearch_to_tsquery` (supports quoted phrases, OR, -exclusion),
  *      backed by a GIN index. Uses the 'simple' config so mixed German/
- *      English wikis behave predictably. Falls back to substring matching
+ *      English knowledge bases behave predictably. Falls back to substring matching
  *      when the FTS query yields nothing (partial words).
  *
  *   2. Semantic search: query embedding vs. the stored chunk embeddings of
@@ -73,8 +73,8 @@ const RRF_K = 60;
 
 /** Trust weight applied to the fused score based on the status facet. */
 const statusWeight = (status: string | null): number => {
-  if (status === "verifiziert") return 1.2;
-  if (status === "veraltet") return 0.6;
+  if (status === "verified") return 1.2;
+  if (status === "outdated") return 0.6;
   return 1;
 };
 
@@ -222,7 +222,7 @@ const visibleSubtreeIds = async (
 };
 
 /**
- * Search wiki pages. `mode` (default "hybrid"):
+ * Search knowledge pages. `mode` (default "hybrid"):
  *   - "fulltext": lexical only, no embedding provider needed
  *   - "semantic": embeddings only (embedding-enabled pages)
  *   - "hybrid": both, fused with Reciprocal Rank Fusion

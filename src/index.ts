@@ -42,7 +42,6 @@ import aiKnowledgeRoutes from "./routes/tenant/[tenantId]/knowledge";
 // import aiKnowledgeFiltersRoutes from "./routes/tenant/[tenantId]/knowledge/filters";
 import aiKnowledgeGroupRoutes from "./routes/tenant/[tenantId]/knowledge/groups";
 import aiKnowledgeTextsRoutes from "./routes/tenant/[tenantId]/knowledge/texts";
-import wikiRoutes from "./routes/tenant/[tenantId]/knowledge/wiki";
 import aiKnowledgeChunksRoutes from "./routes/tenant/[tenantId]/knowledge/chunks";
 
 import defineTenantRoutes from "./routes/tenant";
@@ -163,16 +162,16 @@ export const defineServer = (config: ServerSpecificConfig) => {
   );
 
   /**
-   * debounced wiki page-summary sweeper. Runs every minute and enqueues
+   * debounced knowledge page-summary sweeper. Runs every minute and enqueues
    * summary jobs for pages that have been stale AND quiet for the configured
    * window. Only registered when a global LLM is configured (AI_PROVIDER set);
    * with no LLM the whole feature is inert. Override the schedule via
-   * config.wikiSummarySweepCron.
+   * config.knowledgeSummarySweepCron.
    */
   if (isAiEnabled()) {
     scheduler.registerTask(
-      "wiki-summary-sweeper",
-      config.wikiSummarySweepCron ?? "* * * * *",
+      "knowledge-summary-sweeper",
+      config.knowledgeSummarySweepCron ?? "* * * * *",
       async () => {
         await sweepStaleSummaries();
       }
@@ -341,7 +340,6 @@ export const defineServer = (config: ServerSpecificConfig) => {
       // aiKnowledgeFiltersRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeTextsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
-      wikiRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeChunksRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
@@ -571,7 +569,7 @@ export {
 export type { AiProviderId, EmbeddingProviderId } from "./lib/ai/types";
 
 /**
- * Export wiki page-summary controls and per-tenant wiki config.
+ * Export knowledge page-summary controls and per-tenant knowledge config.
  */
 export {
   SUMMARY_JOB_TYPE,
@@ -584,12 +582,12 @@ export {
   enqueueSummaryBackfill,
 } from "./lib/knowledge/summaries";
 export {
-  getWikiTenantConfig,
-  setWikiTenantConfig,
+  getKnowledgeTenantConfig,
+  setKnowledgeTenantConfig,
   DEFAULT_PAGE_TYPES,
   DEFAULT_STATUSES,
-} from "./lib/knowledge/wiki-config";
-export type { WikiTenantConfig } from "./lib/knowledge/wiki-config";
+} from "./lib/knowledge/knowledge-config";
+export type { KnowledgeTenantConfig } from "./lib/knowledge/knowledge-config";
 
 /**
  * Export facet validation helpers.
@@ -601,7 +599,7 @@ export {
 export type { FacetFilters } from "./lib/knowledge/facets";
 
 /**
- * Export the wiki context-economy helpers.
+ * Export the knowledge context-economy helpers.
  */
 export {
   resolvePageByTitle,
@@ -616,10 +614,10 @@ export type {
 } from "./lib/knowledge/knowledge-text-agent";
 
 /**
- * Export wiki overview.
+ * Export the knowledge overview.
  */
-export { getWikiOverview } from "./lib/knowledge/wiki-overview";
-export type { WikiOverview } from "./lib/knowledge/wiki-overview";
+export { getKnowledgeOverview } from "./lib/knowledge/knowledge-overview";
+export type { KnowledgeOverview } from "./lib/knowledge/knowledge-overview";
 
 /**
  * Export heading-addressing helpers and enriched search types.

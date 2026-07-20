@@ -1,9 +1,9 @@
 /**
- * Controlled facets for wiki pages.
+ * Controlled facets for knowledge pages.
  *
  * Facets are first-class columns on knowledgeText (pageType, status, owner,
  * validUntil, supersedes) drawn from a small controlled vocabulary configured
- * per tenant (see wiki-config.ts) — deliberately NOT a free-tag system. They
+ * per tenant (see knowledge-config.ts) — deliberately NOT a free-tag system. They
  * are delivered in every list-type response (automatic, since list queries
  * select all columns except `text`) and usable as filter parameters.
  *
@@ -13,7 +13,7 @@
  */
 
 import type { KnowledgeTextInsert } from "../db/schema/knowledge";
-import { getWikiTenantConfig } from "./wiki-config";
+import { getKnowledgeTenantConfig } from "./knowledge-config";
 
 /** Error thrown when a facet value is outside the tenant's controlled list. */
 export class FacetValidationError extends Error {
@@ -39,7 +39,7 @@ export const validateFacetsForWrite = async (
   const settingStatus = "status" in data && isSet(data.status);
   if (!settingType && !settingStatus) return;
 
-  const config = await getWikiTenantConfig(tenantId);
+  const config = await getKnowledgeTenantConfig(tenantId);
 
   if (settingType && !config.pageTypes.includes(data.pageType as string)) {
     throw new FacetValidationError(

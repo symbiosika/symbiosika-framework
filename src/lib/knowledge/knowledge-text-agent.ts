@@ -1,5 +1,5 @@
 /**
- * Context-economy helpers for agents working the wiki.
+ * Context-economy helpers for agents working the knowledge base.
  *
  * These sit on top of the page CRUD and are built for cheap, oriented access:
  *   - resolvePageByTitle  — find a page by exact title (wikilink semantics)

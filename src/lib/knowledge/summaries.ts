@@ -1,5 +1,5 @@
 /**
- * AI page summaries: the "docstring" of every wiki page.
+ * AI page summaries: the "docstring" of every knowledge page.
  *
  * A short (1-2 sentence) description is stored per page and delivered in all
  * list-type responses, so an agent can tell similar pages apart without
@@ -11,16 +11,16 @@
  *   2. A per-minute cron sweeper (`sweepStaleSummaries`) finds pages that have
  *      been stale AND quiet for the configured debounce window (default 60 min,
  *      overridable at runtime via the app-config key
- *      `wiki_summary_debounce_minutes`) and enqueues one durable job per page.
+ *      `knowledge_summary_debounce_minutes`) and enqueues one durable job per page.
  *      Every new save pushes `updatedAt`
  *      forward, so a page is only picked up once editing has actually stopped —
  *      one generation per editing session, regardless of autosave frequency.
- *   3. The job (`wiki:summarize`) regenerates the summary — but first compares a
+ *   3. The job (`knowledge:summarize`) regenerates the summary — but first compares a
  *      content hash and skips the LLM entirely if the content is unchanged
  *      (a save without edits, or a revert).
  *
  * The whole pipeline is gated on `isAiEnabled()` (a global LLM must be
- * configured) and, per tenant, on `wiki.autoSummaries`. When either is off the
+ * configured) and, per tenant, on `knowledge.autoSummaries`. When either is off the
  * sweeper is a no-op and existing/manual summaries keep being served.
  */
 
@@ -35,18 +35,18 @@ import type { JobHandlerRegister } from "../jobs";
 import { computeSourceHash } from "./source-hash";
 import { generateStructured, isAiEnabled } from "../ai";
 import { getAppSpecificData } from "../specific-data";
-import { getWikiTenantConfig } from "./wiki-config";
+import { getKnowledgeTenantConfig } from "./knowledge-config";
 import log from "../log";
 
 /** Job type for the durable per-page summary generation. */
-export const SUMMARY_JOB_TYPE = "wiki:summarize";
+export const SUMMARY_JOB_TYPE = "knowledge:summarize";
 
 /**
  * App-config key (in the global specific-data store) holding the summary
  * debounce window as `{ minutes: number }`. Tunable at runtime without a
  * redeploy; falls back to the default below when unset.
  */
-export const SUMMARY_DEBOUNCE_CONFIG_KEY = "wiki_summary_debounce_minutes";
+export const SUMMARY_DEBOUNCE_CONFIG_KEY = "knowledge_summary_debounce_minutes";
 
 /** Debounce default (minutes) when the app-config value is unset. */
 export const DEFAULT_SUMMARY_DEBOUNCE_MINUTES = 60;
@@ -76,7 +76,7 @@ const SWEEP_BATCH_SIZE = 50;
  * provider's configured default model is used.
  */
 const summaryModelId = (): string | undefined =>
-  process.env.WIKI_SUMMARY_MODEL || undefined;
+  process.env.KNOWLEDGE_SUMMARY_MODEL || undefined;
 
 /** Stable content hash used to skip no-op regenerations. */
 export const computeSummaryContentHash = (
@@ -131,14 +131,14 @@ const SUMMARY_SCHEMA = v.object({
   summary: v.pipe(
     v.string(),
     v.description(
-      "A 1-2 sentence, factual description of what this wiki page is about, " +
+      "A 1-2 sentence, factual description of what this knowledge page is about, " +
         "so a reader can tell it apart from similar pages. No preamble."
     )
   ),
 });
 
 const SUMMARY_SYSTEM_PROMPT =
-  "You write terse catalog descriptions for wiki pages. Given a page, respond " +
+  "You write terse catalog descriptions for knowledge base pages. Given a page, respond " +
   "with a single 1-2 sentence summary of what the page is about and what a " +
   "reader would find on it. Be concrete and specific; name the topic. Do not " +
   "start with 'This page' or 'This document'. Write in the page's language.";
@@ -191,7 +191,7 @@ export const processSummaryForPage = async (
 
   if (!isAiEnabled()) return { status: "skipped" };
 
-  const tenantConfig = await getWikiTenantConfig(tenantId);
+  const tenantConfig = await getKnowledgeTenantConfig(tenantId);
   if (!tenantConfig.autoSummaries) return { status: "skipped" };
 
   const hash = computeSummaryContentHash(page.title, page.text);
@@ -300,7 +300,7 @@ export const sweepStaleSummaries = async (): Promise<{
     enqueued++;
   }
 
-  if (enqueued > 0) log.debug(`wiki summary sweep: enqueued ${enqueued} page(s)`);
+  if (enqueued > 0) log.debug(`knowledge summary sweep: enqueued ${enqueued} page(s)`);
   return { enqueued };
 };
 

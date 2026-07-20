@@ -1,8 +1,8 @@
 /**
- * The "CLAUDE.md of the wiki": a curated entry point plus an auto-generated
+ * The "CLAUDE.md of the knowledge base": a curated entry point plus an auto-generated
  * overview, so an agent starts a session briefed rather than exploring blind.
  *
- * getWikiOverview returns, all within the caller's visibility:
+ * getKnowledgeOverview returns, all within the caller's visibility:
  *   - metrics: page count, number of top-level areas, last activity
  *   - top-level structure WITH summaries and facets
  *   - the most recently changed pages (reuses the recent-changes helper)
@@ -24,7 +24,7 @@ type Context = {
   includeHidden?: boolean;
 };
 
-export interface WikiOverview {
+export interface KnowledgeOverview {
   metrics: {
     totalPages: number;
     topLevelCount: number;
@@ -40,10 +40,10 @@ const listColumns = () => {
   return rest;
 };
 
-export const getWikiOverview = async (
+export const getKnowledgeOverview = async (
   context: Context,
   options: { recentLimit?: number } = {}
-): Promise<WikiOverview> => {
+): Promise<KnowledgeOverview> => {
   const visibility = buildKnowledgeTextVisibilityConditions(context);
 
   const [metricsRow] = await getDb()
@@ -54,7 +54,7 @@ export const getWikiOverview = async (
     .from(knowledgeText)
     .where(and(...visibility));
 
-  // Top-level pages (no parent), with summaries + facets, in wiki order.
+  // Top-level pages (no parent), with summaries + facets, in tree order.
   const topLevel = await getDb()
     .select(listColumns())
     .from(knowledgeText)
