@@ -114,6 +114,38 @@ export const knowledgeText = pgBaseTable(
     // When the summary was last (re)generated, and by which model.
     summaryUpdatedAt: timestamp("summary_updated_at", { mode: "string" }),
     summaryModel: varchar("summary_model", { length: 128 }),
+    // --- B3: controlled facets ---
+    // Small, controlled vocabulary (closed lists configured per tenant in the
+    // wiki config, see wiki-config.ts) — NOT free tags. Delivered in every
+    // list-type response and usable as filter parameters in search / tree /
+    // lists / recent-changes. Stored as text validated against the tenant
+    // vocabulary on write.
+    //
+    // Type of page, e.g. "anleitung" | "konzept" | "policy" | ...
+    pageType: varchar("page_type", { length: 64 }),
+    // Trust signal, e.g. "entwurf" | "verifiziert" | "veraltet".
+    status: varchar("status", { length: 64 }),
+    // For status transitions to "verifiziert": when and by whom.
+    verifiedAt: timestamp("verified_at", { mode: "string" }),
+    verifiedBy: uuid("verified_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // Responsibility / point of contact. Distinct from the userId/teamId
+    // access fields — an owner need not be the (only) reader.
+    ownerUserId: uuid("owner_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    ownerTeamId: uuid("owner_team_id").references(() => teams.id, {
+      onDelete: "set null",
+    }),
+    // Expiry for time-bound content (price lists, deadlines). Null = no expiry.
+    validUntil: timestamp("valid_until", { mode: "string" }),
+    // Successor/duplicate resolution: this page "replaces" the referenced page.
+    // Self-FK; SET NULL so removing the superseded page doesn't cascade-delete.
+    supersedesId: uuid("supersedes_id").references(
+      (): AnyPgColumn => knowledgeText.id,
+      { onDelete: "set null" }
+    ),
     // opt-in: mirror this page into the RAG pipeline (knowledge_entry +
     // knowledge_chunks) so it shows up in similarity search
     embeddingEnabled: boolean("embedding_enabled").notNull().default(false),
@@ -168,6 +200,15 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_summary_stale_idx")
       .on(knowledgeText.updatedAt)
       .where(sql`${knowledgeText.summaryStale} = true`),
+    // B3 facet filters (scoped by tenant).
+    index("knowledge_text_page_type_idx").on(
+      knowledgeText.tenantId,
+      knowledgeText.pageType
+    ),
+    index("knowledge_text_status_idx").on(
+      knowledgeText.tenantId,
+      knowledgeText.status
+    ),
   ]
 );
 

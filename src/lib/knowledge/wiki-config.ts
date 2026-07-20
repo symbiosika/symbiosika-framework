@@ -22,10 +22,31 @@ export interface WikiTenantConfig {
    * (`isAiEnabled()`), so this only has effect when an AI provider is set.
    */
   autoSummaries: boolean;
+  /**
+   * B3 controlled vocabulary for the `pageType` facet (closed list). Writes
+   * that set a page type outside this list are rejected.
+   */
+  pageTypes: string[];
+  /**
+   * B3 controlled vocabulary for the `status` facet (closed list).
+   */
+  statuses: string[];
 }
+
+/** Default facet vocabularies (German, matching the plan's examples). */
+export const DEFAULT_PAGE_TYPES = [
+  "anleitung",
+  "konzept",
+  "policy",
+  "meeting-notiz",
+  "referenz",
+];
+export const DEFAULT_STATUSES = ["entwurf", "verifiziert", "veraltet"];
 
 const DEFAULT_WIKI_TENANT_CONFIG: WikiTenantConfig = {
   autoSummaries: true,
+  pageTypes: DEFAULT_PAGE_TYPES,
+  statuses: DEFAULT_STATUSES,
 };
 
 /** Read a tenant's wiki config, merged over the defaults. */

@@ -32,6 +32,7 @@ import {
   syncKnowledgeTextFileReferences,
   markKnowledgeTextFilesForCleanup,
 } from "./knowledge-text-files";
+import { validateFacetsForWrite, type FacetFilters } from "./facets";
 import log from "../log";
 
 /**
@@ -138,6 +139,9 @@ export const checkKnowledgeTextWritePermission = async (
  */
 export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
   data = sanitizeKnowledgeTextData(data);
+
+  // B3: reject facet values outside the tenant's controlled vocabulary.
+  await validateFacetsForWrite(data.tenantId, data);
 
   // Audit: a freshly created page is "updated" by its creator, so default
   // updatedBy to createdBy when only the creator was provided.
@@ -256,17 +260,27 @@ export const buildKnowledgeTextVisibilityConditions = (filters: {
  * Get list of all knowledge text entries WITHOUT text content
  * Sorted alphabetically by title
  */
-export const getKnowledgeText = async (filters: {
-  tenantId: string;
-  teamId?: string;
-  userId?: string;
-  workspaceId?: string;
-  limit?: number;
-  page?: number;
-  includeHidden?: boolean; // Optional: include system/hidden entries
-}) => {
+export const getKnowledgeText = async (
+  filters: {
+    tenantId: string;
+    teamId?: string;
+    userId?: string;
+    workspaceId?: string;
+    limit?: number;
+    page?: number;
+    includeHidden?: boolean; // Optional: include system/hidden entries
+  } & FacetFilters
+) => {
   // Exclude 'text' field to reduce payload size
   const permissionConditions = buildKnowledgeTextVisibilityConditions(filters);
+
+  // B3: optional facet filters
+  if (filters.pageType) {
+    permissionConditions.push(eq(knowledgeText.pageType, filters.pageType));
+  }
+  if (filters.status) {
+    permissionConditions.push(eq(knowledgeText.status, filters.status));
+  }
 
   const { text, ...rest } = getTableColumns(knowledgeText); // exclude "text" column
   const query = getDb()
@@ -434,6 +448,9 @@ export const updateKnowledgeText = async (
   const currentEntry = await getKnowledgeTextById(id, context);
 
   await checkKnowledgeTextWritePermission(currentEntry, context);
+
+  // B3: reject facet values outside the tenant's controlled vocabulary.
+  await validateFacetsForWrite(context.tenantId, data);
 
   // moving a page into a team or making it tenant-wide additionally
   // requires access to the TARGET container

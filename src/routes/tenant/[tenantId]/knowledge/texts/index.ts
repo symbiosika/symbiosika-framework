@@ -159,6 +159,9 @@ export default function defineRoutesForKnowledgeTexts(
         limit: v.optional(v.string()),
         page: v.optional(v.string()),
         includeHidden: v.optional(v.string()),
+        // B3 facet filters
+        pageType: v.optional(v.string()),
+        status: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -171,6 +174,8 @@ export default function defineRoutesForKnowledgeTexts(
           limit: limitStr,
           page: pageStr,
           includeHidden: includeHiddenStr,
+          pageType,
+          status,
         } = c.req.valid("query");
         const { tenantId } = c.req.valid("param");
         const userId = c.get("usersId");
@@ -186,6 +191,8 @@ export default function defineRoutesForKnowledgeTexts(
           teamId,
           workspaceId,
           includeHidden,
+          pageType,
+          status,
         });
         return c.json(r);
       } catch (e) {

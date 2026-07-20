@@ -42,6 +42,7 @@ import aiKnowledgeRoutes from "./routes/tenant/[tenantId]/knowledge";
 // import aiKnowledgeFiltersRoutes from "./routes/tenant/[tenantId]/knowledge/filters";
 import aiKnowledgeGroupRoutes from "./routes/tenant/[tenantId]/knowledge/groups";
 import aiKnowledgeTextsRoutes from "./routes/tenant/[tenantId]/knowledge/texts";
+import wikiRoutes from "./routes/tenant/[tenantId]/knowledge/wiki";
 import aiKnowledgeChunksRoutes from "./routes/tenant/[tenantId]/knowledge/chunks";
 
 import defineTenantRoutes from "./routes/tenant";
@@ -340,6 +341,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
       // aiKnowledgeFiltersRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeTextsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      wikiRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeChunksRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 
       /**
@@ -596,8 +598,19 @@ export {
 export {
   getWikiTenantConfig,
   setWikiTenantConfig,
+  DEFAULT_PAGE_TYPES,
+  DEFAULT_STATUSES,
 } from "./lib/knowledge/wiki-config";
 export type { WikiTenantConfig } from "./lib/knowledge/wiki-config";
+
+/**
+ * Export B3 facet validation helpers.
+ */
+export {
+  validateFacetsForWrite,
+  FacetValidationError,
+} from "./lib/knowledge/facets";
+export type { FacetFilters } from "./lib/knowledge/facets";
 
 /**
  * Export all services for the customer App
