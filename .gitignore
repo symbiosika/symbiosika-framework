@@ -182,6 +182,9 @@ attachments
 # Local embedded dev database (PGlite)
 dev-db/
 
+# Auto-generated JWT keys (created by the key utility when JWT_* env is unset)
+jwt-keys.generated.env
+
 static/upload/*
 
 .env.remote
