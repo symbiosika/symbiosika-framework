@@ -1,0 +1,1 @@
+ALTER TABLE "base_magic_link_sessions" ADD COLUMN "used_count" integer DEFAULT 0 NOT NULL;
