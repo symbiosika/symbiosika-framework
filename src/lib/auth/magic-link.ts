@@ -1,4 +1,4 @@
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { getDb } from "../db/db-connection";
 import {
   magicLinkSessions,
@@ -14,6 +14,19 @@ import { checkIfInvitationCodeIsNeededToRegister, getPendingInvitationsForEmail 
 import { checkGeneralInvitationCode } from "./index";
 
 const EXPIRE_TIME = 15 * 60 * 1000; // 15 minutes
+
+/**
+ * How often a single login / email-verification token may be redeemed within
+ * its TTL. Magic-link tokens are intentionally NOT strictly single-use:
+ * corporate e-mail security scanners (Microsoft Safe Links, Proofpoint,
+ * Mimecast, Barracuda, …) pre-open links in a JS-capable sandbox and thereby
+ * auto-fire the login request. A strict single-use token would already be
+ * consumed by that scanner before the human ever clicks the link, producing a
+ * spurious "invalid token" error. Allowing a small number of redemptions lets
+ * both the scanner and the real user succeed, while the cap keeps replay abuse
+ * bounded. The short TTL remains the primary safeguard.
+ */
+const MAX_REDEMPTIONS = 5;
 
 /**
  * Create a Magic Link Token
@@ -111,6 +124,18 @@ export const createMagicLinkToken = async (
     throw new Error("User not found");
   }
   const user = userResult[0];
+
+  // Opportunistically prune expired tokens for this user. Since tokens are no
+  // longer deleted on first use (they stay redeemable within their TTL), this
+  // keeps the table from growing unbounded without needing a background job.
+  await getDb()
+    .delete(magicLinkSessions)
+    .where(
+      and(
+        eq(magicLinkSessions.userId, user.id),
+        lt(magicLinkSessions.expiresAt, new Date().toISOString())
+      )
+    );
 
   // Generate a unique token
   const token = nanoid(32);
@@ -241,19 +266,26 @@ export const sendVerificationEmail = async (email: string) => {
  * Verify Email Token
  */
 export const verifyEmailToken = async (token: string) => {
-  // Find the magic link record
-  const nowMinusExpireTime = new Date(Date.now() - EXPIRE_TIME).toISOString();
+  // Find the magic link record. Compare against the current time directly:
+  // `expiresAt` is already stored as `createdAt + EXPIRE_TIME`, so subtracting
+  // EXPIRE_TIME again here would double the effective validity window.
+  const now = new Date().toISOString();
   const magicLinkResult = await getDb()
     .select()
     .from(magicLinkSessions)
     .where(
       and(
         eq(magicLinkSessions.token, token),
-        gt(magicLinkSessions.expiresAt, nowMinusExpireTime)
+        gt(magicLinkSessions.expiresAt, now)
       )
     );
 
   if (!magicLinkResult[0]) {
+    throw new Error("Invalid or expired magic link");
+  }
+
+  // Reject once the redemption cap is exhausted (see MAX_REDEMPTIONS).
+  if (magicLinkResult[0].usedCount >= MAX_REDEMPTIONS) {
     throw new Error("Invalid or expired magic link");
   }
   const userId = magicLinkResult[0].userId;
@@ -282,6 +314,7 @@ export const verifyEmailToken = async (token: string) => {
   return {
     user: user[0],
     tokenId: magicLinkResult[0].id,
+    usedCount: magicLinkResult[0].usedCount,
   };
 };
 
@@ -295,17 +328,42 @@ export const deleteMagicLinkToken = async (tokenId: string) => {
 };
 
 /**
+ * Redeem a Magic Link Token.
+ *
+ * Instead of deleting the token on first use, we increment its redemption
+ * counter so it stays valid for repeated redemptions within its TTL (see
+ * MAX_REDEMPTIONS for the rationale). Once the final allowed redemption is
+ * reached the row is deleted, which also keeps the table tidy.
+ */
+export const redeemMagicLinkToken = async (
+  tokenId: string,
+  currentUsedCount: number
+) => {
+  if (currentUsedCount + 1 >= MAX_REDEMPTIONS) {
+    // Last allowed redemption – remove the token entirely.
+    await deleteMagicLinkToken(tokenId);
+    return;
+  }
+  await getDb()
+    .update(magicLinkSessions)
+    .set({ usedCount: sql`${magicLinkSessions.usedCount} + 1` })
+    .where(eq(magicLinkSessions.id, tokenId));
+};
+
+/**
  * Verify Magic Link Token and Authenticate User
  */
 export const verifyMagicLink = async (
   token: string
 ): Promise<{ user: UserSelectBasic; token: string }> => {
   // Verify the email token
-  const { user, tokenId } = await verifyEmailToken(token);
+  const { user, tokenId, usedCount } = await verifyEmailToken(token);
 
   // Generate a session token (JWT) backed by a server-side session
   const { token: sessionToken } = await generateUserSessionJwt(user);
-  await deleteMagicLinkToken(tokenId);
+  // Count this redemption instead of deleting the token, so a link pre-opened
+  // by an e-mail security scanner does not lock the real user out.
+  await redeemMagicLinkToken(tokenId, usedCount);
 
   return { user, token: sessionToken };
 };
@@ -317,7 +375,7 @@ export const verifyEmail = async (
   token: string
 ): Promise<{ user: UserSelectBasic; token: string }> => {
   // Verify the email token
-  const { user, tokenId } = await verifyEmailToken(token);
+  const { user, tokenId, usedCount } = await verifyEmailToken(token);
 
   // Update the user's emailVerified status
   await getDb()
@@ -327,7 +385,8 @@ export const verifyEmail = async (
 
   // Generate a session token (JWT) backed by a server-side session
   const { token: sessionToken } = await generateUserSessionJwt(user);
-  await deleteMagicLinkToken(tokenId);
+  // See verifyMagicLink: redeem (count) rather than hard-delete on first use.
+  await redeemMagicLinkToken(tokenId, usedCount);
 
   return { user, token: sessionToken };
 };
@@ -390,7 +449,9 @@ export const sendResetPasswordLink = async (
 export const verifyPasswordResetToken = async (
   token: string
 ): Promise<{ userId: string }> => {
-  const nowMinusExpireTime = new Date(Date.now() - EXPIRE_TIME).toISOString();
+  // Compare against the current time directly (see verifyEmailToken): the
+  // previous `now - EXPIRE_TIME` offset doubled the effective validity window.
+  const now = new Date().toISOString();
   const magicLinkResult = await getDb()
     .select()
     .from(magicLinkSessions)
@@ -398,7 +459,7 @@ export const verifyPasswordResetToken = async (
       and(
         eq(magicLinkSessions.token, token),
         eq(magicLinkSessions.purpose, "password_reset"),
-        gt(magicLinkSessions.expiresAt, nowMinusExpireTime)
+        gt(magicLinkSessions.expiresAt, now)
       )
     );
 
@@ -406,7 +467,9 @@ export const verifyPasswordResetToken = async (
     throw new Error("Invalid or expired password reset token");
   }
 
-  // Token is valid - delete it immediately, so it cannot be reused
+  // Token is valid - delete it immediately, so it cannot be reused. The reset
+  // link is NOT auto-fired on page load (the user must submit a new password),
+  // so it is safe to keep this flow strictly single-use.
   await deleteMagicLinkToken(magicLinkResult[0].id);
 
   return { userId: magicLinkResult[0].userId };

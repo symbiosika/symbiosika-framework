@@ -112,6 +112,26 @@ describe("LocalAuth", async () => {
       const result = await LocalAuth.loginWithMagicLink(token);
       expect(result).toBeDefined();
     });
+
+    // A magic-link token must survive being pre-opened by an e-mail security
+    // scanner (Safe Links, Proofpoint, …) which auto-fires the login request.
+    // It is therefore redeemable multiple times within its TTL (MAX_REDEMPTIONS
+    // = 5) and only becomes invalid once the cap is exhausted.
+    it("should allow a magic link token to be redeemed multiple times, then reject it", async () => {
+      const token = await createMagicLinkToken(TEST_EMAIL, "login");
+
+      // Five successful redemptions (the cap).
+      for (let i = 0; i < 5; i++) {
+        const result = await LocalAuth.loginWithMagicLink(token);
+        expect(result).toBeDefined();
+        expect(result.token).toBeDefined();
+      }
+
+      // Sixth redemption must fail – the token is spent.
+      expect(LocalAuth.loginWithMagicLink(token)).rejects.toThrow(
+        "Invalid or expired magic link"
+      );
+    });
   });
 
   describe("setNewPassword", () => {
