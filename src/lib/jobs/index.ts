@@ -79,7 +79,10 @@ async function processJob(job: Job) {
       await executor.onError(e as Error);
     } else {
       log.error(`Error executing job: ${job.id} from type ${job.type}: ${e}`);
-      getDb()
+      // Must be awaited: otherwise processJob/processDueJobsOnce resolves
+      // before the failed status is persisted, leaving the job stuck in
+      // "running" for any caller that reads it right after the cycle.
+      await getDb()
         .update(jobs)
         .set({ status: "failed", error: { message: (e as Error).message } })
         .where(eq(jobs.id, job.id));

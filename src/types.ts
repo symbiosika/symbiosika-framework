@@ -100,6 +100,14 @@ export interface ServerSpecificConfig {
   };
 
   jobHandlers?: JobHandlerRegister[];
+  /**
+   * Disable the background job queue on this instance. The framework normally
+   * starts the queue unconditionally because built-in handlers (e.g. async
+   * document ingestion for the knowledge routes) depend on it. Set this to
+   * `true` only when a separate, dedicated worker process drains the queue —
+   * otherwise ingestion jobs created via the knowledge routes stay `pending`.
+   */
+  disableJobQueue?: boolean;
 
   customEnvVariablesToCheckOnStartup?: string[];
   customHonoApps?: {

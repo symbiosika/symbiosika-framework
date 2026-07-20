@@ -16,6 +16,19 @@ import {
 import { readFileSync } from "fs";
 import { join } from "path";
 import { TEST_PDF_TEXT } from "../../../../test/files.test";
+import { processDueJobsOnce, getJob } from "../../../../lib/jobs";
+
+/**
+ * The knowledge ingestion routes now return a Job instead of the finished
+ * entry. This helper runs the just-created job to completion (the built-in
+ * ingest handler is registered in `initTests`) and returns the final job.
+ */
+const runIngestJob = async (job: any) => {
+  expect(job.id).toBeDefined();
+  expect(job.type).toBe("knowledge:ingest");
+  await processDueJobsOnce();
+  return await getJob(job.id);
+};
 
 let appKnowledge = new Hono<{ Variables: SFContextVariables }>();
 let appTexts = new Hono<{ Variables: SFContextVariables }>();
@@ -74,10 +87,14 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.jsonResponse.id).toBeDefined();
+
+    // The endpoint now returns a Job; run it and read the result.
+    const finished = await runIngestJob(response.jsonResponse);
+    expect(finished.status).toBe("completed");
+    expect((finished.result as any)?.id).toBeDefined();
 
     // Save the ID for later tests
-    createdKnowledgeEntryId = response.jsonResponse.id;
+    createdKnowledgeEntryId = (finished.result as any).id;
   }, 30000);
 
   test("Get knowledge entries", async () => {
@@ -118,9 +135,12 @@ describe("Knowledge API Endpoints", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.jsonResponse.ok).toBe(true);
-    expect(response.jsonResponse.id).toBeDefined();
-  });
+
+    const finished = await runIngestJob(response.jsonResponse);
+    expect(finished.status).toBe("completed");
+    expect((finished.result as any)?.ok).toBe(true);
+    expect((finished.result as any)?.id).toBeDefined();
+  }, 30000);
 
   test("Add knowledge from text", async () => {
     const textData = {
@@ -136,10 +156,12 @@ describe("Knowledge API Endpoints", () => {
       textData
     );
 
-    console.log(response.textResponse);
     expect(response.status).toBe(200);
-    expect(response.jsonResponse.id).toBeDefined();
-  });
+
+    const finished = await runIngestJob(response.jsonResponse);
+    expect(finished.status).toBe("completed");
+    expect((finished.result as any)?.id).toBeDefined();
+  }, 30000);
 
   test("Perform similarity search", async () => {
     const searchData = {

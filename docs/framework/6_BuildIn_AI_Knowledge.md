@@ -35,7 +35,35 @@ The symbiosika-framework provides a built-in, organization-wide knowledge base t
 - **Update/Delete a group:**  
   `PUT`/`DELETE /api/v1/tenant/:tenantId/knowledge/groups/:id`
 
-### Add Knowledge
+### Add Knowledge (asynchronous — returns a Job)
+
+> **Breaking change:** Reading/ingesting documents (PDF and others) now runs
+> on the [background job system](./10_Using_Long_Running_Jobs.md) instead of
+> blocking the request. Every ingestion endpoint below **returns the created
+> Job immediately** — not the finished knowledge entry. Parsing a large PDF
+> plus embedding every chunk can take minutes, so the request no longer waits.
+>
+> A UI polls the job and decides what to do with the result:
+>
+> - `GET /api/v1/tenant/:tenantId/jobs/:jobId` → full job incl. `result`
+> - `GET /api/v1/tenant/:tenantId/jobs/:jobId/status` → `{ status, progress }`
+>
+> Statuses are `pending` → `running` → `completed` | `failed`. When
+> `completed`, the handler's output is on `job.result`:
+> `{ id, ok }` for RAG knowledge entries, `{ knowledgeText, blocks }` for
+> imported wiki pages. On `failed`, `job.error.message` explains why (e.g. a
+> missing source or an unreadable file). All jobs use the type
+> `knowledge:ingest`.
+>
+> Uploaded files are stashed in DB storage, processed by the job, and the
+> temporary file is deleted once the job has run.
+>
+> The framework registers the built-in ingestion handler and starts the job
+> queue automatically. If a separate worker process drains the queue, set
+> `disableJobQueue: true` in the server config on the web instance.
+
+The following endpoints all respond with a Job (`202`-style semantics, HTTP
+`200` + the job body):
 
 - **Add knowledge from text:**  
   `POST /api/v1/tenant/:tenantId/knowledge/from-text`
@@ -48,9 +76,12 @@ The symbiosika-framework provides a built-in, organization-wide knowledge base t
     "knowledgeGroupId": "string (optional)"
   }
   ```
-- **Add knowledge from a file/document:**  
+- **Add knowledge from a file/document (PDF, txt, …):**  
   `POST /api/v1/tenant/:tenantId/knowledge/upload-and-extract`  
   (multipart/form-data, file upload + optional metadata like group, filters, etc.)
+
+- **Extract knowledge from an existing stored source (db/local/url/text):**  
+  `POST /api/v1/tenant/:tenantId/knowledge/extract-knowledge`
 
 - **Add knowledge from a URL:**  
   `POST /api/v1/tenant/:tenantId/knowledge/from-url`
@@ -62,6 +93,19 @@ The symbiosika-framework provides a built-in, organization-wide knowledge base t
     "knowledgeGroupId": "string (optional)"
   }
   ```
+
+- **Import a file / URL as an editable wiki page:**  
+  `POST /api/v1/tenant/:tenantId/knowledge/texts/import` (multipart file) and  
+  `POST /api/v1/tenant/:tenantId/knowledge/texts/import-url` also return a Job.
+
+Typical client flow:
+
+```text
+POST .../knowledge/upload-and-extract        → { id: "<jobId>", type: "knowledge:ingest", status: "pending", ... }
+GET  .../jobs/<jobId>/status  (poll)          → { status: "running" }
+GET  .../jobs/<jobId>/status  (poll)          → { status: "completed" }
+GET  .../jobs/<jobId>                         → { ..., result: { id: "<knowledgeEntryId>", ok: true } }
+```
 
 - **You can assign or update groups and filters for knowledge entries at any time.**
 
@@ -158,7 +202,7 @@ The system will automatically include the relevant knowledge for the assistant.
    }
    ```
 
-2. **Add a knowledge entry to the group:**
+2. **Add a knowledge entry to the group (returns a Job):**
    ```http
    POST /api/v1/tenant/0000-000-0000/knowledge/from-text
    Content-Type: application/json
@@ -170,6 +214,9 @@ The system will automatically include the relevant knowledge for the assistant.
      "knowledgeGroupId": "<ID from previous step>"
    }
    ```
+   The response is a `knowledge:ingest` Job. Poll
+   `GET /api/v1/tenant/0000-000-0000/jobs/<jobId>` until `status` is
+   `completed`; the created entry id is on `job.result.id`.
 
 3. **Use the knowledge in chat:**
    ```http

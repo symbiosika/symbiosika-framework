@@ -64,6 +64,7 @@ import defineNotificationRoutes from "./routes/user/notifications";
 import { addMessageToAllAdmins } from "./lib/notifications";
 // Jobs
 import { defineJob, startJobQueue } from "./lib/jobs";
+import { knowledgeIngestJobRegister } from "./lib/knowledge/ingestion-jobs";
 // Cron
 import scheduler from "./lib/cron";
 import { cleanupExpiredFiles } from "./lib/knowledge/knowledge-text-files";
@@ -420,16 +421,30 @@ export const defineServer = (config: ServerSpecificConfig) => {
       );
 
       /**
-       * Start job queue if needed
-       * These are used to perform background tasks
+       * Register job handlers and start the job queue.
+       *
+       * The framework ships built-in handlers (e.g. document ingestion, which
+       * powers the async knowledge routes) that must always be available, so
+       * the queue is started unconditionally unless the consumer explicitly
+       * disables it via `disableJobQueue` (e.g. when running a dedicated worker
+       * process). Consumer-provided `jobHandlers` are registered on top.
        */
-      if (config.jobHandlers && config.jobHandlers.length > 0) {
+      const builtInJobHandlers = [knowledgeIngestJobRegister];
+      const allJobHandlers = [
+        ...builtInJobHandlers,
+        ...(config.jobHandlers ?? []),
+      ];
+      allJobHandlers.forEach((jobHandler) => {
+        log.debug(`Registering job handler: ${jobHandler.type}`);
+        defineJob(jobHandler.type, jobHandler.handler);
+      });
+      if (!config.disableJobQueue) {
         log.debug("Starting job queue...");
-        config.jobHandlers.forEach((jobHandler) => {
-          log.debug(`Registering job handler: ${jobHandler.type}`);
-          defineJob(jobHandler.type, jobHandler.handler);
-        });
         startJobQueue();
+      } else {
+        log.debug(
+          "Job queue disabled via config.disableJobQueue; async jobs will not be processed by this instance."
+        );
       }
 
       /**
