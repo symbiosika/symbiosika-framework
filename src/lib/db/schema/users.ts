@@ -313,6 +313,13 @@ export const magicLinkSessions = pgBaseTable(
       .notNull()
       .defaultNow(),
     purpose: magicLinkPurposeEnum("purpose").notNull().default("login"),
+    // How often this token has already been redeemed. Login / email
+    // verification tokens are intentionally multi-use within their TTL so that
+    // e-mail security scanners (Safe Links, Proofpoint, Mimecast, …) that
+    // pre-open the link cannot burn a strict single-use token before the human
+    // clicks it. Redemptions are capped (see MAX_REDEMPTIONS) to keep replay
+    // bounded; the short TTL remains the primary safeguard.
+    usedCount: integer("used_count").notNull().default(0),
   },
   (magicLinkSession) => [
     uniqueIndex("unique_token").on(magicLinkSession.token),
