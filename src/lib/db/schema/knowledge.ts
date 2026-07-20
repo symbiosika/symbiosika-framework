@@ -51,7 +51,7 @@ export const knowledgeBlockTypeEnum = pgEnum("knowledge_block_type", [
   "html",
 ]);
 
-// How a wiki page's AI summary is maintained:
+// How a knowledge page's AI summary is maintained:
 // - "auto":   regenerated in the background once the page goes quiet
 // - "manual": user-provided text; auto-generation never overwrites it
 // - "off":    no summary for this page
@@ -400,7 +400,7 @@ export const knowledgeTextLink = pgBaseTable(
 export type KnowledgeTextLinkSelect = typeof knowledgeTextLink.$inferSelect;
 export type KnowledgeTextLinkInsert = typeof knowledgeTextLink.$inferInsert;
 
-// Tracks which files (images, attachments in the "wiki" bucket) are
+// Tracks which files (images, attachments in the "knowledge" bucket) are
 // referenced by which knowledgeText page. Rebuilt from the page content on
 // every save — the same pattern as page links. Files without any reference
 // get an expiry (grace period) and are removed by the cleanup cron, so no

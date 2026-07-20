@@ -54,12 +54,12 @@ const getRefs = async (pageId: string) =>
     .where(eq(knowledgeTextFile.knowledgeTextId, pageId));
 
 describe("extractKnowledgeFileIds", () => {
-  it("extracts wiki file ids from markdown and html", () => {
+  it("extracts knowledge file ids from markdown and html", () => {
     const id1 = "0b0e8f0a-1111-4222-8333-444455556666";
     const id2 = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
     const ids = extractKnowledgeFileIds(
-      `![a](/api/v1/tenant/x/files/db/wiki/${id1}.png)\n` +
-        `<img src="/api/v1/tenant/x/files/db/wiki/${id2.toUpperCase()}.jpg">` +
+      `![a](/api/v1/tenant/x/files/db/knowledge/${id1}.png)\n` +
+        `<img src="/api/v1/tenant/x/files/db/knowledge/${id2.toUpperCase()}.jpg">` +
         `![other bucket](/api/v1/tenant/x/files/db/avatars/${id1}.png)`
     );
     expect(ids.sort()).toEqual([id1, id2].sort());
@@ -211,7 +211,7 @@ describe("Knowledge Text Images", () => {
     const result = await syncKnowledgeTextFileReferences({
       id: page.id,
       tenantId: ctx.tenantId,
-      text: `![ghost](/api/v1/tenant/x/files/db/wiki/${fakeId}.png)`,
+      text: `![ghost](/api/v1/tenant/x/files/db/knowledge/${fakeId}.png)`,
     });
     expect(result.added).toBe(0);
     expect((await getRefs(page.id)).length).toBe(0);

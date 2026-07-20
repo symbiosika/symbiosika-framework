@@ -70,7 +70,7 @@ describe("Wiki Image Upload API (editor flow)", () => {
     expect(response.jsonResponse.markdown).toContain(
       "![architecture diagram]("
     );
-    expect(response.jsonResponse.path).toContain("/files/db/wiki/");
+    expect(response.jsonResponse.path).toContain("/files/db/knowledge/");
 
     uploadedFileId = response.jsonResponse.fileId;
     uploadedMarkdown = response.jsonResponse.markdown;
