@@ -1,12 +1,20 @@
 import log from "../../../log";
-import type {
-  PdfParserContext,
-  PdfParserOptions,
-  PdfParserResult,
+import {
+  PDF_PARSER,
+  type PdfParserContext,
+  type PdfParserOptions,
+  type PdfParserResult,
 } from "./types";
 
-const LOCAL_API_KEY = process.env.LOCAL_PDF_PARSER_API_KEY;
-const LOCAL_API_BASE_URL = process.env.LOCAL_PDF_PARSER_BASE_URL ?? "";
+// The service was historically called "local" although it always ran as a
+// remote HTTP service. Env vars keep a backward-compatible fallback to the old
+// `LOCAL_PDF_PARSER_*` names.
+const SYMBIOSIKA_API_KEY =
+  process.env.SYMBIOSIKA_PARSE_API_KEY ?? process.env.LOCAL_PDF_PARSER_API_KEY;
+const SYMBIOSIKA_API_BASE_URL =
+  process.env.SYMBIOSIKA_PARSE_BASE_URL ??
+  process.env.LOCAL_PDF_PARSER_BASE_URL ??
+  "";
 
 // Define interfaces for the API response structure
 interface PdfParserPage {
@@ -30,7 +38,7 @@ interface PdfParserChunk {
   metadata: PdfParserChunkMetadata;
 }
 
-interface LocalParserResult {
+interface SymbiosikaParserResult {
   job_id: string;
   original_filename: string;
   num_pages: number;
@@ -42,31 +50,32 @@ interface LocalParserResult {
 }
 
 /**
- * Parse a PDF file as markdown using the local PDF parsing service
+ * Parse a PDF file as markdown using the Symbiosika parsing service
+ * (parser id: "symbiosika-parse-v1", formerly "local").
  */
-export const parsePdfFileAsMardownLocal = async (
+export const parsePdfFileAsMarkdownSymbiosika = async (
   fileContent: File,
   context: PdfParserContext,
-  options?: PdfParserOptions,
+  options?: PdfParserOptions
 ): Promise<PdfParserResult> => {
-  if (!LOCAL_API_KEY) {
-    throw new Error("No API key set for local PDF parser API.");
+  if (!SYMBIOSIKA_API_KEY) {
+    throw new Error("No API key set for Symbiosika parsing service.");
   }
 
-  if (!LOCAL_API_BASE_URL) {
-    throw new Error("No base URL set for local PDF parser API.");
+  if (!SYMBIOSIKA_API_BASE_URL) {
+    throw new Error("No base URL set for Symbiosika parsing service.");
   }
 
   // Upload file and start parsing
   const formData = new FormData();
   formData.append("file", fileContent, "document.pdf");
 
-  log.debug("Uploading file to local PDF parser API...");
-  const uploadResponse = await fetch(`${LOCAL_API_BASE_URL}/upload`, {
+  log.debug("Uploading file to Symbiosika parsing service...");
+  const uploadResponse = await fetch(`${SYMBIOSIKA_API_BASE_URL}/upload`, {
     method: "POST",
     body: formData,
     headers: {
-      "X-API-Key": LOCAL_API_KEY,
+      "X-API-Key": SYMBIOSIKA_API_KEY,
     },
   }).catch((error) => {
     log.error(`Upload failed: ${error}`);
@@ -85,9 +94,12 @@ export const parsePdfFileAsMardownLocal = async (
   // Poll for job completion
   let isComplete = false;
   while (!isComplete) {
-    const statusResponse = await fetch(`${LOCAL_API_BASE_URL}/jobs/${jobId}`, {
-      headers: { "X-API-Key": LOCAL_API_KEY },
-    });
+    const statusResponse = await fetch(
+      `${SYMBIOSIKA_API_BASE_URL}/jobs/${jobId}`,
+      {
+        headers: { "X-API-Key": SYMBIOSIKA_API_KEY },
+      }
+    );
 
     if (!statusResponse.ok) {
       log.error(`Status check failed: ${statusResponse.statusText}`);
@@ -109,10 +121,10 @@ export const parsePdfFileAsMardownLocal = async (
 
   // Get results
   const resultResponse = await fetch(
-    `${LOCAL_API_BASE_URL}/jobs/${jobId}/result`,
+    `${SYMBIOSIKA_API_BASE_URL}/jobs/${jobId}/result`,
     {
-      headers: { "X-API-Key": LOCAL_API_KEY },
-    },
+      headers: { "X-API-Key": SYMBIOSIKA_API_KEY },
+    }
   );
 
   if (!resultResponse.ok) {
@@ -121,7 +133,7 @@ export const parsePdfFileAsMardownLocal = async (
   }
 
   log.debug("Result retrieved successfully.");
-  const result = (await resultResponse.json()) as LocalParserResult;
+  const result = (await resultResponse.json()) as SymbiosikaParserResult;
 
   // Create pages array with page numbers and content
   const pages =
@@ -132,7 +144,7 @@ export const parsePdfFileAsMardownLocal = async (
 
   return {
     includesImages: false,
-    model: "local",
+    model: PDF_PARSER.SYMBIOSIKA_V1,
     pages: pages, // Add pages information
   };
 };

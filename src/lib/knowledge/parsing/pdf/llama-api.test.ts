@@ -1,5 +1,5 @@
 // import { describe, test, expect, beforeAll } from "bun:test";
-// import { parsePdfFileAsMardownLlama } from "./llama-api";
+// import { parsePdfFileAsMarkdownLlama } from "./llama-api";
 // import fs from "fs";
 
 // import { TEST_ORGANISATION_1 } from "../../../../test/init.test";
@@ -17,7 +17,7 @@
 //       type: "application/pdf",
 //     });
 
-//     const result = await parsePdfFileAsMardownLlama(file, {
+//     const result = await parsePdfFileAsMarkdownLlama(file, {
 //       tenantId: TEST_ORGANISATION_1.id,
 //     });
 

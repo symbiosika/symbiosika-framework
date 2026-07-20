@@ -1,26 +1,55 @@
-import { parsePdfFileAsMardownLlama } from "./llama-api";
-import { parsePdfFileAsMardownLocal } from "./local-service";
+import log from "../../../log";
+import { parsePdfFileAsMarkdownLlama } from "./llama-api";
 import { parsePdfFileAsMarkdownMistral } from "./mistral-ocr";
-import type {
-  PdfParserContext,
-  PdfParserOptions,
-  PdfParserResult,
+import { parsePdfFileAsMarkdownMistralOpenRouter } from "./mistral-openrouter";
+import { parsePdfFileAsMarkdownSymbiosika } from "./symbiosika-parse";
+import {
+  DEFAULT_PDF_PARSER,
+  PDF_PARSER,
+  PDF_PARSER_ALIASES,
+  type PdfParser,
+  type PdfParserContext,
+  type PdfParserOptions,
+  type PdfParserResult,
 } from "./types";
+
+/**
+ * Registry of available PDF parser services, keyed by their canonical id.
+ *
+ * To add a new parser: implement it as a `PdfParser`, then add one entry here
+ * (and its id to `PDF_PARSER` in `./types.ts`). Nothing else needs to change.
+ */
+const PDF_PARSERS: Record<string, PdfParser> = {
+  [PDF_PARSER.SYMBIOSIKA_V1]: parsePdfFileAsMarkdownSymbiosika,
+  [PDF_PARSER.MISTRAL]: parsePdfFileAsMarkdownMistral,
+  [PDF_PARSER.MISTRAL_OPENROUTER]: parsePdfFileAsMarkdownMistralOpenRouter,
+  [PDF_PARSER.LLAMA]: parsePdfFileAsMarkdownLlama,
+};
+
+/** Resolve a requested model id to a registered parser, applying legacy aliases. */
+const resolveParser = (requested: string): PdfParser => {
+  const id = PDF_PARSER_ALIASES[requested] ?? requested;
+  const parser = PDF_PARSERS[id];
+  if (!parser) {
+    throw new Error(
+      `Unknown PDF parser service "${requested}". Available: ${Object.keys(
+        PDF_PARSERS
+      ).join(", ")}`
+    );
+  }
+  if (id !== requested) {
+    log.debug(`PDF parser "${requested}" resolved to "${id}" (legacy alias).`);
+  }
+  return parser;
+};
 
 export const parsePdfFileAsMardown = async (
   fileContent: File,
   context: PdfParserContext,
   options?: PdfParserOptions
 ): Promise<PdfParserResult> => {
-  const model = options?.model ?? process.env.PDF_PARSER_SERVICE ?? "local";
-
-  if (model === "local") {
-    return parsePdfFileAsMardownLocal(fileContent, context, options);
-  } else if (model === "mistral") {
-    return parsePdfFileAsMarkdownMistral(fileContent, context, options);
-  } else if (model === "llama") {
-    return parsePdfFileAsMardownLlama(fileContent, context, options);
-  } else {
-    throw new Error("No PDF parser service configured");
-  }
+  const requested =
+    options?.model ?? process.env.PDF_PARSER_SERVICE ?? DEFAULT_PDF_PARSER;
+  const parser = resolveParser(requested);
+  return parser(fileContent, context, options);
 };

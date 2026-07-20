@@ -1,9 +1,10 @@
 import log from "../../../log";
-import { saveFile } from "../../../storage";
-import type {
-  PdfParserContext,
-  PdfParserOptions,
-  PdfParserResult,
+import { saveBase64ImageToStorage } from "./images";
+import {
+  PDF_PARSER,
+  type PdfParserContext,
+  type PdfParserOptions,
+  type PdfParserResult,
 } from "./types";
 
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
@@ -115,27 +116,16 @@ export const parsePdfFileAsMarkdownMistral = async (
     for (const page of ocrResult.pages) {
       if (page.images) {
         for (const image of page.images) {
-          // Convert base64 to blob
-          const base64Data = image.image_base64.split(",")[1];
-          if (!base64Data) {
+          // Persist the extracted image to storage
+          const savedPath = await saveBase64ImageToStorage(
+            image.image_base64,
+            image.id,
+            context.tenantId
+          );
+          if (!savedPath) {
             continue;
           }
-          const binaryData = atob(base64Data);
-          const bytes = new Uint8Array(binaryData.length);
-          for (let i = 0; i < binaryData.length; i++) {
-            bytes[i] = binaryData.charCodeAt(i);
-          }
-          const blob = new Blob([bytes], { type: "image/jpeg" });
-          const file = new File([blob], image.id, { type: "image/jpeg" });
-
-          // Save file to storage
-          const savedFile = await saveFile(
-            file,
-            "images",
-            context.tenantId,
-            "db"
-          );
-          imageMap.set(image.id, savedFile.path);
+          imageMap.set(image.id, savedPath);
 
           // replace the image reference with the new image path
           const imageRef = new RegExp(
@@ -144,7 +134,7 @@ export const parsePdfFileAsMarkdownMistral = async (
           );
           page.markdown = page.markdown.replace(
             imageRef,
-            `![${image.id}](${savedFile.path})`
+            `![${image.id}](${savedPath})`
           );
         }
       }
@@ -164,7 +154,7 @@ export const parsePdfFileAsMarkdownMistral = async (
         text: page.markdown,
       })),
       includesImages: imageMap.size > 0,
-      model: "mistral",
+      model: PDF_PARSER.MISTRAL,
     };
   } catch (error) {
     log.error(`OCR processing failed: ${error}`);
