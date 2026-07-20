@@ -64,6 +64,7 @@ import defineNotificationRoutes from "./routes/user/notifications";
 import { addMessageToAllAdmins } from "./lib/notifications";
 // Jobs
 import { defineJob, startJobQueue } from "./lib/jobs";
+import { logAiConfiguration } from "./lib/ai";
 import { knowledgeIngestJobRegister } from "./lib/knowledge/ingestion-jobs";
 // Cron
 import scheduler from "./lib/cron";
@@ -429,6 +430,8 @@ export const defineServer = (config: ServerSpecificConfig) => {
        * disables it via `disableJobQueue` (e.g. when running a dedicated worker
        * process). Consumer-provided `jobHandlers` are registered on top.
        */
+      logAiConfiguration();
+
       const builtInJobHandlers = [knowledgeIngestJobRegister];
       const allJobHandlers = [
         ...builtInJobHandlers,
@@ -516,6 +519,41 @@ export * from "./types";
  * Export the resource system for composable CRUD resources
  */
 export * from "./lib/resource";
+
+/**
+ * Export the central AI access layer (text generation).
+ * Provider is selected via AI_PROVIDER (default "none").
+ */
+export {
+  isAiEnabled,
+  getAiProvider,
+  getStandardModel,
+  getModel,
+  assertAiConfigured,
+  generateText,
+  generateStructured,
+  logAiConfiguration,
+  AiNotConfiguredError,
+} from "./lib/ai";
+export {
+  AI_PROVIDER,
+  DEFAULT_AI_PROVIDER,
+  EMBEDDING_PROVIDER,
+  DEFAULT_EMBEDDING_PROVIDER,
+} from "./lib/ai/types";
+export type { AiProviderId, EmbeddingProviderId } from "./lib/ai/types";
+
+/**
+ * Export the global server-settings (GLOBAL_CONFIG) key/value accessor.
+ */
+export {
+  getServerSetting,
+  getServerSettingInt,
+  getServerSettingBool,
+  setServerSetting,
+  deleteServerSetting,
+  SERVER_SETTING_KEYS,
+} from "./lib/server-settings";
 
 /**
  * Export all services for the customer App
