@@ -111,9 +111,13 @@ export default function defineRoutesForKnowledgeTexts(
         const { tenantId } = c.req.valid("param");
         validateOrganisationId(body, tenantId);
 
+        const usersId = c.get("usersId");
         const r = await createKnowledgeText({
           ...body,
-          userId: c.get("usersId"),
+          userId: usersId,
+          // audit: track who created / last changed the entry
+          createdBy: usersId,
+          updatedBy: usersId,
         });
         return c.json(r);
       } catch (e) {

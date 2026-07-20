@@ -111,6 +111,8 @@ export const upsertKnowledgeTextFromSource = async (
     const page = await createKnowledgeText({
       tenantId: data.tenantId,
       userId: data.userId,
+      createdBy: data.userId,
+      updatedBy: data.userId,
       teamId: data.teamId,
       tenantWide: data.tenantWide ?? false,
       parentId: data.parentId,

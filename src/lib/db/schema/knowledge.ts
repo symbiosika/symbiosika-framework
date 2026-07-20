@@ -94,6 +94,16 @@ export const knowledgeText = pgBaseTable(
       (): AnyPgColumn => knowledgeEntry.id,
       { onDelete: "set null" }
     ),
+    // Audit: who created this page and who made the most recent change.
+    // These are distinct from `userId` (which is an ownership/access field).
+    // ON DELETE SET NULL so deleting a user keeps the page but drops the
+    // pointer; null for service/sync writes that run without a user context.
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: uuid("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),
@@ -155,6 +165,17 @@ export const knowledgeTextHistory = pgBaseTable(
     // Snapshot of the page's blocks at the time of history creation
     // (null for plain text entries)
     blocks: jsonb("blocks").$type<KnowledgeTextBlockSnapshot[] | null>(),
+    // Audit snapshot of the archived version's authorship. Plain uuid columns
+    // (no FK) so this history stays immutable and survives user deletion:
+    //   - createdBy: who created the page
+    //   - updatedBy: who last edited THIS version
+    //   - versionUpdatedAt: when THIS version was last edited (page.updatedAt
+    //     at snapshot time). Distinct from `createdAt` below, which is when
+    //     this history row itself was written (i.e. when the version was
+    //     superseded).
+    createdBy: uuid("created_by"),
+    updatedBy: uuid("updated_by"),
+    versionUpdatedAt: timestamp("version_updated_at", { mode: "string" }),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(), // When this history entry was created

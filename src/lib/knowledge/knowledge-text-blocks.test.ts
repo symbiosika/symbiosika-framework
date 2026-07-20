@@ -11,7 +11,12 @@ import {
   getKnowledgeTextHistory,
   deleteKnowledgeText,
 } from "./knowledge-texts";
-import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
+import {
+  initTests,
+  TEST_ORGANISATION_1,
+  TEST_ORG1_USER_1,
+  TEST_ORG1_USER_2,
+} from "../../test/init.test";
 
 const ctx = { tenantId: TEST_ORGANISATION_1.id };
 
@@ -381,5 +386,44 @@ describe("Knowledge Text Blocks", () => {
         { tenantId: "00000000-1111-1111-1111-000000000002" }
       )
     ).rejects.toThrow();
+  });
+});
+
+describe("block sync change tracking", () => {
+  it("records the editor on the page and the previous author in history", async () => {
+    // tenant-wide so both members may edit
+    const page = await createPage({
+      tenantWide: true,
+      createdBy: TEST_ORG1_USER_1.id,
+      updatedBy: TEST_ORG1_USER_1.id,
+    });
+
+    // first edit by user 1 (always snapshot so history is deterministic)
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [{ type: "markdown", content: "first version" }],
+      { tenantId: TEST_ORGANISATION_1.id, userId: TEST_ORG1_USER_1.id },
+      { historyCoalesceMinutes: 0 }
+    );
+
+    // second edit by user 2
+    const result = await syncKnowledgeTextBlocks(
+      page.id,
+      [{ type: "markdown", content: "second version" }],
+      { tenantId: TEST_ORGANISATION_1.id, userId: TEST_ORG1_USER_2.id },
+      { historyCoalesceMinutes: 0 }
+    );
+
+    // the page now reflects the latest editor, creator unchanged
+    expect(result.knowledgeText.createdBy).toBe(TEST_ORG1_USER_1.id);
+    expect(result.knowledgeText.updatedBy).toBe(TEST_ORG1_USER_2.id);
+
+    // the newest history snapshot captured the state authored by user 1
+    const history = await getKnowledgeTextHistory(page.id, {
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+    expect(history[0]?.text).toBe("first version");
+    expect(history[0]?.updatedBy).toBe(TEST_ORG1_USER_1.id);
+    expect(history[0]?.versionUpdatedAt).toBeDefined();
   });
 });

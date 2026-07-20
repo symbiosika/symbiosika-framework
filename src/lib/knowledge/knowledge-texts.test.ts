@@ -7,7 +7,13 @@ import {
   updateKnowledgeText,
   deleteKnowledgeText,
 } from "./knowledge-texts";
-import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
+import {
+  initTests,
+  TEST_ORGANISATION_1,
+  TEST_ORG1_USER_1,
+  TEST_ORG1_USER_2,
+  TEST_ORG1_USER_3,
+} from "../../test/init.test";
 
 describe("Knowledge Texts Test", () => {
   beforeAll(async () => {
@@ -544,5 +550,69 @@ describe("Knowledge Texts Test", () => {
       { tenantId: TEST_ORGANISATION_1.id }
     );
     expect(updated.title).toBe("Huge catalog (renamed)");
+  });
+
+  it("should record who created and who last changed an entry", async () => {
+    const created = await createKnowledgeText({
+      text: "Audit original",
+      title: "Audit Title",
+      tenantId: TEST_ORGANISATION_1.id,
+      tenantWide: true, // any tenant member may edit
+      createdBy: TEST_ORG1_USER_1.id,
+      updatedBy: TEST_ORG1_USER_1.id,
+    });
+    expect(created.createdBy).toBe(TEST_ORG1_USER_1.id);
+    expect(created.updatedBy).toBe(TEST_ORG1_USER_1.id);
+
+    // a different user edits the entry
+    const updated = await updateKnowledgeText(
+      created.id,
+      { text: "Audit edited" },
+      { tenantId: created.tenantId, userId: TEST_ORG1_USER_2.id }
+    );
+
+    // creator is immutable, last editor reflects who performed the change
+    expect(updated.createdBy).toBe(TEST_ORG1_USER_1.id);
+    expect(updated.updatedBy).toBe(TEST_ORG1_USER_2.id);
+
+    // the archived version keeps the authorship of the previous state
+    const history = await getKnowledgeTextHistory(created.id, {
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+    expect(history[0]?.text).toBe("Audit original");
+    expect(history[0]?.createdBy).toBe(TEST_ORG1_USER_1.id);
+    expect(history[0]?.updatedBy).toBe(TEST_ORG1_USER_1.id);
+    expect(history[0]?.versionUpdatedAt).toBeDefined();
+  });
+
+  it("should default updatedBy to createdBy when only creator is given", async () => {
+    const created = await createKnowledgeText({
+      text: "Only creator provided",
+      title: "Creator Default",
+      tenantId: TEST_ORGANISATION_1.id,
+      createdBy: TEST_ORG1_USER_3.id,
+    });
+    expect(created.createdBy).toBe(TEST_ORG1_USER_3.id);
+    expect(created.updatedBy).toBe(TEST_ORG1_USER_3.id);
+  });
+
+  it("should not let a client overwrite createdBy via update", async () => {
+    const created = await createKnowledgeText({
+      text: "Immutable creator",
+      title: "Immutable Creator",
+      tenantId: TEST_ORGANISATION_1.id,
+      tenantWide: true, // any tenant member may edit
+      createdBy: TEST_ORG1_USER_1.id,
+    });
+
+    const updated = await updateKnowledgeText(
+      created.id,
+      // a malicious/erroneous createdBy in the payload must be ignored
+      { text: "changed", createdBy: TEST_ORG1_USER_2.id } as any,
+      { tenantId: created.tenantId, userId: TEST_ORG1_USER_2.id }
+    );
+
+    expect(updated.createdBy).toBe(TEST_ORG1_USER_1.id);
+    expect(updated.updatedBy).toBe(TEST_ORG1_USER_2.id);
   });
 });
