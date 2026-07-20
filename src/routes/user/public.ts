@@ -14,7 +14,10 @@ import * as v from "valibot";
 import { usersRestrictedSelectSchema } from "../../lib/db/db-schema";
 import { RESPONSES } from "../../lib/responses";
 import { verifyPasswordResetToken } from "../../lib/auth/magic-link";
-import { checkIfInvitationCodeIsNeededToRegister } from "../../lib/usermanagement/invitations";
+import {
+  checkIfInvitationCodeIsNeededToRegister,
+  acceptInvitationByToken,
+} from "../../lib/usermanagement/invitations";
 import { verifyApiTokenAndGetJwt } from "../../lib/auth/token-auth";
 import { OAuthAuth } from "../../lib/auth/oauth2";
 import {
@@ -347,6 +350,65 @@ export function definePublicUserRoutes(
         return c.json(r);
       } catch (err) {
         throw new HTTPException(401, { message: "Invalid token: " + err });
+      }
+    }
+  );
+
+  /**
+   * Accept a tenant invitation from the link in the invitation email.
+   *
+   * This is the "one click = accepted" entry point and works for both new and
+   * existing users:
+   * - Existing users: the membership is confirmed immediately, a login session
+   *   is established (auth cookies set) and the user is redirected into the app.
+   * - Users without an account yet: they are redirected to the registration
+   *   page with their email pre-filled; `LocalAuth.register` then auto-accepts
+   *   the pending invitation once the account is created.
+   *
+   * Public by design: the caller is authenticated by possession of the signed,
+   * expiring token that was mailed to the invitee's address (same trust model
+   * as a magic login link).
+   */
+  app.get(
+    API_BASE_PATH + "/user/accept-invitation",
+    describeRoute({
+      tags: ["user"],
+      summary: "Accept a tenant invitation via the emailed link",
+      responses: {
+        302: {
+          description: "Redirect into the app or to the registration page",
+        },
+      },
+    }),
+    validator("query", v.object({ token: v.string() })),
+    async (c) => {
+      const { token } = c.req.valid("query");
+      const baseUrl = _GLOBAL_SERVER_CONFIG.baseUrl;
+      try {
+        const result = await acceptInvitationByToken(token);
+
+        if (result.status === "needs_registration") {
+          // No account yet -> send the user to registration with the email
+          // pre-filled. Registration auto-accepts the pending invitation.
+          const url =
+            `${baseUrl}${_GLOBAL_SERVER_CONFIG.loginUrl}` +
+            `?register=true&email=${encodeURIComponent(result.email)}` +
+            `&hideInvitationCode=true`;
+          return c.redirect(url);
+        }
+
+        // Existing user -> log them in and drop them into the app as a
+        // confirmed member.
+        const session = await createJwtSessionForUserId(result.userId);
+        setAuthCookies(c, session.token);
+        return c.redirect(`${baseUrl}/static/app/#/shared/tenants`);
+      } catch (err) {
+        log.error("Error accepting invitation via link: " + err);
+        // Do not leak details – forward to the login page with a hint so the
+        // SPA can show a friendly "invalid or expired invitation" message.
+        return c.redirect(
+          `${baseUrl}${_GLOBAL_SERVER_CONFIG.loginUrl}?invitationError=invalid`
+        );
       }
     }
   );
