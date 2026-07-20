@@ -307,8 +307,12 @@ export const getKnowledgeTextById = async (
 };
 
 /**
- * Get complete version history for a knowledge text entry WITHOUT text content
- * Returns all versions chronologically (oldest to newest) with metadata only
+ * Get the version history for a knowledge text entry (newest first).
+ * Each entry is a full snapshot of a previous version, including its text,
+ * blocks and change authorship (createdBy / updatedBy / versionUpdatedAt).
+ *
+ * Optional pagination mirrors getKnowledgeText: pass `limit` (page size) and
+ * `page` (1-based); `page` only takes effect together with `limit`.
  */
 export const getKnowledgeTextHistory = async (
   id: string,
@@ -318,19 +322,64 @@ export const getKnowledgeTextHistory = async (
     teamId?: string;
     workspaceId?: string;
     includeHidden?: boolean;
-  }
+  },
+  options?: { limit?: number; page?: number }
 ) => {
-  // First get the entry to check permissions
-  const entry = await getKnowledgeTextById(id, context);
+  // First get the entry to check permissions (throws if not visible)
+  await getKnowledgeTextById(id, context);
 
-  // Get all history entries for this knowledge text
-  const historyEntries = await getDb()
+  const query = getDb()
     .select()
     .from(knowledgeTextHistory)
     .where(eq(knowledgeTextHistory.knowledgeTextId, id))
-    .orderBy(desc(knowledgeTextHistory.createdAt)); // Newest first
+    .orderBy(desc(knowledgeTextHistory.createdAt)) // Newest first
+    .$dynamic();
 
-  return historyEntries;
+  if (options?.limit) {
+    query.limit(options.limit);
+  }
+  if (options?.page && options?.limit) {
+    query.offset((options.page - 1) * options.limit);
+  }
+
+  return await query;
+};
+
+/**
+ * Get a single history version of a knowledge text entry by its history id,
+ * with full content. Access is checked against the parent page, and the
+ * version must belong to that page (and the caller's tenant).
+ */
+export const getKnowledgeTextHistoryVersion = async (
+  id: string,
+  historyId: string,
+  context: {
+    tenantId: string;
+    userId?: string;
+    teamId?: string;
+    workspaceId?: string;
+    includeHidden?: boolean;
+  }
+) => {
+  // Permission check against the parent page (throws if not visible)
+  await getKnowledgeTextById(id, context);
+
+  const result = await getDb()
+    .select()
+    .from(knowledgeTextHistory)
+    .where(
+      and(
+        eq(knowledgeTextHistory.id, historyId),
+        eq(knowledgeTextHistory.knowledgeTextId, id),
+        eq(knowledgeTextHistory.tenantId, context.tenantId)
+      )
+    );
+
+  if (!result[0]) {
+    throw new Error("Knowledge text history version not found");
+  }
+
+  return result[0];
 };
 
 /**

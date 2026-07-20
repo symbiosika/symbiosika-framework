@@ -11,6 +11,7 @@ import {
   getKnowledgeText,
   getKnowledgeTextById,
   getKnowledgeTextHistory,
+  getKnowledgeTextHistoryVersion,
   updateKnowledgeText,
   deleteKnowledgeText,
 } from "../../../../../lib/knowledge/knowledge-texts";
@@ -539,7 +540,9 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * Get complete version history for a knowledge text entry WITHOUT text content
+   * Get the version history for a knowledge text entry (newest first).
+   * Each entry is a full snapshot of a previous version, including its
+   * change authorship. Supports limit/page pagination.
    */
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/history",
@@ -548,11 +551,11 @@ export default function defineRoutesForKnowledgeTexts(
     describeRoute({
       tags: ["knowledge"],
       summary:
-        "Get complete version history for a knowledge text entry WITHOUT text content",
+        "Get the version history for a knowledge text entry (newest first, paginated with limit/page)",
       responses: {
         200: {
           description:
-            "Successful response with all versions chronologically (metadata only)",
+            "Successful response with version snapshots (newest first), including change authorship",
           content: {
             "application/json": {
               schema: resolver(v.array(knowledgeEntrySchema)),
@@ -568,19 +571,97 @@ export default function defineRoutesForKnowledgeTexts(
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
         includeHidden: v.optional(v.string()),
+        limit: v.optional(v.string()),
+        page: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string(), id: v.string() })),
     isTenantMember,
     async (c) => {
       try {
-        const { teamId, workspaceId, includeHidden: includeHiddenStr } =
-          c.req.valid("query");
+        const {
+          teamId,
+          workspaceId,
+          includeHidden: includeHiddenStr,
+          limit: limitStr,
+          page: pageStr,
+        } = c.req.valid("query");
         const { tenantId, id } = c.req.valid("param");
         const userId = c.get("usersId");
         const includeHidden = includeHiddenStr === "true";
+        const limit = limitStr ? parseInt(limitStr) : undefined;
+        const page = pageStr ? parseInt(pageStr) : undefined;
 
-        const r = await getKnowledgeTextHistory(id, {
+        const r = await getKnowledgeTextHistory(
+          id,
+          {
+            tenantId,
+            userId,
+            teamId,
+            workspaceId,
+            includeHidden,
+          },
+          { limit, page }
+        );
+        return c.json(r);
+      } catch (e) {
+        throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Get a single history version of a knowledge text entry by history id,
+   * with full content (text + block snapshot).
+   */
+  app.get(
+    API_BASE_PATH +
+      "/tenant/:tenantId/knowledge/texts/:id/history/:historyId",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Get a single history version of a knowledge text entry by history id (full content)",
+      responses: {
+        200: {
+          description:
+            "Successful response with the requested version snapshot",
+          content: {
+            "application/json": {
+              schema: resolver(knowledgeEntrySchema),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator(
+      "query",
+      v.object({
+        teamId: v.optional(v.string()),
+        workspaceId: v.optional(v.string()),
+        includeHidden: v.optional(v.string()),
+      })
+    ),
+    validator(
+      "param",
+      v.object({
+        tenantId: v.string(),
+        id: v.string(),
+        historyId: v.string(),
+      })
+    ),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { teamId, workspaceId, includeHidden: includeHiddenStr } =
+          c.req.valid("query");
+        const { tenantId, id, historyId } = c.req.valid("param");
+        const userId = c.get("usersId");
+        const includeHidden = includeHiddenStr === "true";
+
+        const r = await getKnowledgeTextHistoryVersion(id, historyId, {
           tenantId,
           userId,
           teamId,
@@ -589,7 +670,14 @@ export default function defineRoutesForKnowledgeTexts(
         });
         return c.json(r);
       } catch (e) {
-        throw new HTTPException(400, { message: e + "" });
+        const errorMsg = e + "";
+        if (
+          errorMsg.includes("not found") ||
+          errorMsg.includes("access denied")
+        ) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
       }
     }
   );
