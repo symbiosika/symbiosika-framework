@@ -32,6 +32,64 @@ import {
   syncKnowledgeTextFileReferences,
   markKnowledgeTextFilesForCleanup,
 } from "./knowledge-text-files";
+import log from "../log";
+
+/**
+ * Run a post-write bookkeeping step (wikilinks, file references) without
+ * letting a failure abort the surrounding create/update: the page row is
+ * already written at that point, so throwing would report an error for a
+ * write that actually succeeded. Failures are logged instead — the
+ * bookkeeping is rebuilt from the page content on the next save anyway.
+ * Mirrors the syncKnowledgeTextEmbeddingSafe pattern.
+ */
+export const runBookkeepingSafe = async (
+  label: string,
+  fn: () => Promise<unknown>
+): Promise<void> => {
+  try {
+    await fn();
+  } catch (error) {
+    log.error(`knowledgeText bookkeeping step "${label}" failed: ${error}`);
+  }
+};
+
+/**
+ * Postgres rejects the NUL byte (U+0000) in text/varchar columns
+ * ("invalid byte sequence for encoding UTF8: 0x00"). Externally-sourced
+ * content (PDF/OCR output, URL imports, uploads) occasionally contains it,
+ * so every knowledgeText write path strips it centrally here instead of
+ * relying on each caller. Only U+0000 is invalid in Postgres UTF-8 — other
+ * control characters are storable and are deliberately kept.
+ */
+export const stripNullBytes = (value: string): string =>
+  value.includes("\u0000") ? value.replaceAll("\u0000", "") : value;
+
+/** title column is varchar(1000) — longer external titles must not abort the write */
+const TITLE_MAX_LENGTH = 1000;
+
+/**
+ * Make externally-sourced title/text safe to store: strip NUL bytes and
+ * bound the title to the column limit. Applied by createKnowledgeText and
+ * updateKnowledgeText so every ingestion path (file upload, URL import,
+ * API, sync jobs) is protected without caller-side sanitizing.
+ */
+export const sanitizeKnowledgeTextData = <
+  T extends Partial<KnowledgeTextInsert>,
+>(
+  data: T
+): T => {
+  const sanitized = { ...data };
+  if (typeof sanitized.text === "string") {
+    sanitized.text = stripNullBytes(sanitized.text);
+  }
+  if (typeof sanitized.title === "string") {
+    sanitized.title = stripNullBytes(sanitized.title).slice(
+      0,
+      TITLE_MAX_LENGTH
+    );
+  }
+  return sanitized;
+};
 
 /**
  * Central write-permission rule for knowledgeText pages:
@@ -79,6 +137,8 @@ export const checkKnowledgeTextWritePermission = async (
  * Create a new knowledgeText entry
  */
 export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
+  data = sanitizeKnowledgeTextData(data);
+
   // creating a page inside a team / tenant-wide requires access to that
   // container (ownership alone is not enough here)
   if (data.userId && data.teamId) {
@@ -102,9 +162,12 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
   // wikilink + file-reference bookkeeping: extract this page's outgoing
   // links and image references, and snap phantom links of other pages
   // that were waiting for this title
-  await syncKnowledgeTextLinks(e[0]);
-  await resolvePhantomLinks(e[0]);
-  await syncKnowledgeTextFileReferences(e[0]);
+  const page = e[0];
+  await runBookkeepingSafe("links", () => syncKnowledgeTextLinks(page));
+  await runBookkeepingSafe("phantom-links", () => resolvePhantomLinks(page));
+  await runBookkeepingSafe("file-references", () =>
+    syncKnowledgeTextFileReferences(page)
+  );
 
   // initial embedding sync for pages created with embedding already on
   if (e[0].embeddingEnabled) {
@@ -363,9 +426,9 @@ export const updateKnowledgeText = async (
   await getDb().insert(knowledgeTextHistory).values(historyEntry);
 
   // Now update the current entry
-  const updateData: Partial<KnowledgeTextInsert> = {
+  const updateData: Partial<KnowledgeTextInsert> = sanitizeKnowledgeTextData({
     ...data,
-  };
+  });
 
   const result = await getDb()
     .update(knowledgeText)
@@ -381,12 +444,19 @@ export const updateKnowledgeText = async (
   }
 
   // wikilink + file-reference bookkeeping
+  const updatedPage = result[0];
   if (data.text !== undefined) {
-    await syncKnowledgeTextLinks(result[0]);
-    await syncKnowledgeTextFileReferences(result[0]);
+    await runBookkeepingSafe("links", () =>
+      syncKnowledgeTextLinks(updatedPage)
+    );
+    await runBookkeepingSafe("file-references", () =>
+      syncKnowledgeTextFileReferences(updatedPage)
+    );
   }
   if (data.title !== undefined && data.title !== currentEntry.title) {
-    await resolvePhantomLinks(result[0]);
+    await runBookkeepingSafe("phantom-links", () =>
+      resolvePhantomLinks(updatedPage)
+    );
   }
 
   // Keep the RAG mirror in sync: covers newly enabled embedding, changed

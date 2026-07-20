@@ -354,6 +354,19 @@ describe("Knowledge Text Blocks", () => {
     await expect(getKnowledgeTextById(page.id, ctx)).rejects.toThrow();
   });
 
+  it("strips NUL bytes (U+0000) from block content before storing", async () => {
+    const page = await createPage();
+    const result = await syncKnowledgeTextBlocks(
+      page.id,
+      [{ type: "markdown", content: "ocr \u0000 artifact\u0000" }],
+      ctx
+    );
+
+    // block rows and the materialized text cache are both NUL-free
+    expect(result.blocks[0]?.content).toBe("ocr  artifact");
+    expect(result.knowledgeText.text).toBe("ocr  artifact");
+  });
+
   it("rejects access from a different tenant", async () => {
     const page = await createPage();
     await expect(

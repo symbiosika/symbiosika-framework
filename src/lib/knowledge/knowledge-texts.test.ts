@@ -466,4 +466,83 @@ describe("Knowledge Texts Test", () => {
     expect(foundChild).toBeDefined();
     expect(foundChild?.parentId).toBe(parent.id);
   });
+
+  // Robustness against externally-sourced content (PDF/OCR, URL imports):
+  // creating/updating a page must never abort at the DB layer.
+
+  it("should strip NUL bytes (U+0000) from title and text on create", async () => {
+    const created = await createKnowledgeText({
+      text: "hello \u0000 world\u0000",
+      title: "NUL\u0000 Title",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    expect(created.text).toBe("hello  world");
+    expect(created.title).toBe("NUL Title");
+
+    // other control characters are valid in Postgres and must be kept
+    const withControls = await createKnowledgeText({
+      text: "tab\tbellend",
+      title: "Controls kept",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+    expect(withControls.text).toBe("tab\tbellend");
+  });
+
+  it("should strip NUL bytes on update", async () => {
+    const created = await createKnowledgeText({
+      text: "clean",
+      title: "NUL Update Test",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    const updated = await updateKnowledgeText(
+      created.id,
+      { text: "ocr\u0000output", title: "new\u0000title" },
+      { tenantId: TEST_ORGANISATION_1.id }
+    );
+
+    expect(updated.text).toBe("ocroutput");
+    expect(updated.title).toBe("newtitle");
+  });
+
+  it("should truncate overlong titles instead of failing (varchar(1000))", async () => {
+    const created = await createKnowledgeText({
+      text: "some text",
+      title: "T".repeat(1500),
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    expect(created.title.length).toBe(1000);
+  });
+
+  it("should store very large token-diverse documents (FTS index must not abort the insert)", async () => {
+    // ~2.9MB of unique tokens: previously exceeded Postgres' 1MB tsvector
+    // limit in the GIN expression index and failed the whole insert
+    const tokens: string[] = [];
+    for (let i = 0; i < 300000; i++) tokens.push(`tok${i}`);
+    const huge = tokens.join(" ");
+
+    const created = await createKnowledgeText({
+      text: huge,
+      title: "Huge token-diverse catalog",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    expect(created.id).toBeDefined();
+
+    // full text is stored unmodified
+    const read = await getKnowledgeTextById(created.id, {
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+    expect(read.text.length).toBe(huge.length);
+
+    // updating the huge page must not abort either
+    const updated = await updateKnowledgeText(
+      created.id,
+      { title: "Huge catalog (renamed)" },
+      { tenantId: TEST_ORGANISATION_1.id }
+    );
+    expect(updated.title).toBe("Huge catalog (renamed)");
+  });
 });
