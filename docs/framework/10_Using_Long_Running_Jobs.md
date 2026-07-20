@@ -95,6 +95,48 @@ await createJob(
 );
 ```
 
+## Notify the User on Completion (opt-in)
+
+Instead of polling, a job can push a message into the owning user's
+notification queue (`user_messages`, exposed via `GET /user/notifications`)
+when it finishes. This is fully opt-in and generic — it works for any job type.
+
+Set `notifyOnCompletion: true` in the job metadata, and make sure the job has
+an owning `userId` (the `POST .../jobs` route and the knowledge ingestion
+routes set this automatically from the token):
+
+```json
+{
+  "type": "myGreatNewJob",
+  "metadata": {
+    "notifyOnCompletion": true,
+    "notifySuccessMessage": "All done!",           // optional, custom text
+    "notifyErrorMessage": "Something went wrong"    // optional, custom text
+  }
+}
+```
+
+When the job finishes, a message is inserted for `job.userId`:
+
+- **success** → `messageType: "success"`, text = `notifySuccessMessage` or
+  `Job completed: <type>`
+- **failure** → `messageType: "error"`, text = `notifyErrorMessage` or
+  `Job failed: <type> — <error>`
+
+Every such message carries a structured `meta` payload so the UI can act on it
+without parsing the text:
+
+```json
+{ "jobId": "<uuid>", "jobType": "myGreatNewJob", "status": "completed" }
+```
+
+Notes:
+- Requires `job.userId`; without it the notification is skipped.
+- Sending the notification never affects job processing — a failure to notify
+  is logged and swallowed.
+- The message shows up in the existing inbox (`GET /user/notifications`) and is
+  acknowledged via `PATCH /user/notifications/:id/confirm`.
+
 ## Checking Job Status
 
 Jobs can have the following statuses: `pending`, `running`, `completed`, or `failed`.

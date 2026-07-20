@@ -176,6 +176,13 @@
       "when": 1784538916890,
       "tag": "0024_tired_lizard",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784562470494,
+      "tag": "0025_open_zarda",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,39 @@ import { HTTPException } from "hono/http-exception";
 import { tenantMembers, users } from "../db/schema/users";
 
 /**
+ * Severity of a user message. `success` was added so background jobs can report
+ * a positive outcome distinctly from a neutral `info`.
+ */
+export type MessageType = "info" | "warning" | "error" | "success";
+
+/**
+ * Add a message to a single user's queue.
+ *
+ * This is the lowest-granularity helper: everything else here targets a set of
+ * users. Optionally attach a structured `meta` payload (e.g. a finished job's
+ * `{ jobId, jobType, status }`) so the UI can act on the message directly.
+ */
+export async function addMessageToUser(
+  userId: string,
+  message: string,
+  messageType: MessageType = "info",
+  meta?: Record<string, unknown>
+): Promise<UserMessagesSelect> {
+  const db = getDb();
+
+  const [inserted] = await db
+    .insert(userMessages)
+    .values({ userId, message, messageType, meta })
+    .returning();
+
+  if (!inserted) {
+    throw new Error("Failed to add message to user");
+  }
+
+  return inserted;
+}
+
+/**
  * Read all unconfirmed messages for a user
  */
 export async function getUserMessages(
@@ -36,7 +69,7 @@ export async function getUserMessages(
  */
 export async function addMessageToAllUsers(
   message: string,
-  messageType: "info" | "warning" | "error" = "info"
+  messageType: MessageType = "info"
 ): Promise<void> {
   const db = getDb();
 
@@ -64,7 +97,7 @@ export async function addMessageToAllUsers(
 export async function addMessageToTenantUsers(
   tenantId: string,
   message: string,
-  messageType: "info" | "warning" | "error" = "info"
+  messageType: MessageType = "info"
 ): Promise<void> {
   const db = getDb();
 
@@ -100,7 +133,7 @@ export async function addMessageToTenantUsersByRoles(
   tenantId: string,
   roles: TenantMemberRole[],
   message: string,
-  messageType: "info" | "warning" | "error" = "info"
+  messageType: MessageType = "info"
 ): Promise<void> {
   if (roles.length === 0) {
     return;
@@ -143,7 +176,7 @@ export async function addMessageToTenantUsersByRoles(
  */
 export async function addMessageToAllAdmins(
   message: string,
-  messageType: "info" | "warning" | "error" = "info"
+  messageType: MessageType = "info"
 ): Promise<void> {
   const db = getDb();
 

@@ -1,6 +1,7 @@
 import { eq, and, desc, or, lte, isNull, sql } from "drizzle-orm";
 import { jobs, type Job, type JobStatus } from "../db/schema/jobs";
 import { getDb } from "../db/db-connection";
+import { addMessageToUser } from "../notifications";
 import log from "../log";
 
 const CHECK_CYCLE_MS = 5000;
@@ -33,6 +34,50 @@ export function isJobQueueRunning(): boolean {
 
 export function defineJob(type: string, handler: JobHandler) {
   jobHandlers[type] = handler;
+}
+
+/**
+ * Optional, opt-in bridge between the background job queue and the user-facing
+ * notification queue: when a job's metadata carries `notifyOnCompletion: true`
+ * and the job has an owning `userId`, push a success/error message into that
+ * user's queue when the job finishes. Lets a UI consume completion via the
+ * existing `GET /user/notifications` inbox instead of polling.
+ *
+ * The message carries a structured `meta` payload (`{ jobId, jobType, status }`)
+ * so the UI can deep-link straight to the finished job/result. Optional custom
+ * texts can be supplied via `metadata.notifySuccessMessage` /
+ * `metadata.notifyErrorMessage`.
+ *
+ * Never throws: a failed notification must not affect job processing.
+ */
+async function notifyUserOnJobFinish(
+  job: Job,
+  status: "completed" | "failed",
+  errorMessage?: string
+) {
+  try {
+    const metadata = (job.metadata ?? {}) as Record<string, any>;
+    if (!metadata.notifyOnCompletion || !job.userId) {
+      return;
+    }
+
+    const isSuccess = status === "completed";
+    const message = isSuccess
+      ? metadata.notifySuccessMessage ?? `Job completed: ${job.type}`
+      : metadata.notifyErrorMessage ??
+        `Job failed: ${job.type}${errorMessage ? ` — ${errorMessage}` : ""}`;
+
+    await addMessageToUser(job.userId, message, isSuccess ? "success" : "error", {
+      jobId: job.id,
+      jobType: job.type,
+      status,
+      ...(errorMessage ? { error: errorMessage } : {}),
+    });
+  } catch (e) {
+    log.error(
+      `Failed to push completion notification for job ${job.id}: ${(e as Error).message}`
+    );
+  }
 }
 
 async function processJob(job: Job) {
@@ -73,6 +118,7 @@ async function processJob(job: Job) {
       .update(jobs)
       .set({ status: "completed", result })
       .where(eq(jobs.id, job.id));
+    await notifyUserOnJobFinish(job, "completed");
   } catch (e) {
     // if there is an error, we need to update the job status to failed
     if (executor.onError) {
@@ -86,6 +132,7 @@ async function processJob(job: Job) {
         .update(jobs)
         .set({ status: "failed", error: { message: (e as Error).message } })
         .where(eq(jobs.id, job.id));
+      await notifyUserOnJobFinish(job, "failed", (e as Error).message);
     }
   }
 }

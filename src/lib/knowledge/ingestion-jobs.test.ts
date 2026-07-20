@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeAll } from "bun:test";
-import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
+import {
+  initTests,
+  TEST_ORGANISATION_1,
+  TEST_ORG1_USER_1,
+} from "../../test/init.test";
 import { processDueJobsOnce, getJob } from "../jobs";
+import { getUserMessages } from "../notifications";
 import {
   createKnowledgeIngestJob,
   storeIngestFileInDb,
@@ -89,5 +94,31 @@ describe("Knowledge ingestion jobs", () => {
     const finished = await getJob(job.id);
     expect(finished.status).toBe("failed");
     expect((finished.error as any)?.message).toBeDefined();
+  }, 30000);
+
+  it("notifies the user when notifyOnCompletion is set and the job fails", async () => {
+    const job = await createKnowledgeIngestJob(
+      {
+        kind: "rag-existing",
+        tenantId: TEST_ORGANISATION_1.id,
+        userId: TEST_ORG1_USER_1.id,
+        notifyOnCompletion: true,
+        params: {
+          sourceType: "text",
+          sourceId: "00000000-0000-0000-0000-000000000000",
+        },
+      },
+      TEST_ORGANISATION_1.id,
+      TEST_ORG1_USER_1.id
+    );
+
+    await processDueJobsOnce();
+
+    const messages = await getUserMessages(TEST_ORG1_USER_1.id);
+    const msg = messages.find((m) => (m.meta as any)?.jobId === job.id);
+    expect(msg).toBeDefined();
+    expect(msg!.messageType).toBe("error");
+    expect((msg!.meta as any).jobType).toBe(KNOWLEDGE_INGEST_JOB_TYPE);
+    expect((msg!.meta as any).status).toBe("failed");
   }, 30000);
 });
