@@ -256,6 +256,8 @@ export default function defineRoutesForKnowledgeTexts(
             kind: "text-import-file",
             tenantId,
             userId,
+            notifyOnCompletion:
+              form.get("notifyOnCompletion")?.toString() === "true",
             storage,
             deleteAfter: true,
             options: {
@@ -319,6 +321,7 @@ export default function defineRoutesForKnowledgeTexts(
         embeddingEnabled: v.optional(v.boolean()),
         splitIntoBlocks: v.optional(v.boolean()),
         usePostProcessors: v.optional(v.array(v.string())),
+        notifyOnCompletion: v.optional(v.boolean()),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -334,6 +337,7 @@ export default function defineRoutesForKnowledgeTexts(
             kind: "text-import-url",
             tenantId,
             userId,
+            notifyOnCompletion: body.notifyOnCompletion,
             params: {
               url: body.url,
               options: {

@@ -125,50 +125,56 @@ type RagTextParams = {
 type TextImportOptions = Omit<ImportKnowledgeTextOptions, "tenantId" | "userId">;
 
 /**
- * Discriminated metadata for a `knowledge:ingest` job. Every variant carries
- * `tenantId` / `userId` for context and a `kind` selecting the work.
+ * Fields shared by every ingest-job variant: tenant/user context and the
+ * opt-in flag that makes a finished job push a success/error message into the
+ * owning user's notification queue (handled generically by the job engine, see
+ * `src/lib/jobs`).
  */
-export type KnowledgeIngestJobMetadata =
-  | {
-      kind: "rag-upload";
-      tenantId: string;
-      userId?: string;
-      storage: StoredIngestFile;
-      deleteAfter: boolean;
-      options: RagUploadOptions;
-    }
-  | {
-      kind: "rag-existing";
-      tenantId: string;
-      userId?: string;
-      params: RagExistingParams;
-    }
-  | {
-      kind: "rag-url";
-      tenantId: string;
-      userId?: string;
-      params: RagUrlParams;
-    }
-  | {
-      kind: "rag-text";
-      tenantId: string;
-      userId?: string;
-      params: RagTextParams;
-    }
-  | {
-      kind: "text-import-file";
-      tenantId: string;
-      userId?: string;
-      storage: StoredIngestFile;
-      deleteAfter: boolean;
-      options: TextImportOptions;
-    }
-  | {
-      kind: "text-import-url";
-      tenantId: string;
-      userId?: string;
-      params: { url: string; options: TextImportOptions };
-    };
+type KnowledgeIngestJobBase = {
+  tenantId: string;
+  userId?: string;
+  /**
+   * When true, a success/error message is pushed into the owning user's
+   * notification queue when the job finishes. Requires `userId`.
+   */
+  notifyOnCompletion?: boolean;
+};
+
+/**
+ * Discriminated metadata for a `knowledge:ingest` job. Every variant carries
+ * the shared base fields plus a `kind` selecting the work.
+ */
+export type KnowledgeIngestJobMetadata = KnowledgeIngestJobBase &
+  (
+    | {
+        kind: "rag-upload";
+        storage: StoredIngestFile;
+        deleteAfter: boolean;
+        options: RagUploadOptions;
+      }
+    | {
+        kind: "rag-existing";
+        params: RagExistingParams;
+      }
+    | {
+        kind: "rag-url";
+        params: RagUrlParams;
+      }
+    | {
+        kind: "rag-text";
+        params: RagTextParams;
+      }
+    | {
+        kind: "text-import-file";
+        storage: StoredIngestFile;
+        deleteAfter: boolean;
+        options: TextImportOptions;
+      }
+    | {
+        kind: "text-import-url";
+        params: { url: string; options: TextImportOptions };
+      }
+  );
 
 /**
  * Stash an uploaded file in DB storage so a background job can process it

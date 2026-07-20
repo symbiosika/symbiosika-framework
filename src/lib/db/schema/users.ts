@@ -703,6 +703,7 @@ export const messageTypeEnum = pgEnum("message_type", [
   "info",
   "warning",
   "error",
+  "success",
 ]);
 
 // User messages table
@@ -717,6 +718,10 @@ export const userMessages = pgBaseTable(
       .references(() => users.id, { onDelete: "cascade" }),
     message: text("message").notNull(),
     messageType: messageTypeEnum("message_type").notNull().default("info"),
+    // Optional structured payload so the UI can act on a message without
+    // parsing the text — e.g. a job-completion notification carries
+    // `{ jobId, jobType, status }` to deep-link to the finished job/result.
+    meta: jsonb("meta"),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),
