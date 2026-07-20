@@ -1,7 +1,8 @@
-import type {
-  PdfParserContext,
-  PdfParserOptions,
-  PdfParserResult,
+import {
+  PDF_PARSER,
+  type PdfParserContext,
+  type PdfParserOptions,
+  type PdfParserResult,
 } from "./types";
 import log from "../../../log";
 
@@ -14,7 +15,7 @@ const API_BASE_URL = "https://api.cloud.llamaindex.ai";
 /**
  * Parse a PDF file as markdown
  */
-export const parsePdfFileAsMardownLlama = async (
+export const parsePdfFileAsMarkdownLlama = async (
   fileContent: File,
   context: PdfParserContext,
   options?: PdfParserOptions
@@ -96,7 +97,7 @@ export const parsePdfFileAsMardownLlama = async (
 
   return {
     includesImages: false,
-    model: "llama",
+    model: PDF_PARSER.LLAMA,
     pages: pages,
   };
 };

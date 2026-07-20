@@ -56,7 +56,7 @@ const generateKnowledgeValidation = v.object({
   userOwned: v.optional(v.boolean()),
   workspaceId: v.optional(v.string()),
   knowledgeGroupId: v.optional(v.string()),
-  model: v.optional(v.string()), // mistral | llama | local
+  model: v.optional(v.string()), // symbiosika-parse-v1 | mistral | mistral-openrouter | llama
   usePostProcessors: v.optional(v.array(v.string())),
   extractImages: v.optional(v.boolean()),
   generateSummary: v.optional(v.boolean()),
@@ -160,7 +160,7 @@ const uploadAndLearnValidation = v.object({
       sourceId: v.string(),
     })
   ),
-  model: v.optional(v.string()), // mistral | llama | local
+  model: v.optional(v.string()), // symbiosika-parse-v1 | mistral | mistral-openrouter | llama
   usePostProcessors: v.optional(v.array(v.string())),
   extractImages: v.optional(v.boolean()),
   generateSummary: v.optional(v.boolean()),

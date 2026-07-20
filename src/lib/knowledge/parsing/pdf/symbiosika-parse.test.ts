@@ -1,10 +1,10 @@
 // import { describe, test, expect, beforeAll } from "bun:test";
-// import { parsePdfFileAsMardownLocal } from "./local-service";
+// import { parsePdfFileAsMarkdownSymbiosika } from "./symbiosika-parse";
 // import fs from "fs";
 // import { TEST_ORGANISATION_1 } from "../../../../test/init.test";
 // import { TEST_PDF_TEXT } from "../../../../test/files.test";
 
-// describe("Local PDF Parser Service", () => {
+// describe("Symbiosika PDF Parser Service", () => {
 //   beforeAll(() => {
 //     // environment variables are set!
 //   });
@@ -16,7 +16,7 @@
 //       type: "application/pdf",
 //     });
 
-//     const result = await parsePdfFileAsMardownLocal(file, {
+//     const result = await parsePdfFileAsMarkdownSymbiosika(file, {
 //       tenantId: TEST_ORGANISATION_1.id,
 //     });
 
