@@ -643,7 +643,7 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * Resolve a page by exact title (case-insensitive, wikilink semantics).
+   * Resolve a page by exact title (case-insensitive, page link semantics).
    * Returns the page reference (without text) or 404.
    */
   app.get(
@@ -1415,7 +1415,7 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * Outgoing wikilinks of a page ([[Title]] markers in its content)
+   * Outgoing page links of a page ([[Title]] markers in its content)
    */
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/links",
@@ -1424,7 +1424,7 @@ export default function defineRoutesForKnowledgeTexts(
     describeRoute({
       tags: ["knowledge"],
       summary:
-        "Get the outgoing wikilinks of a page (resolved and phantom links)",
+        "Get the outgoing page links of a page (resolved and phantom links)",
       responses: {
         200: { description: "List of outgoing links" },
       },

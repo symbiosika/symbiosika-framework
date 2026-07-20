@@ -121,11 +121,11 @@ export const knowledgeText = pgBaseTable(
     // lists / recent-changes. Stored as text validated against the tenant
     // vocabulary on write.
     //
-    // Type of page, e.g. "anleitung" | "konzept" | "policy" | ...
+    // Type of page, e.g. "FAQ" | "manual" | "text" | "policy" | "note".
     pageType: varchar("page_type", { length: 64 }),
-    // Trust signal, e.g. "entwurf" | "verifiziert" | "veraltet".
+    // Trust signal, e.g. "draft" | "verified" | "outdated".
     status: varchar("status", { length: 64 }),
-    // For status transitions to "verifiziert": when and by whom.
+    // For status transitions to "verified": when and by whom.
     verifiedAt: timestamp("verified_at", { mode: "string" }),
     verifiedBy: uuid("verified_by").references(() => users.id, {
       onDelete: "set null",
@@ -147,10 +147,10 @@ export const knowledgeText = pgBaseTable(
       { onDelete: "set null" }
     ),
     // --- agent-instructions marker ---
-    // Marks this page as the "CLAUDE.md of the wiki": curated orientation for
-    // agents (what lives where, conventions, glossary, authoritative areas).
-    // One per tenant (teamId null) and optionally one per team. Surfaced by the
-    // wiki overview endpoint.
+    // Marks this page as the "CLAUDE.md of the knowledge base": curated
+    // orientation for agents (what lives where, conventions, glossary,
+    // authoritative areas). One per tenant (teamId null) and optionally one per
+    // team. Surfaced by the knowledge overview endpoint.
     isAgentInstructions: boolean("is_agent_instructions")
       .notNull()
       .default(false),
@@ -356,7 +356,7 @@ export const knowledgeTextBlock = pgBaseTable(
 export type KnowledgeTextBlockSelect = typeof knowledgeTextBlock.$inferSelect;
 export type KnowledgeTextBlockInsert = typeof knowledgeTextBlock.$inferInsert;
 
-// Obsidian-style wikilinks between knowledgeText pages, extracted from
+// Obsidian-style page links between knowledgeText pages, extracted from
 // [[Target Title]] / [[Target Title|alias]] markers on every content save.
 // targetId is null while the linked title has no matching page yet
 // ("phantom link"); it is resolved automatically when such a page appears
@@ -402,7 +402,7 @@ export type KnowledgeTextLinkInsert = typeof knowledgeTextLink.$inferInsert;
 
 // Tracks which files (images, attachments in the "wiki" bucket) are
 // referenced by which knowledgeText page. Rebuilt from the page content on
-// every save — the same pattern as wikilinks. Files without any reference
+// every save — the same pattern as page links. Files without any reference
 // get an expiry (grace period) and are removed by the cleanup cron, so no
 // orphaned blobs accumulate.
 export const knowledgeTextFile = pgBaseTable(

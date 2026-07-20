@@ -36,7 +36,7 @@ import { validateFacetsForWrite, type FacetFilters } from "./facets";
 import log from "../log";
 
 /**
- * Run a post-write bookkeeping step (wikilinks, file references) without
+ * Run a post-write bookkeeping step (page links, file references) without
  * letting a failure abort the surrounding create/update: the page row is
  * already written at that point, so throwing would report an error for a
  * write that actually succeeded. Failures are logged instead — the
@@ -180,7 +180,7 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
     throw new Error("Failed to create knowledge text");
   }
 
-  // wikilink + file-reference bookkeeping: extract this page's outgoing
+  // page link + file-reference bookkeeping: extract this page's outgoing
   // links and image references, and snap phantom links of other pages
   // that were waiting for this title
   const page = e[0];
@@ -546,7 +546,7 @@ export const updateKnowledgeText = async (
     throw new Error("Failed to update knowledge text");
   }
 
-  // wikilink + file-reference bookkeeping
+  // page link + file-reference bookkeeping
   const updatedPage = result[0];
   if (data.text !== undefined) {
     await runBookkeepingSafe("links", () =>

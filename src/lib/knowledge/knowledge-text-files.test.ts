@@ -5,8 +5,8 @@ import {
   syncKnowledgeTextFileReferences,
   markKnowledgeTextFilesForCleanup,
   cleanupExpiredFiles,
-  extractWikiFileIds,
-  WIKI_FILES_BUCKET,
+  extractKnowledgeFileIds,
+  KNOWLEDGE_FILES_BUCKET,
 } from "./knowledge-text-files";
 import {
   createKnowledgeText,
@@ -53,11 +53,11 @@ const getRefs = async (pageId: string) =>
     .from(knowledgeTextFile)
     .where(eq(knowledgeTextFile.knowledgeTextId, pageId));
 
-describe("extractWikiFileIds", () => {
+describe("extractKnowledgeFileIds", () => {
   it("extracts wiki file ids from markdown and html", () => {
     const id1 = "0b0e8f0a-1111-4222-8333-444455556666";
     const id2 = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
-    const ids = extractWikiFileIds(
+    const ids = extractKnowledgeFileIds(
       `![a](/api/v1/tenant/x/files/db/wiki/${id1}.png)\n` +
         `<img src="/api/v1/tenant/x/files/db/wiki/${id2.toUpperCase()}.jpg">` +
         `![other bucket](/api/v1/tenant/x/files/db/avatars/${id1}.png)`
@@ -66,7 +66,7 @@ describe("extractWikiFileIds", () => {
   });
 
   it("returns [] when nothing matches", () => {
-    expect(extractWikiFileIds("no images here")).toEqual([]);
+    expect(extractKnowledgeFileIds("no images here")).toEqual([]);
   });
 });
 
@@ -82,11 +82,11 @@ describe("Knowledge Text Images", () => {
     });
 
     expect(upload.fileId).toBeDefined();
-    expect(upload.path).toContain(`/files/db/${WIKI_FILES_BUCKET}/`);
+    expect(upload.path).toContain(`/files/db/${KNOWLEDGE_FILES_BUCKET}/`);
     expect(upload.markdown).toBe(`![my pixel](${upload.path})`);
 
     const row = await getFileRow(upload.fileId);
-    expect(row?.bucket).toBe(WIKI_FILES_BUCKET);
+    expect(row?.bucket).toBe(KNOWLEDGE_FILES_BUCKET);
     // unreferenced upload expires
     expect(row?.expiresAt).not.toBeNull();
   });

@@ -2,7 +2,7 @@
  * Context-economy helpers for agents working the knowledge base.
  *
  * These sit on top of the page CRUD and are built for cheap, oriented access:
- *   - resolvePageByTitle  — find a page by exact title (wikilink semantics)
+ *   - resolvePageByTitle  — find a page by exact title (page link semantics)
  *   - listRecentChanges   — "what's new", sorted by updatedAt, filterable
  *   - getPagesBatch       — read several pages in one call
  *   - appendToKnowledgeText — append without a read-modify-write round trip
@@ -38,7 +38,7 @@ const listColumns = () => {
 
 /**
  * resolve a page by exact title, case-insensitively, using the same
- * semantics as the wikilink resolver. Returns the visible page (without text)
+ * semantics as the page link resolver. Returns the visible page (without text)
  * or null. On multiple case-insensitive matches the first by title is
  * returned, deterministically.
  */
@@ -185,7 +185,7 @@ export interface AppendResult {
 /**
  * append text to a page without the caller doing a read-modify-write and
  * without returning the (potentially large) full content. Goes through
- * updateKnowledgeText so history, permissions, wikilink/file bookkeeping and
+ * updateKnowledgeText so history, permissions, page link/file bookkeeping and
  * summary-stale marking all behave exactly like a normal edit.
  */
 export const appendToKnowledgeText = async (

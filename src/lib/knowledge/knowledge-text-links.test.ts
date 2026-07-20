@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "bun:test";
 import {
-  extractWikilinkTargets,
+  extractPageLinkTargets,
   getKnowledgeTextLinks,
   getKnowledgeTextBacklinks,
   getRelatedKnowledgeTexts,
@@ -17,23 +17,23 @@ const ctx = { tenantId: TEST_ORGANISATION_1.id };
 
 const uniqueTitle = (name: string) => `${name} ${crypto.randomUUID()}`;
 
-describe("extractWikilinkTargets", () => {
-  it("extracts plain and aliased wikilinks", () => {
-    const targets = extractWikilinkTargets(
+describe("extractPageLinkTargets", () => {
+  it("extracts plain and aliased page links", () => {
+    const targets = extractPageLinkTargets(
       "See [[Vacation Policy]] and [[Home Office|working from home]]."
     );
     expect(targets).toEqual(["Vacation Policy", "Home Office"]);
   });
 
   it("deduplicates and trims targets", () => {
-    const targets = extractWikilinkTargets(
+    const targets = extractPageLinkTargets(
       "[[ Onboarding ]] then [[Onboarding]] again"
     );
     expect(targets).toEqual(["Onboarding"]);
   });
 
   it("ignores malformed markers", () => {
-    expect(extractWikilinkTargets("[[]] [[|only alias]] [not a link]")).toEqual(
+    expect(extractPageLinkTargets("[[]] [[|only alias]] [not a link]")).toEqual(
       []
     );
   });

@@ -1,15 +1,15 @@
 /**
- * Images (and other file attachments) for knowledgeText wiki pages,
+ * Images (and other file attachments) for knowledgeText pages,
  * with reference tracking so no orphaned blobs accumulate.
  *
  * Lifecycle:
  *
- *   1. Upload (`uploadKnowledgeTextImage`) stores the image in the "wiki"
+ *   1. Upload (`uploadKnowledgeTextImage`) stores the image in the "knowledge"
  *      bucket and stamps it with a short expiry — an upload that never
  *      makes it into a saved page cleans itself up.
- *   2. The editor embeds the returned markdown (`![alt](…/files/db/wiki/<id>.<ext>)`)
+ *   2. The editor embeds the returned markdown (`![alt](…/files/db/knowledge/<id>.<ext>)`)
  *      into a block. On every content save the file references of the page
- *      are re-extracted (same pattern as wikilinks):
+ *      are re-extracted (same pattern as page links):
  *        - newly referenced files lose their expiry (kept forever)
  *        - files that lost their LAST reference get a grace-period expiry,
  *          so a quick undo re-rescues them
@@ -29,8 +29,15 @@ import {
 } from "./knowledge-texts";
 import log from "../log";
 
-/** Bucket for files that belong to wiki pages */
-export const WIKI_FILES_BUCKET = "wiki";
+/** Bucket for files that belong to knowledge pages */
+export const KNOWLEDGE_FILES_BUCKET = "knowledge";
+
+/**
+ * Legacy bucket name used before the rename. Kept only so file references
+ * embedded in existing pages (`…/files/db/wiki/<id>`) are still recognised by
+ * the extractor and not treated as orphaned by the cleanup cron.
+ */
+const LEGACY_FILES_BUCKET = "wiki";
 
 /** Uploads that never get referenced by a saved page expire after this */
 export const UNREFERENCED_UPLOAD_TTL_HOURS = 24;
@@ -53,13 +60,15 @@ const hoursFromNow = (hours: number): string =>
   new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 
 /**
- * Extract the file ids of wiki-bucket files referenced in a page's content.
- * Matches the URL shape produced by the upload (`…/files/db/wiki/<uuid>.<ext>`)
- * in markdown and html alike.
+ * Extract the file ids of knowledge-bucket files referenced in a page's
+ * content. Matches the URL shape produced by the upload
+ * (`…/files/db/knowledge/<uuid>.<ext>`) in markdown and html alike, and still
+ * matches the legacy `…/files/db/wiki/<uuid>` shape from before the rename so
+ * references embedded in existing pages keep resolving.
  */
-export const extractWikiFileIds = (content: string): string[] => {
+export const extractKnowledgeFileIds = (content: string): string[] => {
   const pattern =
-    /\/files\/db\/wiki\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+    /\/files\/db\/(?:knowledge|wiki)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
   const ids = new Set<string>();
   for (const match of content.matchAll(pattern)) {
     ids.add(match[1]!.toLowerCase());
@@ -76,7 +85,7 @@ export type UploadKnowledgeTextImageResult = {
 };
 
 /**
- * Upload an image for a wiki page into the "wiki" bucket. The file starts
+ * Upload an image for a knowledge page into the "knowledge" bucket. The file starts
  * with a short expiry and becomes permanent once a page save references it.
  */
 export const uploadKnowledgeTextImage = async (
@@ -100,7 +109,7 @@ export const uploadKnowledgeTextImage = async (
     );
   }
 
-  const saved = await saveFileToDb(file, WIKI_FILES_BUCKET, context.tenantId);
+  const saved = await saveFileToDb(file, KNOWLEDGE_FILES_BUCKET, context.tenantId);
 
   // unreferenced uploads clean themselves up
   await getDb()
@@ -130,9 +139,10 @@ export const syncKnowledgeTextFileReferences = async (page: {
   text: string;
 }): Promise<{ added: number; removed: number }> => {
   const db = getDb();
-  const referencedIds = extractWikiFileIds(page.text);
+  const referencedIds = extractKnowledgeFileIds(page.text);
 
-  // only accept files that really exist in this tenant's wiki bucket
+  // only accept files that really exist in this tenant's knowledge bucket
+  // (or the legacy bucket, for images embedded before the rename)
   const validFiles =
     referencedIds.length > 0
       ? await db
@@ -142,7 +152,10 @@ export const syncKnowledgeTextFileReferences = async (page: {
             and(
               inArray(files.id, referencedIds),
               eq(files.tenantId, page.tenantId),
-              eq(files.bucket, WIKI_FILES_BUCKET)
+              inArray(files.bucket, [
+                KNOWLEDGE_FILES_BUCKET,
+                LEGACY_FILES_BUCKET,
+              ])
             )
           )
       : [];

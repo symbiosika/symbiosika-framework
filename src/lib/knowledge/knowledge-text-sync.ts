@@ -8,7 +8,7 @@
  *
  *   - `upsertKnowledgeTextFromSource` — insert if unknown, update in place
  *     if the content changed, no-op if unchanged. The page keeps its id
- *     across updates, so wikilinks, backlinks, history and the embedding
+ *     across updates, so page links, backlinks, history and the embedding
  *     mirror stay intact.
  *
  *   - `deleteOrphanedKnowledgeTexts` — at the end of a sync run, delete
