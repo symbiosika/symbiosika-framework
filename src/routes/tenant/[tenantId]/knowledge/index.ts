@@ -62,6 +62,9 @@ const generateKnowledgeValidation = v.object({
   generateSummary: v.optional(v.boolean()),
   summaryCustomPrompt: v.optional(v.string()),
   summaryModel: v.optional(v.string()),
+  // When true, a success/error message is pushed into the user's notification
+  // queue once the background job finishes.
+  notifyOnCompletion: v.optional(v.boolean()),
 });
 export type GenerateKnowledgeInput = v.InferOutput<
   typeof generateKnowledgeValidation
@@ -126,6 +129,7 @@ const addFromTextValidation = v.object({
     })
   ),
   usePostProcessors: v.optional(v.array(v.string())),
+  notifyOnCompletion: v.optional(v.boolean()),
 });
 
 const addFromUrlValidation = v.object({
@@ -138,6 +142,7 @@ const addFromUrlValidation = v.object({
   knowledgeGroupId: v.optional(v.string()),
   userOwned: v.optional(v.boolean()),
   usePostProcessors: v.optional(v.array(v.string())),
+  notifyOnCompletion: v.optional(v.boolean()),
 });
 
 const uploadAndLearnValidation = v.object({
@@ -161,6 +166,7 @@ const uploadAndLearnValidation = v.object({
   generateSummary: v.optional(v.boolean()),
   summaryCustomPrompt: v.optional(v.string()),
   summaryModel: v.optional(v.string()),
+  notifyOnCompletion: v.optional(v.boolean()),
 });
 
 const checkForSyncValidation = v.object({
@@ -533,9 +539,9 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
         validateOrganisationId(body, tenantId);
         const userId = c.get("usersId");
 
-        const { tenantId: _t, ...params } = body;
+        const { tenantId: _t, notifyOnCompletion, ...params } = body;
         const job = await createKnowledgeIngestJob(
-          { kind: "rag-existing", tenantId, userId, params },
+          { kind: "rag-existing", tenantId, userId, notifyOnCompletion, params },
           tenantId,
           userId
         );
@@ -613,6 +619,7 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
       let summaryCustomPrompt;
       let summaryModel;
       let extractImages;
+      let notifyOnCompletion;
 
       if (contentType && contentType.includes("multipart/form-data")) {
         const form = await c.req.formData();
@@ -636,6 +643,8 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
         generateSummary = form.get("generateSummary")?.toString() === "true";
         summaryCustomPrompt = form.get("summaryCustomPrompt")?.toString();
         summaryModel = form.get("summaryModel")?.toString();
+        notifyOnCompletion =
+          form.get("notifyOnCompletion")?.toString() === "true";
 
         try {
           filters = form.get("filters")
@@ -659,6 +668,7 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
           generateSummary,
           summaryCustomPrompt,
           summaryModel,
+          notifyOnCompletion,
         };
       } else {
         data = await c.req.json();
@@ -681,12 +691,18 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
         // Stash the file so the background job can read it later, then hand
         // back the job. The job deletes the temporary file when it is done.
         const storage = await storeIngestFileInDb(file, tenantId);
-        const { tenantId: _t, userId: _u, ...options } = parsedData;
+        const {
+          tenantId: _t,
+          userId: _u,
+          notifyOnCompletion: notify,
+          ...options
+        } = parsedData;
         const job = await createKnowledgeIngestJob(
           {
             kind: "rag-upload",
             tenantId,
             userId,
+            notifyOnCompletion: notify,
             storage,
             deleteAfter: true,
             options,
@@ -746,6 +762,7 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
             kind: "rag-text",
             tenantId,
             userId,
+            notifyOnCompletion: data.notifyOnCompletion,
             params: {
               text: data.text,
               title: data.title,
@@ -821,6 +838,7 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
             kind: "rag-url",
             tenantId,
             userId,
+            notifyOnCompletion: data.notifyOnCompletion,
             params: {
               url: data.url,
               filters: data.filters,

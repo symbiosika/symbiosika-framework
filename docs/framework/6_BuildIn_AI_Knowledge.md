@@ -61,6 +61,13 @@ The symbiosika-framework provides a built-in, organization-wide knowledge base t
 > The framework registers the built-in ingestion handler and starts the job
 > queue automatically. If a separate worker process drains the queue, set
 > `disableJobQueue: true` in the server config on the web instance.
+>
+> **Push instead of poll (opt-in):** add `"notifyOnCompletion": true` to any of
+> the ingestion requests below (a form field for the multipart uploads). When
+> the job finishes, a `success`/`error` message is pushed into the user's
+> notification queue (`GET /user/notifications`) carrying
+> `meta: { jobId, jobType, status }`, so the UI can react without polling. See
+> [Long Running Jobs](./10_Using_Long_Running_Jobs.md#notify-the-user-on-completion-opt-in).
 
 The following endpoints all respond with a Job (`202`-style semantics, HTTP
 `200` + the job body):
