@@ -26,6 +26,10 @@ import {
   editKnowledgeTextContent,
 } from "../../../../../lib/knowledge/knowledge-text-edit";
 import { appendToKnowledgeText } from "../../../../../lib/knowledge/knowledge-text-agent";
+import {
+  getPageOutline,
+  readPageSection,
+} from "../../../../../lib/knowledge/knowledge-text-sections";
 import { searchKnowledgeTexts } from "../../../../../lib/knowledge/knowledge-text-search";
 import {
   getKnowledgeTextLinks,
@@ -480,6 +484,10 @@ export default function defineRoutesForKnowledgeTexts(
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
         includeHidden: v.optional(v.string()),
+        // B4 facet + scope filters
+        pageType: v.optional(v.string()),
+        status: v.optional(v.string()),
+        parentId: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -493,6 +501,9 @@ export default function defineRoutesForKnowledgeTexts(
           teamId,
           workspaceId,
           includeHidden: includeHiddenStr,
+          pageType,
+          status,
+          parentId,
         } = c.req.valid("query");
         const { tenantId } = c.req.valid("param");
         const userId = c.get("usersId");
@@ -509,11 +520,82 @@ export default function defineRoutesForKnowledgeTexts(
           {
             mode,
             limit: limitStr ? parseInt(limitStr) : undefined,
+            filters: { pageType, status, parentId },
           }
         );
         return c.json(r);
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * B4: heading outline of a page (structure without the body). Registered
+   * before :id so the static path wins.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/outline",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Get a page's heading outline (structure without body text)",
+      responses: { 200: { description: "Heading outline" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+        return c.json(await getPageOutline(id, { tenantId, userId }));
+      } catch (e) {
+        const msg = e + "";
+        if (msg.includes("not found") || msg.includes("access denied")) {
+          throw new HTTPException(404, { message: msg });
+        }
+        throw new HTTPException(400, { message: msg });
+      }
+    }
+  );
+
+  /**
+   * B4: read a single section of a page addressed by its heading anchor.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/section",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Read one section of a page addressed by its heading anchor",
+      responses: { 200: { description: "The requested section" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    validator("query", v.object({ anchor: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { tenantId, id } = c.req.valid("param");
+        const { anchor } = c.req.valid("query");
+        const userId = c.get("usersId");
+        const section = await readPageSection(id, anchor, { tenantId, userId });
+        if (section.notFound) {
+          throw new HTTPException(404, {
+            message: `Section "${anchor}" not found`,
+          });
+        }
+        return c.json(section);
+      } catch (e) {
+        if (e instanceof HTTPException) throw e;
+        const msg = e + "";
+        if (msg.includes("not found") || msg.includes("access denied")) {
+          throw new HTTPException(404, { message: msg });
+        }
+        throw new HTTPException(400, { message: msg });
       }
     }
   );

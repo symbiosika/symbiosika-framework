@@ -634,6 +634,23 @@ export { getWikiOverview } from "./lib/knowledge/wiki-overview";
 export type { WikiOverview } from "./lib/knowledge/wiki-overview";
 
 /**
+ * Export B4 heading-addressing helpers and enriched search types.
+ */
+export {
+  getPageOutline,
+  readPageSection,
+} from "./lib/knowledge/knowledge-text-sections";
+export type {
+  OutlineHeading,
+  PageSection,
+} from "./lib/knowledge/knowledge-text-sections";
+export type {
+  SearchFilters,
+  KnowledgeTextSearchResult,
+  KnowledgeTextSearchMode,
+} from "./lib/knowledge/knowledge-text-search";
+
+/**
  * Export all services for the customer App
  */
 export { log };
