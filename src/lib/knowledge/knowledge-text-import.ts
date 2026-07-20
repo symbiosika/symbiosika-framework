@@ -177,6 +177,8 @@ export const importMarkdownAsKnowledgeText = async (
   const page = await createKnowledgeText({
     tenantId: options.tenantId,
     userId: options.userId,
+    createdBy: options.userId,
+    updatedBy: options.userId,
     teamId: options.teamId,
     tenantWide: options.tenantWide ?? false,
     parentId: options.parentId,

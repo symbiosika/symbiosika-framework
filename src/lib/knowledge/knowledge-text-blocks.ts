@@ -160,6 +160,10 @@ const snapshotHistoryCoalesced = async (
     meta: page.meta,
     hidden: page.hidden,
     contentMode: page.contentMode,
+    // audit snapshot of the version being archived
+    createdBy: page.createdBy,
+    updatedBy: page.updatedBy,
+    versionUpdatedAt: page.updatedAt,
     blocks:
       page.contentMode === "blocks" ? currentBlocks.map(toSnapshot) : null,
   };
@@ -320,6 +324,9 @@ export const syncKnowledgeTextBlocks = async (
           text: newText,
           contentMode: "blocks",
           updatedAt: sql`now()`,
+          // audit: record who performed this edit (unchanged for service
+          // calls that run without a user context)
+          ...(context.userId ? { updatedBy: context.userId } : {}),
         })
         .where(eq(knowledgeText.id, knowledgeTextId));
     });

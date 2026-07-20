@@ -139,6 +139,12 @@ export const checkKnowledgeTextWritePermission = async (
 export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
   data = sanitizeKnowledgeTextData(data);
 
+  // Audit: a freshly created page is "updated" by its creator, so default
+  // updatedBy to createdBy when only the creator was provided.
+  if (data.createdBy && data.updatedBy == null) {
+    data = { ...data, updatedBy: data.createdBy };
+  }
+
   // creating a page inside a team / tenant-wide requires access to that
   // container (ownership alone is not enough here)
   if (data.userId && data.teamId) {
@@ -411,6 +417,10 @@ export const updateKnowledgeText = async (
     meta: currentEntry.meta,
     hidden: currentEntry.hidden,
     contentMode: currentEntry.contentMode,
+    // audit snapshot of the version being archived
+    createdBy: currentEntry.createdBy,
+    updatedBy: currentEntry.updatedBy,
+    versionUpdatedAt: currentEntry.updatedAt,
     blocks:
       currentEntry.contentMode === "blocks"
         ? currentBlocks.map((b) => ({
@@ -429,6 +439,15 @@ export const updateKnowledgeText = async (
   const updateData: Partial<KnowledgeTextInsert> = sanitizeKnowledgeTextData({
     ...data,
   });
+
+  // Audit: createdBy is immutable after creation, and updatedBy always
+  // reflects who performed this change (never a client-supplied value).
+  delete updateData.createdBy;
+  if (context.userId) {
+    updateData.updatedBy = context.userId;
+  } else {
+    delete updateData.updatedBy;
+  }
 
   const result = await getDb()
     .update(knowledgeText)
