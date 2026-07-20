@@ -398,10 +398,13 @@ export function definePublicUserRoutes(
         }
 
         // Existing user -> log them in and drop them into the app as a
-        // confirmed member.
+        // confirmed member. The landing page defaults to "/" and can be
+        // overridden per app via `invitationAcceptRedirectUrl` in the config.
         const session = await createJwtSessionForUserId(result.userId);
         setAuthCookies(c, session.token);
-        return c.redirect(`${baseUrl}/static/app/#/shared/tenants`);
+        return c.redirect(
+          `${baseUrl}${_GLOBAL_SERVER_CONFIG.invitationAcceptRedirectUrl}`
+        );
       } catch (err) {
         log.error("Error accepting invitation via link: " + err);
         // Do not leak details – forward to the login page with a hint so the

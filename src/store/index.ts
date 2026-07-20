@@ -31,6 +31,9 @@ export const _GLOBAL_SERVER_CONFIG = {
   verifyEmailUrl: "/verify-email.html",
   resetPasswordUrl: "/reset-password.html",
   oauthCallbackUrl: "/oauth-callback.html",
+  // Landing page (relative to baseUrl) an existing user is redirected to after
+  // accepting a tenant invitation via the emailed link. Override per app.
+  invitationAcceptRedirectUrl: "/",
   jwtExpiresAfter: 60 * 60 * 24 * 30, // 30 days
   useConsoleLogger: true,
   useLicenseSystem: false,
@@ -163,6 +166,10 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
   }
   if (config.oauthCallbackUrl) {
     _GLOBAL_SERVER_CONFIG.oauthCallbackUrl = config.oauthCallbackUrl;
+  }
+  if (config.invitationAcceptRedirectUrl) {
+    _GLOBAL_SERVER_CONFIG.invitationAcceptRedirectUrl =
+      config.invitationAcceptRedirectUrl;
   }
 
   // WhatsApp
