@@ -145,6 +145,17 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
     data = { ...data, updatedBy: data.createdBy };
   }
 
+  // B1: a new page with content and an auto summary starts out stale, so the
+  // sweeper generates its summary once it has been quiet for the debounce
+  // window. Explicit/manual summaries are left as provided.
+  if (
+    (data.text ?? "").trim().length > 0 &&
+    data.summary == null &&
+    (data.summaryMode ?? "auto") === "auto"
+  ) {
+    data = { ...data, summaryStale: true };
+  }
+
   // creating a page inside a team / tenant-wide requires access to that
   // container (ownership alone is not enough here)
   if (data.userId && data.teamId) {
@@ -496,6 +507,13 @@ export const updateKnowledgeText = async (
     updateData.updatedBy = context.userId;
   } else {
     delete updateData.updatedBy;
+  }
+
+  // B1: a content change marks the summary stale so the debounced sweeper
+  // regenerates it once the page goes quiet. Respect an explicit summaryStale
+  // in the update (e.g. a manual summary edit clearing it).
+  if (updateData.text !== undefined && updateData.summaryStale === undefined) {
+    updateData.summaryStale = true;
   }
 
   const result = await getDb()

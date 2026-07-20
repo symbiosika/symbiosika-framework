@@ -66,6 +66,11 @@ import { addMessageToAllAdmins } from "./lib/notifications";
 import { defineJob, startJobQueue } from "./lib/jobs";
 import { logAiConfiguration } from "./lib/ai";
 import { knowledgeIngestJobRegister } from "./lib/knowledge/ingestion-jobs";
+import {
+  summaryJobRegister,
+  sweepStaleSummaries,
+} from "./lib/knowledge/summaries";
+import { isAiEnabled } from "./lib/ai";
 // Cron
 import scheduler from "./lib/cron";
 import { cleanupExpiredFiles } from "./lib/knowledge/knowledge-text-files";
@@ -155,6 +160,23 @@ export const defineServer = (config: ServerSpecificConfig) => {
       await cleanupExpiredFiles();
     }
   );
+
+  /**
+   * B1: debounced wiki page-summary sweeper. Runs every minute and enqueues
+   * summary jobs for pages that have been stale AND quiet for the configured
+   * window. Only registered when a global LLM is configured (AI_PROVIDER set);
+   * with no LLM the whole feature is inert. Override the schedule via
+   * config.wikiSummarySweepCron.
+   */
+  if (isAiEnabled()) {
+    scheduler.registerTask(
+      "wiki-summary-sweeper",
+      config.wikiSummarySweepCron ?? "* * * * *",
+      async () => {
+        await sweepStaleSummaries();
+      }
+    );
+  }
 
   /**
    * Init the main Hono app
@@ -432,7 +454,10 @@ export const defineServer = (config: ServerSpecificConfig) => {
        */
       logAiConfiguration();
 
-      const builtInJobHandlers = [knowledgeIngestJobRegister];
+      const builtInJobHandlers = [
+        knowledgeIngestJobRegister,
+        summaryJobRegister,
+      ];
       const allJobHandlers = [
         ...builtInJobHandlers,
         ...(config.jobHandlers ?? []),
@@ -554,6 +579,25 @@ export {
   deleteServerSetting,
   SERVER_SETTING_KEYS,
 } from "./lib/server-settings";
+
+/**
+ * Export B1 wiki page-summary controls and per-tenant wiki config.
+ */
+export {
+  SUMMARY_JOB_TYPE,
+  DEFAULT_SUMMARY_DEBOUNCE_MINUTES,
+  processSummaryForPage,
+  generatePageSummary,
+  buildSummaryInput,
+  computeSummaryContentHash,
+  sweepStaleSummaries,
+  enqueueSummaryBackfill,
+} from "./lib/knowledge/summaries";
+export {
+  getWikiTenantConfig,
+  setWikiTenantConfig,
+} from "./lib/knowledge/wiki-config";
+export type { WikiTenantConfig } from "./lib/knowledge/wiki-config";
 
 /**
  * Export all services for the customer App

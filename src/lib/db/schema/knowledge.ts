@@ -51,6 +51,16 @@ export const knowledgeBlockTypeEnum = pgEnum("knowledge_block_type", [
   "html",
 ]);
 
+// How a wiki page's AI summary is maintained (B1 page summaries):
+// - "auto":   regenerated in the background once the page goes quiet
+// - "manual": user-provided text; auto-generation never overwrites it
+// - "off":    no summary for this page
+export const knowledgeSummaryModeEnum = pgEnum("knowledge_summary_mode", [
+  "auto",
+  "manual",
+  "off",
+]);
+
 // Table to store input texts
 export const knowledgeText = pgBaseTable(
   "knowledge_text",
@@ -85,6 +95,25 @@ export const knowledgeText = pgBaseTable(
     // fractional-index key for manual ordering among sibling pages in the
     // wiki tree; null = unsorted (falls back to title sort)
     position: varchar("position", { length: 64 }),
+    // --- B1: AI page summary (the "docstring" of a page) ---
+    // A short (1-2 sentence) description of the page, delivered in every
+    // list-type response (tree, search, recent-changes, ...) so an agent can
+    // tell similar pages apart without opening them. Stored, not generated on
+    // the fly. See src/lib/knowledge/summaries.ts.
+    summary: text("summary"),
+    // How the summary is maintained (auto | manual | off). See the enum above.
+    summaryMode: knowledgeSummaryModeEnum("summary_mode")
+      .notNull()
+      .default("auto"),
+    // Set true when the content changes; the debounced sweeper regenerates
+    // stale summaries once the page has been quiet for the configured period.
+    summaryStale: boolean("summary_stale").notNull().default(false),
+    // sha256 of the content at the last generation, so a save that did not
+    // change the content (or a revert) clears the flag without an LLM call.
+    summaryContentHash: varchar("summary_content_hash", { length: 64 }),
+    // When the summary was last (re)generated, and by which model.
+    summaryUpdatedAt: timestamp("summary_updated_at", { mode: "string" }),
+    summaryModel: varchar("summary_model", { length: 128 }),
     // opt-in: mirror this page into the RAG pipeline (knowledge_entry +
     // knowledge_chunks) so it shows up in similarity search
     embeddingEnabled: boolean("embedding_enabled").notNull().default(false),
@@ -135,6 +164,10 @@ export const knowledgeText = pgBaseTable(
       "gin",
       sql`base_safe_tsvector('simple', coalesce(${knowledgeText.title}, '') || ' ' || coalesce(${knowledgeText.text}, ''))`
     ),
+    // Partial index for the summary sweeper: it only ever scans stale pages.
+    index("knowledge_text_summary_stale_idx")
+      .on(knowledgeText.updatedAt)
+      .where(sql`${knowledgeText.summaryStale} = true`),
   ]
 );
 
