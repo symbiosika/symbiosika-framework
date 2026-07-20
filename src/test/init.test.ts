@@ -14,6 +14,8 @@ import {
 } from "../lib/db/db-schema";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { addTenantMember } from "../lib/usermanagement/tenants";
+import { defineJob } from "../lib/jobs";
+import { knowledgeIngestJobRegister } from "../lib/knowledge/ingestion-jobs";
 
 /**
  * FIXED TESTING DATA
@@ -295,6 +297,14 @@ const getJwtTokenForTesting = async (email: string) => {
 export const initTests = async () => {
   await createDatabaseClient();
   await waitForDbConnection();
+
+  // Register the framework's built-in document-ingestion job handler so tests
+  // can drain the queue (via `processDueJobsOnce`) after hitting the async
+  // knowledge routes. `defineJob` is idempotent and does not start the worker.
+  defineJob(
+    knowledgeIngestJobRegister.type,
+    knowledgeIngestJobRegister.handler
+  );
 
   await initTestOrganisations().catch((err) => {
     console.info("Error initialising test tenants", err);

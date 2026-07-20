@@ -32,9 +32,9 @@ import {
   getRelatedKnowledgeTexts,
 } from "../../../../../lib/knowledge/knowledge-text-links";
 import {
-  importKnowledgeTextFromFile,
-  importKnowledgeTextFromUrl,
-} from "../../../../../lib/knowledge/knowledge-text-import";
+  createKnowledgeIngestJob,
+  storeIngestFileInDb,
+} from "../../../../../lib/knowledge/ingestion-jobs";
 import {
   upsertKnowledgeTextFromSource,
   deleteOrphanedKnowledgeTexts,
@@ -52,6 +52,7 @@ import {
   knowledgeTextInsertSchema,
   knowledgeTextUpdateSchema,
   knowledgeTextBlockSchema,
+  jobsSelectSchema,
 } from "../../../../../lib/db/db-schema";
 import { isTenantMember } from "../../..";
 import { validateScope } from "../../../../../lib/utils/validate-scope";
@@ -205,7 +206,7 @@ export default function defineRoutesForKnowledgeTexts(
     describeRoute({
       tags: ["knowledge"],
       summary:
-        "Import a file (markdown, html, txt, PDF, ...) as a knowledge text wiki page",
+        "Start a background job to import a file (markdown, html, txt, PDF, ...) as a knowledge text wiki page (returns the Job)",
       requestBody: {
         content: {
           "multipart/form-data": {
@@ -224,8 +225,12 @@ export default function defineRoutesForKnowledgeTexts(
       },
       responses: {
         200: {
-          description:
-            "Successful response with the created page and its blocks",
+          description: "The created ingestion job",
+          content: {
+            "application/json": {
+              schema: resolver(jobsSelectSchema),
+            },
+          },
         },
       },
     }),
@@ -243,25 +248,37 @@ export default function defineRoutesForKnowledgeTexts(
           throw new Error("Missing 'file' form field");
         }
 
-        const r = await importKnowledgeTextFromFile(file, {
+        // Stash the file so the background job can read it later; the job
+        // deletes the temporary file when it is done.
+        const storage = await storeIngestFileInDb(file, tenantId);
+        const job = await createKnowledgeIngestJob(
+          {
+            kind: "text-import-file",
+            tenantId,
+            userId,
+            storage,
+            deleteAfter: true,
+            options: {
+              title: form.get("title")?.toString() || undefined,
+              parentId: form.get("parentId")?.toString() || undefined,
+              teamId: form.get("teamId")?.toString() || undefined,
+              tenantWide: form.get("tenantWide")?.toString() === "true",
+              embeddingEnabled:
+                form.get("embeddingEnabled")?.toString() === "true",
+              splitIntoBlocks:
+                form.get("splitIntoBlocks")?.toString() !== "false",
+              usePostProcessors: form
+                .get("usePostProcessors")
+                ?.toString()
+                .split(",")
+                .map((s) => s.trim())
+                .filter((s) => s.length > 0),
+            },
+          },
           tenantId,
-          userId,
-          title: form.get("title")?.toString() || undefined,
-          parentId: form.get("parentId")?.toString() || undefined,
-          teamId: form.get("teamId")?.toString() || undefined,
-          tenantWide: form.get("tenantWide")?.toString() === "true",
-          embeddingEnabled:
-            form.get("embeddingEnabled")?.toString() === "true",
-          splitIntoBlocks:
-            form.get("splitIntoBlocks")?.toString() !== "false",
-          usePostProcessors: form
-            .get("usePostProcessors")
-            ?.toString()
-            .split(",")
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0),
-        });
-        return c.json(r);
+          userId
+        );
+        return c.json(job);
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
       }
@@ -277,11 +294,16 @@ export default function defineRoutesForKnowledgeTexts(
     checkUserPermission,
     describeRoute({
       tags: ["knowledge"],
-      summary: "Import a web page as a knowledge text wiki page",
+      summary:
+        "Start a background job to import a web page as a knowledge text wiki page (returns the Job)",
       responses: {
         200: {
-          description:
-            "Successful response with the created page and its blocks",
+          description: "The created ingestion job",
+          content: {
+            "application/json": {
+              schema: resolver(jobsSelectSchema),
+            },
+          },
         },
       },
     }),
@@ -307,18 +329,28 @@ export default function defineRoutesForKnowledgeTexts(
         const userId = c.get("usersId");
         const body = c.req.valid("json");
 
-        const r = await importKnowledgeTextFromUrl(body.url, {
+        const job = await createKnowledgeIngestJob(
+          {
+            kind: "text-import-url",
+            tenantId,
+            userId,
+            params: {
+              url: body.url,
+              options: {
+                title: body.title,
+                parentId: body.parentId,
+                teamId: body.teamId,
+                tenantWide: body.tenantWide,
+                embeddingEnabled: body.embeddingEnabled,
+                splitIntoBlocks: body.splitIntoBlocks,
+                usePostProcessors: body.usePostProcessors,
+              },
+            },
+          },
           tenantId,
-          userId,
-          title: body.title,
-          parentId: body.parentId,
-          teamId: body.teamId,
-          tenantWide: body.tenantWide,
-          embeddingEnabled: body.embeddingEnabled,
-          splitIntoBlocks: body.splitIntoBlocks,
-          usePostProcessors: body.usePostProcessors,
-        });
-        return c.json(r);
+          userId
+        );
+        return c.json(job);
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
       }

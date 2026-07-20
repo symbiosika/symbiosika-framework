@@ -6,12 +6,10 @@ import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import * as v from "valibot";
 import { HTTPException } from "hono/http-exception";
 import {
-  extractKnowledgeFromExistingDbEntry,
-  extractKnowledgeFromText,
-  extractKnowledgeInOneStep,
-} from "../../../../lib/knowledge/add-knowledge";
-import { parseDocument } from "../../../../lib/knowledge/parsing";
-import { urlToMarkdown } from "../../../../lib/knowledge/parsing/url";
+  createKnowledgeIngestJob,
+  storeIngestFileInDb,
+} from "../../../../lib/knowledge/ingestion-jobs";
+import { jobsSelectSchema } from "../../../../lib/db/schema/jobs";
 import {
   getFullSourceDocumentsForKnowledgeEntry,
   getKnowledgeEntries,
@@ -36,10 +34,7 @@ import { resolver, validator } from "hono-openapi";
 import { knowledgeEntrySchema } from "../../../../lib/db/db-schema";
 import { isTenantAdmin, isTenantMember } from "../..";
 import { validateScope } from "../../../../lib/utils/validate-scope";
-import {
-  applyPostProcessors,
-  getAllPostProcessors,
-} from "../../../../lib/knowledge/parsing/post-processors";
+import { getAllPostProcessors } from "../../../../lib/knowledge/parsing/post-processors";
 
 const FileSourceType = {
   DB: "db",
@@ -500,8 +495,13 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
   );
 
   /**
-   * Call the knowledge extraction from a document to generate embeddings in the database
-   * A document can be a plain text in the DB, a markdown file, an PDF file, an image, etc.
+   * Start a background job that extracts knowledge from a document to generate
+   * embeddings in the database. A document can be a plain text in the DB, a
+   * markdown file, a PDF file, an image, etc.
+   *
+   * NOTE: this endpoint no longer waits for the extraction to finish. It
+   * returns the created Job immediately; poll `GET /tenant/:tenantId/jobs/:id`
+   * for status and the `{ id, ok }` result.
    */
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/extract-knowledge",
@@ -509,18 +509,14 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
     checkUserPermission,
     describeRoute({
       tags: ["knowledge"],
-      summary: "Extract knowledge from a document",
+      summary:
+        "Start a background job to extract knowledge from a document (returns the Job)",
       responses: {
         200: {
-          description: "Successful response",
+          description: "The created ingestion job",
           content: {
             "application/json": {
-              schema: resolver(
-                v.object({
-                  id: v.string(),
-                  ok: v.boolean(),
-                })
-              ),
+              schema: resolver(jobsSelectSchema),
             },
           },
         },
@@ -535,13 +531,15 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
         const body = c.req.valid("json");
         const { tenantId } = c.req.valid("param");
         validateOrganisationId(body, tenantId);
+        const userId = c.get("usersId");
 
-        const r = await extractKnowledgeFromExistingDbEntry({
-          ...body,
+        const { tenantId: _t, ...params } = body;
+        const job = await createKnowledgeIngestJob(
+          { kind: "rag-existing", tenantId, userId, params },
           tenantId,
-          userId: c.get("usersId"),
-        });
-        return c.json(r);
+          userId
+        );
+        return c.json(job);
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
       }
@@ -549,8 +547,13 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
   );
 
   /**
-   * Upload a file, learn from it, and then delete it
-   * This endpoint combines file upload and knowledge extraction in one step
+   * Upload a file and start a background job that learns from it.
+   *
+   * The uploaded file is stashed in DB storage and processed asynchronously;
+   * the temporary file is deleted once the job has run. This endpoint returns
+   * the created Job immediately instead of waiting for parsing + embedding.
+   * Poll `GET /tenant/:tenantId/jobs/:id` for status and the `{ id, ok }`
+   * result.
    */
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/upload-and-extract",
@@ -558,7 +561,8 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
     checkUserPermission,
     describeRoute({
       tags: ["knowledge"],
-      summary: "Upload a file and extract knowledge in one step",
+      summary:
+        "Upload a file and start a background job to extract knowledge (returns the Job)",
       requestBody: {
         content: {
           "multipart/form-data": {
@@ -578,15 +582,10 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
       },
       responses: {
         200: {
-          description: "Successful response",
+          description: "The created ingestion job",
           content: {
             "application/json": {
-              schema: resolver(
-                v.object({
-                  id: v.string(),
-                  ok: v.boolean(),
-                })
-              ),
+              schema: resolver(jobsSelectSchema),
             },
           },
         },
@@ -599,7 +598,7 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
     validator("param", v.object({ tenantId: v.string() })),
     isTenantMember,
     async (c) => {
-      const tenantId = c.req.param("tenantId");
+      const { tenantId } = c.req.valid("param");
       const contentType = c.req.header("content-type");
       const userId = c.get("usersId");
 
@@ -672,20 +671,45 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
 
       try {
         const parsedData = v.parse(uploadAndLearnValidation, data);
-        const r = await extractKnowledgeInOneStep(
-          { ...parsedData, file },
-          true
+
+        if (!(file instanceof File)) {
+          throw new HTTPException(400, {
+            message: "No file provided for upload-and-extract.",
+          });
+        }
+
+        // Stash the file so the background job can read it later, then hand
+        // back the job. The job deletes the temporary file when it is done.
+        const storage = await storeIngestFileInDb(file, tenantId);
+        const { tenantId: _t, userId: _u, ...options } = parsedData;
+        const job = await createKnowledgeIngestJob(
+          {
+            kind: "rag-upload",
+            tenantId,
+            userId,
+            storage,
+            deleteAfter: true,
+            options,
+          },
+          tenantId,
+          userId
         );
-        return c.json(r);
+        return c.json(job);
       } catch (e) {
+        if (e instanceof HTTPException) {
+          throw e;
+        }
         throw new HTTPException(400, { message: e + "" });
       }
     }
   );
 
   /**
-   * Add a text knowledge entry from a Text
-   * This will create a knowledge-text entry
+   * Add a text knowledge entry from a Text.
+   *
+   * Starts a background job (post-processing + chunking + embedding) and
+   * returns the created Job immediately. Poll
+   * `GET /tenant/:tenantId/jobs/:id` for status and the `{ id, ok }` result.
    */
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/from-text",
@@ -693,13 +717,14 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
     checkUserPermission,
     describeRoute({
       tags: ["knowledge"],
-      summary: "Add a text knowledge entry from text",
+      summary:
+        "Start a background job to add a text knowledge entry (returns the Job)",
       responses: {
         200: {
-          description: "Successful response",
+          description: "The created ingestion job",
           content: {
             "application/json": {
-              schema: resolver(knowledgeEntrySchema),
+              schema: resolver(jobsSelectSchema),
             },
           },
         },
@@ -714,36 +739,30 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
         const data = c.req.valid("json");
         const { tenantId } = c.req.valid("param");
         validateOrganisationId(data, tenantId);
+        const userId = c.get("usersId");
 
-        const processed = await applyPostProcessors(
+        const job = await createKnowledgeIngestJob(
           {
-            text: data.text,
-            title: data.title,
-            source: { type: "text", includesImages: false },
-            context: { tenantId, userId: c.get("usersId") },
+            kind: "rag-text",
+            tenantId,
+            userId,
+            params: {
+              text: data.text,
+              title: data.title,
+              filters: data.filters,
+              teamId: data.teamId,
+              workspaceId: data.workspaceId,
+              knowledgeGroupId: data.knowledgeGroupId,
+              userOwned: data.userOwned,
+              meta: data.meta,
+              usePostProcessors: data.usePostProcessors,
+            },
           },
-          data.usePostProcessors
+          tenantId,
+          userId
         );
-        const text = processed.text;
 
-        const r = await extractKnowledgeFromText({
-          userId: c.get("usersId"),
-          tenantId: data.tenantId,
-          title: processed.title ?? data.title,
-          text,
-          filters: data.filters,
-          teamId: data.teamId,
-          workspaceId: data.workspaceId,
-          knowledgeGroupId: data.knowledgeGroupId,
-          userOwned: data.userOwned,
-          sourceExternalId: data.meta?.sourceId ?? data.title,
-          sourceType: "external",
-          sourceFileBucket: "default",
-          sourceUrl: data.meta?.sourceUri ?? data.title,
-          includesLocalImages: false,
-        });
-
-        return c.json(r);
+        return c.json(job);
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
       }
@@ -751,9 +770,12 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
   );
 
   /**
-   * Add a knowledge entry from a URL (HTML page)
-   * Fetches the URL, extracts the readable article using Mozilla Readability
-   * and converts it to markdown via Turndown (with GFM tables/strikethrough/task-lists).
+   * Add a knowledge entry from a URL (HTML page or linked PDF).
+   *
+   * Starts a background job that fetches the URL, extracts the readable
+   * article (Mozilla Readability + Turndown) or parses a linked PDF, and
+   * embeds it. Returns the created Job immediately; poll
+   * `GET /tenant/:tenantId/jobs/:id` for status and the `{ id, ok }` result.
    */
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/from-url",
@@ -761,13 +783,14 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
     checkUserPermission,
     describeRoute({
       tags: ["knowledge"],
-      summary: "Add a knowledge entry from a URL (HTML → markdown)",
+      summary:
+        "Start a background job to add a knowledge entry from a URL (returns the Job)",
       responses: {
         200: {
-          description: "Successful response",
+          description: "The created ingestion job",
           content: {
             "application/json": {
-              schema: resolver(knowledgeEntrySchema),
+              schema: resolver(jobsSelectSchema),
             },
           },
         },
@@ -782,7 +805,10 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
         const data = c.req.valid("json");
         const { tenantId } = c.req.valid("param");
         validateOrganisationId(data, tenantId);
+        const userId = c.get("usersId");
 
+        // Cheap synchronous guard so obviously-bad input fails fast instead of
+        // via a failed job.
         if (
           !data.url.startsWith("http://") &&
           !data.url.startsWith("https://")
@@ -790,49 +816,26 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
           throw new Error("URL must start with http:// or https://");
         }
 
-        const parsed = await urlToMarkdown(data.url, {
-          parseContext: { tenantId },
-        });
-
-        if (!parsed.markdown || parsed.markdown.trim().length === 0) {
-          throw new Error(
-            `No readable content could be extracted from ${data.url}`
-          );
-        }
-
-        const processed = await applyPostProcessors(
+        const job = await createKnowledgeIngestJob(
           {
-            text: parsed.markdown,
-            title: parsed.title,
-            source: { type: "url", url: data.url, includesImages: false },
-            context: { tenantId, userId: c.get("usersId") },
+            kind: "rag-url",
+            tenantId,
+            userId,
+            params: {
+              url: data.url,
+              filters: data.filters,
+              teamId: data.teamId,
+              workspaceId: data.workspaceId,
+              knowledgeGroupId: data.knowledgeGroupId,
+              userOwned: data.userOwned,
+              usePostProcessors: data.usePostProcessors,
+            },
           },
-          data.usePostProcessors
+          tenantId,
+          userId
         );
-        const text = processed.text;
 
-        const r = await extractKnowledgeFromText({
-          userId: c.get("usersId"),
-          tenantId: data.tenantId,
-          title: processed.title ?? parsed.title,
-          text,
-          filters: data.filters,
-          teamId: data.teamId,
-          workspaceId: data.workspaceId,
-          knowledgeGroupId: data.knowledgeGroupId,
-          userOwned: data.userOwned,
-          sourceType: "url",
-          sourceUrl: data.url,
-          sourceFileBucket: "default",
-          metadata: {
-            ...(parsed.excerpt ? { excerpt: parsed.excerpt } : {}),
-            ...(parsed.byline ? { byline: parsed.byline } : {}),
-            ...(parsed.siteName ? { siteName: parsed.siteName } : {}),
-          },
-          includesLocalImages: false,
-        });
-
-        return c.json(r);
+        return c.json(job);
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
       }

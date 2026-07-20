@@ -24,6 +24,7 @@ import {
 } from "../db/schema/knowledge";
 import { parseDocument, parseFile } from "./parsing";
 import { applyPostProcessors } from "./parsing/post-processors";
+import { urlToMarkdown } from "./parsing/url";
 import type { PageContent } from "./parsing/pdf/types";
 import { generateEmbedding } from "./embedding";
 
@@ -406,4 +407,116 @@ export const extractKnowledgeInOneStep = async (
   else {
     throw new Error("No file or text provided");
   }
+};
+
+/**
+ * Extract knowledge from a web page (HTML → markdown via Readability/Turndown,
+ * or a linked PDF) and store it as a knowledge entry.
+ *
+ * Extracted from the former synchronous `POST .../knowledge/from-url` route so
+ * the exact same logic can now run inside a background job. Returns
+ * `{ id, ok }` — the created knowledge entry id.
+ */
+export const extractKnowledgeFromUrl = async (data: {
+  tenantId: string;
+  url: string;
+  filters?: Record<string, string>;
+  teamId?: string;
+  userId?: string;
+  workspaceId?: string;
+  knowledgeGroupId?: string;
+  userOwned?: boolean;
+  usePostProcessors?: string[];
+}) => {
+  if (!data.url.startsWith("http://") && !data.url.startsWith("https://")) {
+    throw new Error("URL must start with http:// or https://");
+  }
+
+  const parsed = await urlToMarkdown(data.url, {
+    parseContext: { tenantId: data.tenantId },
+  });
+
+  if (!parsed.markdown || parsed.markdown.trim().length === 0) {
+    throw new Error(`No readable content could be extracted from ${data.url}`);
+  }
+
+  const processed = await applyPostProcessors(
+    {
+      text: parsed.markdown,
+      title: parsed.title,
+      source: { type: "url", url: data.url, includesImages: false },
+      context: { tenantId: data.tenantId, userId: data.userId },
+    },
+    data.usePostProcessors
+  );
+
+  return extractKnowledgeFromText({
+    userId: data.userId,
+    tenantId: data.tenantId,
+    title: processed.title ?? parsed.title,
+    text: processed.text,
+    filters: data.filters,
+    teamId: data.teamId,
+    workspaceId: data.workspaceId,
+    knowledgeGroupId: data.knowledgeGroupId,
+    userOwned: data.userOwned,
+    sourceType: "url",
+    sourceUrl: data.url,
+    sourceFileBucket: "default",
+    metadata: {
+      ...(parsed.excerpt ? { excerpt: parsed.excerpt } : {}),
+      ...(parsed.byline ? { byline: parsed.byline } : {}),
+      ...(parsed.siteName ? { siteName: parsed.siteName } : {}),
+    },
+    includesLocalImages: false,
+  });
+};
+
+/**
+ * Extract knowledge from a plain text (with optional post-processing) and store
+ * it as a knowledge entry.
+ *
+ * Extracted from the former synchronous `POST .../knowledge/from-text` route so
+ * the exact same logic can now run inside a background job. Returns
+ * `{ id, ok }` — the created knowledge entry id.
+ */
+export const extractKnowledgeFromPlainText = async (data: {
+  tenantId: string;
+  text: string;
+  title: string;
+  filters?: Record<string, string>;
+  teamId?: string;
+  userId?: string;
+  workspaceId?: string;
+  knowledgeGroupId?: string;
+  userOwned?: boolean;
+  meta?: { sourceUri: string; sourceId: string };
+  usePostProcessors?: string[];
+}) => {
+  const processed = await applyPostProcessors(
+    {
+      text: data.text,
+      title: data.title,
+      source: { type: "text", includesImages: false },
+      context: { tenantId: data.tenantId, userId: data.userId },
+    },
+    data.usePostProcessors
+  );
+
+  return extractKnowledgeFromText({
+    userId: data.userId,
+    tenantId: data.tenantId,
+    title: processed.title ?? data.title,
+    text: processed.text,
+    filters: data.filters,
+    teamId: data.teamId,
+    workspaceId: data.workspaceId,
+    knowledgeGroupId: data.knowledgeGroupId,
+    userOwned: data.userOwned,
+    sourceExternalId: data.meta?.sourceId ?? data.title,
+    sourceType: "external",
+    sourceFileBucket: "default",
+    sourceUrl: data.meta?.sourceUri ?? data.title,
+    includesLocalImages: false,
+  });
 };

@@ -8,9 +8,24 @@ import {
   createDatabaseClient,
   waitForDbConnection,
 } from "../../../../../lib/db/db-connection";
+import { processDueJobsOnce, getJob } from "../../../../../lib/jobs";
 
 let app = new Hono<{ Variables: SFContextVariables }>();
 let TEST_USER_1_TOKEN: string;
+
+/**
+ * The import routes now return a Job. Run the just-created job to completion
+ * (the built-in ingest handler is registered in `initTests`) and return the
+ * `{ knowledgeText, blocks }` result stored on the job.
+ */
+const runImportJob = async (job: any) => {
+  expect(job.id).toBeDefined();
+  expect(job.type).toBe("knowledge:ingest");
+  await processDueJobsOnce();
+  const finished = await getJob(job.id);
+  expect(finished.status).toBe("completed");
+  return finished.result as any;
+};
 
 const SCOPE_ID = crypto.randomUUID();
 
@@ -43,10 +58,11 @@ describe("Knowledge Text Import & Sync API", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.jsonResponse.knowledgeText.title).toBe("imported-doc");
-    expect(response.jsonResponse.knowledgeText.contentMode).toBe("blocks");
-    expect(response.jsonResponse.blocks.length).toBe(2);
-  });
+    const result = await runImportJob(response.jsonResponse);
+    expect(result.knowledgeText.title).toBe("imported-doc");
+    expect(result.knowledgeText.contentMode).toBe("blocks");
+    expect(result.blocks.length).toBe(2);
+  }, 30000);
 
   test("POST import honors title and splitIntoBlocks fields", async () => {
     const form = new FormData();
@@ -65,9 +81,10 @@ describe("Knowledge Text Import & Sync API", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.jsonResponse.knowledgeText.title).toBe("My Custom Title");
-    expect(response.jsonResponse.knowledgeText.contentMode).toBe("text");
-  });
+    const result = await runImportJob(response.jsonResponse);
+    expect(result.knowledgeText.title).toBe("My Custom Title");
+    expect(result.knowledgeText.contentMode).toBe("text");
+  }, 30000);
 
   test("POST import without a file returns 400", async () => {
     const form = new FormData();

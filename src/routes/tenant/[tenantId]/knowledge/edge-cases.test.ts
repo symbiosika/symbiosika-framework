@@ -9,6 +9,7 @@ import {
   createDatabaseClient,
   waitForDbConnection,
 } from "../../../../lib/db/db-connection";
+import { processDueJobsOnce, getJob } from "../../../../lib/jobs";
 
 let appKnowledge = new Hono<{ Variables: SFContextVariables }>();
 let appKnowledgeTexts = new Hono<{ Variables: SFContextVariables }>();
@@ -120,9 +121,16 @@ describe("Knowledge API Edge Cases", () => {
       extractData
     );
 
-    // Should return an error for non-existent source
-    expect(response.status).toBe(400);
-  });
+    // Ingestion is now asynchronous: the endpoint accepts the request and
+    // returns a Job. The non-existent source surfaces as a failed job, not a
+    // synchronous 400.
+    expect(response.status).toBe(200);
+    expect(response.jsonResponse.id).toBeDefined();
+
+    await processDueJobsOnce();
+    const finished = await getJob(response.jsonResponse.id);
+    expect(finished.status).toBe("failed");
+  }, 30000);
 
   test("Get non-existent knowledge entry", async () => {
     const nonExistentId = "00000000-0000-0000-0000-000000000000";
