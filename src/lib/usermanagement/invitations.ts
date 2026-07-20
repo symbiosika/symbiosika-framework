@@ -4,6 +4,7 @@
  */
 
 import { eq, and } from "drizzle-orm";
+import jwt from "jsonwebtoken";
 import {
   invitationCodes,
   tenantInvitations,
@@ -116,11 +117,16 @@ export const acceptTenantInvitation = async (
       .set({ status: "accepted" })
       .where(eq(tenantInvitations.id, invitationId));
 
-    await trx.insert(tenantMembers).values({
-      userId,
-      tenantId: invitation.tenantId,
-      role: invitation.role,
-    });
+    // Stay idempotent: re-accepting an invitation for a tenant the user is
+    // already a member of must not fail on the primary-key conflict.
+    await trx
+      .insert(tenantMembers)
+      .values({
+        userId,
+        tenantId: invitation.tenantId,
+        role: invitation.role,
+      })
+      .onConflictDoNothing();
 
     await trx
       .update(users)
@@ -132,6 +138,149 @@ export const acceptTenantInvitation = async (
   });
 
   await setUsersLastTenant(userId, invitation.tenantId);
+};
+
+/**
+ * Secure, self-contained token that encodes a single tenant invitation.
+ *
+ * The token is a short-lived JWT signed with the server's JWT key (the same
+ * symmetric key used for login sessions). It carries only the invitation id
+ * plus a dedicated `purpose` claim, so it can never be mistaken for a login /
+ * session token. Because the invitation email is delivered to the invitee's
+ * mailbox, possession of the token proves control of that address – the same
+ * trust model as a magic login link.
+ */
+const INVITATION_TOKEN_PURPOSE = "tenant_invitation";
+// 7 days – matches the "valid for 7 days" copy in the invitation emails.
+const INVITATION_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
+
+const getInvitationTokenKey = () => process.env.JWT_PRIVATE_KEY || "";
+
+/**
+ * Create a signed acceptance token for an invitation id.
+ */
+export const createInvitationToken = (invitationId: string): string => {
+  return jwt.sign(
+    { invitationId, purpose: INVITATION_TOKEN_PURPOSE },
+    getInvitationTokenKey(),
+    { expiresIn: INVITATION_TOKEN_TTL_SECONDS }
+  );
+};
+
+/**
+ * Verify an acceptance token and extract its invitation id. Throws when the
+ * token is invalid, expired, or not an invitation token.
+ */
+export const verifyInvitationToken = (
+  token: string
+): { invitationId: string } => {
+  const decoded = jwt.verify(token, getInvitationTokenKey()) as
+    | { invitationId?: string; purpose?: string }
+    | string;
+  if (
+    !decoded ||
+    typeof decoded === "string" ||
+    decoded.purpose !== INVITATION_TOKEN_PURPOSE ||
+    !decoded.invitationId
+  ) {
+    throw new Error("Invalid invitation token");
+  }
+  return { invitationId: decoded.invitationId };
+};
+
+export type AcceptInvitationByTokenResult =
+  | {
+      status: "accepted";
+      userId: string;
+      tenantId: string;
+      email: string;
+    }
+  | {
+      status: "needs_registration";
+      tenantId: string;
+      email: string;
+    };
+
+/**
+ * Accept a tenant invitation directly from the token embedded in the
+ * invitation email – the "one click = accepted" flow.
+ *
+ * - Existing users: the invitation is accepted immediately and the caller is
+ *   handed the userId so it can establish a login session.
+ * - Not-yet-registered emails: a membership cannot exist before an account
+ *   does, so the caller is told to route the user through registration. The
+ *   registration flow (`LocalAuth.register`) auto-accepts every pending
+ *   invitation for the email, so membership is confirmed the moment the
+ *   account is created.
+ *
+ * The function is idempotent: clicking the link a second time (or a mail
+ * scanner pre-opening it) does not error once the invitation is accepted.
+ */
+export const acceptInvitationByToken = async (
+  token: string
+): Promise<AcceptInvitationByTokenResult> => {
+  const { invitationId } = verifyInvitationToken(token);
+
+  const [invitation] = await getDb()
+    .select()
+    .from(tenantInvitations)
+    .where(eq(tenantInvitations.id, invitationId));
+
+  if (!invitation) {
+    throw new Error("Invitation not found");
+  }
+
+  // Look up the invited user by the invitation email.
+  const [user] = await getDb()
+    .select({ id: users.id, email: users.email })
+    .from(users)
+    .where(eq(users.email, invitation.email));
+
+  // No account yet -> the user must register first. Registration will pick up
+  // and accept this (still pending) invitation automatically.
+  if (!user) {
+    return {
+      status: "needs_registration",
+      tenantId: invitation.tenantId,
+      email: invitation.email,
+    };
+  }
+
+  if (invitation.status === "pending") {
+    // Normal case: accept the still-pending invitation.
+    await acceptTenantInvitation(invitation.id, user.id, invitation.tenantId);
+  } else {
+    // Already accepted (or previously declined) -> keep the result idempotent
+    // by ensuring the membership exists and the invitation is marked accepted.
+    await getDb().transaction(async (trx) => {
+      await trx
+        .update(tenantInvitations)
+        .set({ status: "accepted" })
+        .where(eq(tenantInvitations.id, invitation.id));
+
+      await trx
+        .insert(tenantMembers)
+        .values({
+          userId: user.id,
+          tenantId: invitation.tenantId,
+          role: invitation.role,
+        })
+        .onConflictDoNothing();
+
+      await trx
+        .update(users)
+        .set({ emailVerified: true, lastTenantId: invitation.tenantId })
+        .where(eq(users.id, user.id));
+    });
+    await setUsersLastTenant(user.id, invitation.tenantId);
+  }
+
+  return {
+    status: "accepted",
+    userId: user.id,
+    tenantId: invitation.tenantId,
+    email: invitation.email,
+  };
 };
 
 /**
@@ -176,11 +325,17 @@ export const acceptAllPendingInvitationsForTenantMember = async (
         .set({ status: "accepted" })
         .where(eq(tenantInvitations.id, invitation.id));
 
-      await trx.insert(tenantMembers).values({
-        userId,
-        tenantId: invitation.tenantId,
-        role: "member",
-      });
+      // Honor the role from the invitation (an admin invite must not be
+      // silently downgraded to "member") and stay idempotent if the user is
+      // already a member of the tenant.
+      await trx
+        .insert(tenantMembers)
+        .values({
+          userId,
+          tenantId: invitation.tenantId,
+          role: invitation.role,
+        })
+        .onConflictDoNothing();
     }
   });
 
@@ -281,6 +436,13 @@ export const createTenantInvitation = async (
     // check if user exists
     const user = await getUserByEmail(dataWithStatus.email).catch(() => {});
 
+    // Single "one click = accept" link for both new and existing users. It
+    // points at the public accept-invitation endpoint, which accepts the
+    // membership on click and either logs an existing user straight in or
+    // forwards a new user to registration (which then auto-accepts).
+    const acceptToken = createInvitationToken(result.id);
+    const acceptLink = `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.basePath}/user/accept-invitation?token=${encodeURIComponent(acceptToken)}`;
+
     // when the user is existing send only invite to tenant
     if (user) {
       const { html, subject } =
@@ -289,7 +451,7 @@ export const createTenantInvitation = async (
             appName: _GLOBAL_SERVER_CONFIG.appName,
             baseUrl: _GLOBAL_SERVER_CONFIG.baseUrl,
             logoUrl: _GLOBAL_SERVER_CONFIG.logoUrl,
-            link: `${_GLOBAL_SERVER_CONFIG.baseUrl || "http://localhost:3000"}/static/app/#/shared/tenants`,
+            link: acceptLink,
             user: {
               firstname: user.firstname,
               surname: user.surname,
@@ -315,7 +477,7 @@ export const createTenantInvitation = async (
           appName: _GLOBAL_SERVER_CONFIG.appName,
           baseUrl: _GLOBAL_SERVER_CONFIG.baseUrl,
           logoUrl: _GLOBAL_SERVER_CONFIG.logoUrl,
-          link: `${_GLOBAL_SERVER_CONFIG.baseUrl}${_GLOBAL_SERVER_CONFIG.loginUrl}?register=true&email=${encodeURIComponent(dataWithStatus.email)}&hideInvitationCode=true`,
+          link: acceptLink,
           tenant: {
             id: dataWithStatus.tenantId,
             name: tenantRes.name,

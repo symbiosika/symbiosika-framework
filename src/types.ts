@@ -67,6 +67,9 @@ export interface ServerSpecificConfig {
   verifyEmailUrl?: string;
   resetPasswordUrl?: string;
   oauthCallbackUrl?: string;
+  // Where an existing user is redirected after accepting a tenant invitation
+  // via the emailed link (relative to baseUrl). Defaults to "/".
+  invitationAcceptRedirectUrl?: string;
 
   authType?: "local" | "auth0" | "hanko";
   jwtExpiresAfter?: number;
