@@ -31,6 +31,8 @@ import { assignPositions } from "../utils/fractional-index";
 import {
   getKnowledgeTextById,
   checkKnowledgeTextWritePermission,
+  stripNullBytes,
+  runBookkeepingSafe,
 } from "./knowledge-texts";
 import { syncKnowledgeTextEmbeddingSafe } from "./knowledge-text-embedding";
 import { syncKnowledgeTextLinks } from "./knowledge-text-links";
@@ -193,6 +195,14 @@ export const syncKnowledgeTextBlocks = async (
   context: Context,
   options?: SyncKnowledgeTextBlocksOptions
 ): Promise<SyncKnowledgeTextBlocksResult> => {
+  // Postgres cannot store NUL bytes; strip them before diffing so both the
+  // block rows and the materialized `text` cache stay storable (matches the
+  // sanitizing in createKnowledgeText/updateKnowledgeText)
+  blocks = blocks.map((block) => ({
+    ...block,
+    content: stripNullBytes(block.content),
+  }));
+
   const page = await getKnowledgeTextById(knowledgeTextId, context);
   await checkKnowledgeTextWritePermission(page, context);
 
@@ -314,16 +324,20 @@ export const syncKnowledgeTextBlocks = async (
         .where(eq(knowledgeText.id, knowledgeTextId));
     });
 
-    await syncKnowledgeTextLinks({
-      id: knowledgeTextId,
-      tenantId: page.tenantId,
-      text: newText,
-    });
-    await syncKnowledgeTextFileReferences({
-      id: knowledgeTextId,
-      tenantId: page.tenantId,
-      text: newText,
-    });
+    await runBookkeepingSafe("links", () =>
+      syncKnowledgeTextLinks({
+        id: knowledgeTextId,
+        tenantId: page.tenantId,
+        text: newText,
+      })
+    );
+    await runBookkeepingSafe("file-references", () =>
+      syncKnowledgeTextFileReferences({
+        id: knowledgeTextId,
+        tenantId: page.tenantId,
+        text: newText,
+      })
+    );
 
     if (page.embeddingEnabled && !options?.skipEmbeddingSync) {
       await syncKnowledgeTextEmbeddingSafe(knowledgeTextId, page.tenantId);
