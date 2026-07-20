@@ -26,6 +26,10 @@ export type SimplifiedKnowledgeText = {
   content: string;
   /** only present when requested with `recursive: true` */
   children?: SimplifiedKnowledgeText[];
+  /** A5: content was cut to stay within the maxChars budget. */
+  contentTruncated?: boolean;
+  /** A5: this node has children that were not expanded due to maxDepth. */
+  childrenOmitted?: boolean;
 };
 
 type Context = {
@@ -61,13 +65,43 @@ const byWikiOrder = (a: PageRow, b: PageRow): number => {
 export const getSimplifiedKnowledgeText = async (
   id: string,
   context: Context,
-  options?: { recursive?: boolean }
+  options?: {
+    recursive?: boolean;
+    /** A5: maximum subtree depth (root = 0). Deeper nodes are not expanded. */
+    maxDepth?: number;
+    /** A5: total character budget across all node contents. */
+    maxChars?: number;
+  }
 ): Promise<SimplifiedKnowledgeText> => {
   // permission check for the root (throws if not visible)
   const root = await getKnowledgeTextById(id, context);
 
+  // A5: apply the char budget to a single node's content, truncating
+  // explicitly (never silently) and reporting how much budget is left.
+  const applyCharBudget = (
+    content: string,
+    remaining: number | undefined
+  ): { content: string; truncated: boolean; remaining: number | undefined } => {
+    if (remaining === undefined) return { content, truncated: false, remaining };
+    if (remaining <= 0) return { content: "", truncated: true, remaining: 0 };
+    if (content.length > remaining) {
+      return {
+        content: content.slice(0, remaining),
+        truncated: true,
+        remaining: 0,
+      };
+    }
+    return { content, truncated: false, remaining: remaining - content.length };
+  };
+
   if (!options?.recursive) {
-    return { id: root.id, title: root.title, content: root.text };
+    const { content, truncated } = applyCharBudget(root.text, options?.maxChars);
+    return {
+      id: root.id,
+      title: root.title,
+      content,
+      ...(truncated ? { contentTruncated: true } : {}),
+    };
   }
 
   // One query for every page the caller may see in this tenant; the tree is
@@ -96,24 +130,47 @@ export const getSimplifiedKnowledgeText = async (
   }
 
   const visited = new Set<string>();
-  const buildNode = (row: PageRow): SimplifiedKnowledgeText => {
+  let remainingChars = options.maxChars;
+  const buildNode = (row: PageRow, depth: number): SimplifiedKnowledgeText => {
     visited.add(row.id);
-    const children = (byParent.get(row.id) ?? [])
-      .filter((child) => !visited.has(child.id)) // cycle protection
-      .map(buildNode);
-    return {
+
+    const budgeted = applyCharBudget(row.text, remainingChars);
+    remainingChars = budgeted.remaining;
+
+    const availableChildren = (byParent.get(row.id) ?? []).filter(
+      (child) => !visited.has(child.id) // cycle protection
+    );
+
+    const node: SimplifiedKnowledgeText = {
       id: row.id,
       title: row.title,
-      content: row.text,
-      children,
+      content: budgeted.content,
     };
+    if (budgeted.truncated) node.contentTruncated = true;
+
+    // A5: stop expanding beyond maxDepth, but flag that children exist.
+    if (
+      options.maxDepth !== undefined &&
+      depth >= options.maxDepth &&
+      availableChildren.length > 0
+    ) {
+      node.childrenOmitted = true;
+      node.children = [];
+      return node;
+    }
+
+    node.children = availableChildren.map((child) => buildNode(child, depth + 1));
+    return node;
   };
 
-  return buildNode({
-    id: root.id,
-    title: root.title,
-    text: root.text,
-    parentId: root.parentId,
-    position: root.position,
-  });
+  return buildNode(
+    {
+      id: root.id,
+      title: root.title,
+      text: root.text,
+      parentId: root.parentId,
+      position: root.position,
+    },
+    0
+  );
 };

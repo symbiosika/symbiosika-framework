@@ -25,6 +25,7 @@ import {
   readKnowledgeTextContent,
   editKnowledgeTextContent,
 } from "../../../../../lib/knowledge/knowledge-text-edit";
+import { appendToKnowledgeText } from "../../../../../lib/knowledge/knowledge-text-agent";
 import { searchKnowledgeTexts } from "../../../../../lib/knowledge/knowledge-text-search";
 import {
   getKnowledgeTextLinks,
@@ -975,6 +976,70 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
+   * A1: append text to a page without a read-modify-write round trip and
+   * without returning the full content. Goes through the normal edit path
+   * (history, permissions, bookkeeping, summary-stale marking).
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/append",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Append text to a knowledge page (no full content in response)",
+      responses: {
+        200: {
+          description: "Append result (id, appendedChars, totalChars)",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({
+                  id: v.string(),
+                  appendedChars: v.number(),
+                  totalChars: v.number(),
+                })
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator(
+      "json",
+      v.object({
+        text: v.string(),
+        separator: v.optional(v.string()),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { text, separator } = c.req.valid("json");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+        const r = await appendToKnowledgeText(
+          id,
+          text,
+          { tenantId, userId },
+          { separator }
+        );
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
+        if (
+          errorMsg.includes("not found") ||
+          errorMsg.includes("access denied")
+        ) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
+      }
+    }
+  );
+
+  /**
    * Upload an image for a wiki page (block editor image upload).
    * Returns the file id, the auth-protected path and a ready-to-insert
    * markdown snippet. The upload expires automatically unless a following
@@ -1216,6 +1281,10 @@ export default function defineRoutesForKnowledgeTexts(
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
         includeHidden: v.optional(v.string()),
+        // A5: subtree limits — cap depth and total characters. Truncations are
+        // flagged explicitly (contentTruncated / childrenOmitted), never silent.
+        maxDepth: v.optional(v.string()),
+        maxChars: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string(), id: v.string() })),
@@ -1227,16 +1296,20 @@ export default function defineRoutesForKnowledgeTexts(
           teamId,
           workspaceId,
           includeHidden: includeHiddenStr,
+          maxDepth: maxDepthStr,
+          maxChars: maxCharsStr,
         } = c.req.valid("query");
         const { tenantId, id } = c.req.valid("param");
         const userId = c.get("usersId");
         const includeHidden = includeHiddenStr === "true";
         const recursive = recursiveStr === "true";
+        const maxDepth = maxDepthStr ? parseInt(maxDepthStr) : undefined;
+        const maxChars = maxCharsStr ? parseInt(maxCharsStr) : undefined;
 
         const r = await getSimplifiedKnowledgeText(
           id,
           { tenantId, userId, teamId, workspaceId, includeHidden },
-          { recursive }
+          { recursive, maxDepth, maxChars }
         );
         return c.json(r);
       } catch (e) {

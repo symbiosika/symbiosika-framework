@@ -26,6 +26,11 @@ import {
   setWikiTenantConfig,
 } from "../../../../../lib/knowledge/wiki-config";
 import { enqueueSummaryBackfill } from "../../../../../lib/knowledge/summaries";
+import {
+  resolvePageByTitle,
+  listRecentChanges,
+  getPagesBatch,
+} from "../../../../../lib/knowledge/knowledge-text-agent";
 
 const wikiConfigSchema = v.object({
   autoSummaries: v.boolean(),
@@ -137,6 +142,111 @@ export default function defineWikiRoutes(
       } catch (e) {
         throw new HTTPException(500, { message: `${e}` });
       }
+    }
+  );
+
+  /**
+   * A2: resolve a page by exact title (case-insensitive, wikilink semantics).
+   * Returns the page ref (without text) or 404.
+   */
+  app.get(
+    base + "/resolve",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["wiki"],
+      summary: "Resolve a wiki page by its exact title",
+      responses: { 200: { description: "Resolved page (without text)" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    validator("query", v.object({ title: v.string() })),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      const { title } = c.req.valid("query");
+      const userId = c.get("usersId");
+      const page = await resolvePageByTitle(title, { tenantId, userId });
+      if (!page) throw new HTTPException(404, { message: "Page not found" });
+      return c.json(page);
+    }
+  );
+
+  /**
+   * A3: recent changes — visible pages newest-first, without text, filterable
+   * by time window, subtree (parentId) and facets. Each item carries
+   * summary + facets + updatedAt + updatedBy.
+   */
+  app.get(
+    base + "/recent-changes",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["wiki"],
+      summary: "List recently changed wiki pages",
+      responses: { 200: { description: "Recently changed pages (no text)" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    validator(
+      "query",
+      v.object({
+        since: v.optional(v.string()),
+        parentId: v.optional(v.string()),
+        pageType: v.optional(v.string()),
+        status: v.optional(v.string()),
+        teamId: v.optional(v.string()),
+        limit: v.optional(v.string()),
+      })
+    ),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      const q = c.req.valid("query");
+      const userId = c.get("usersId");
+      const r = await listRecentChanges(
+        { tenantId, userId, teamId: q.teamId },
+        {
+          since: q.since,
+          parentId: q.parentId,
+          pageType: q.pageType,
+          status: q.status,
+          limit: q.limit ? parseInt(q.limit) : undefined,
+        }
+      );
+      return c.json(r);
+    }
+  );
+
+  /**
+   * A4: batch-read several pages in one call. Body: { ids, includeText? }.
+   * Pages the caller cannot see are silently dropped.
+   */
+  app.post(
+    base + "/pages",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["wiki"],
+      summary: "Read several wiki pages by id in one request",
+      responses: { 200: { description: "Requested visible pages" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    validator(
+      "json",
+      v.object({
+        ids: v.array(v.string()),
+        includeText: v.optional(v.boolean()),
+      })
+    ),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      const { ids, includeText } = c.req.valid("json");
+      const userId = c.get("usersId");
+      const r = await getPagesBatch(ids, { tenantId, userId }, { includeText });
+      return c.json(r);
     }
   );
 }

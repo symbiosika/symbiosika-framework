@@ -613,6 +613,21 @@ export {
 export type { FacetFilters } from "./lib/knowledge/facets";
 
 /**
+ * Export Teil A agent context-economy helpers.
+ */
+export {
+  resolvePageByTitle,
+  listRecentChanges,
+  getPagesBatch,
+  appendToKnowledgeText,
+} from "./lib/knowledge/knowledge-text-agent";
+export type {
+  RecentChangesOptions,
+  BatchReadOptions,
+  AppendResult,
+} from "./lib/knowledge/knowledge-text-agent";
+
+/**
  * Export all services for the customer App
  */
 export { log };
