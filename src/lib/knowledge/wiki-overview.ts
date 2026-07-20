@@ -1,11 +1,11 @@
 /**
- * B2 — the "CLAUDE.md of the wiki": a curated entry point plus an auto-generated
+ * The "CLAUDE.md of the wiki": a curated entry point plus an auto-generated
  * overview, so an agent starts a session briefed rather than exploring blind.
  *
  * getWikiOverview returns, all within the caller's visibility:
  *   - metrics: page count, number of top-level areas, last activity
- *   - top-level structure WITH summaries (B1) and facets (B3)
- *   - the most recently changed pages (reuses A3)
+ *   - top-level structure WITH summaries and facets
+ *   - the most recently changed pages (reuses the recent-changes helper)
  *   - the tenant's agent-instructions page (flagged via isAgentInstructions),
  *     with its content embedded so it can be loaded in one call
  */

@@ -18,7 +18,11 @@ import {
   enqueueSummaryBackfill,
   SUMMARY_JOB_TYPE,
 } from "./summaries";
-import { setServerSetting, SERVER_SETTING_KEYS } from "../server-settings";
+import {
+  createAppSpecificData,
+  updateAppSpecificData,
+} from "../specific-data";
+import { SUMMARY_DEBOUNCE_CONFIG_KEY } from "./summaries";
 
 const TENANT = TEST_ORGANISATION_1.id;
 
@@ -39,7 +43,7 @@ afterEach(() => {
   process.env.MISTRAL_API_KEY = AI_ENV.MISTRAL_API_KEY;
 });
 
-describe("B1 page summaries", () => {
+describe("page summaries", () => {
   beforeAll(async () => {
     await initTests();
   });
@@ -194,10 +198,17 @@ describe("B1 page summaries", () => {
 
     test("sweeper enqueues a job for a stale, quiet page (debounce=0)", async () => {
       enableFakeAi();
-      await setServerSetting(
-        SERVER_SETTING_KEYS.WIKI_SUMMARY_DEBOUNCE_MINUTES,
-        "0"
-      );
+      // set the debounce window to 0 so a freshly-created page is eligible
+      try {
+        await createAppSpecificData({
+          key: SUMMARY_DEBOUNCE_CONFIG_KEY,
+          data: { minutes: 0 },
+        });
+      } catch {
+        await updateAppSpecificData(SUMMARY_DEBOUNCE_CONFIG_KEY, {
+          data: { minutes: 0 },
+        });
+      }
       const page = await createKnowledgeText({
         tenantId: TENANT,
         title: "Sweep me",

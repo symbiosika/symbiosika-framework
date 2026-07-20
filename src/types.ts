@@ -174,7 +174,7 @@ export interface ServerSpecificConfig {
   fileCleanupCron?: string;
   /**
    * Schedule (standard Linux cron syntax) for the debounced wiki page-summary
-   * sweeper (B1). Only active when a global LLM is configured (AI_PROVIDER).
+   * sweeper. Only active when a global LLM is configured (AI_PROVIDER).
    * Default: "* * * * *" (every minute).
    */
   wikiSummarySweepCron?: string;

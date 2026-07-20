@@ -12,7 +12,7 @@ const ctx = { tenantId: TENANT };
 // distinctive token so results don't collide with other seeded pages
 const TOKEN = "zylophonqx";
 
-describe("B4 search upgrade", () => {
+describe("enriched wiki search", () => {
   beforeAll(async () => {
     await initTests();
   });

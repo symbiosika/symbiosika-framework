@@ -1,5 +1,5 @@
 /**
- * B3 — controlled facets for wiki pages.
+ * Controlled facets for wiki pages.
  *
  * Facets are first-class columns on knowledgeText (pageType, status, owner,
  * validUntil, supersedes) drawn from a small controlled vocabulary configured

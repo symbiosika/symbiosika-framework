@@ -11,7 +11,7 @@ import { setWikiTenantConfig, getWikiTenantConfig } from "./wiki-config";
 
 const TENANT = TEST_ORGANISATION_1.id;
 
-describe("B3 controlled facets", () => {
+describe("controlled facets", () => {
   beforeAll(async () => {
     await initTests();
   });

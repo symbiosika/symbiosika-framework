@@ -140,7 +140,7 @@ export const checkKnowledgeTextWritePermission = async (
 export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
   data = sanitizeKnowledgeTextData(data);
 
-  // B3: reject facet values outside the tenant's controlled vocabulary.
+  // reject facet values outside the tenant's controlled vocabulary.
   await validateFacetsForWrite(data.tenantId, data);
 
   // Audit: a freshly created page is "updated" by its creator, so default
@@ -149,7 +149,7 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
     data = { ...data, updatedBy: data.createdBy };
   }
 
-  // B1: a new page with content and an auto summary starts out stale, so the
+  // a new page with content and an auto summary starts out stale, so the
   // sweeper generates its summary once it has been quiet for the debounce
   // window. Explicit/manual summaries are left as provided.
   if (
@@ -274,7 +274,7 @@ export const getKnowledgeText = async (
   // Exclude 'text' field to reduce payload size
   const permissionConditions = buildKnowledgeTextVisibilityConditions(filters);
 
-  // B3: optional facet filters
+  // optional facet filters
   if (filters.pageType) {
     permissionConditions.push(eq(knowledgeText.pageType, filters.pageType));
   }
@@ -449,7 +449,7 @@ export const updateKnowledgeText = async (
 
   await checkKnowledgeTextWritePermission(currentEntry, context);
 
-  // B3: reject facet values outside the tenant's controlled vocabulary.
+  // reject facet values outside the tenant's controlled vocabulary.
   await validateFacetsForWrite(context.tenantId, data);
 
   // moving a page into a team or making it tenant-wide additionally
@@ -526,7 +526,7 @@ export const updateKnowledgeText = async (
     delete updateData.updatedBy;
   }
 
-  // B1: a content change marks the summary stale so the debounced sweeper
+  // a content change marks the summary stale so the debounced sweeper
   // regenerates it once the page goes quiet. Respect an explicit summaryStale
   // in the update (e.g. a manual summary edit clearing it).
   if (updateData.text !== undefined && updateData.summaryStale === undefined) {

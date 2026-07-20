@@ -26,9 +26,9 @@ export type SimplifiedKnowledgeText = {
   content: string;
   /** only present when requested with `recursive: true` */
   children?: SimplifiedKnowledgeText[];
-  /** A5: content was cut to stay within the maxChars budget. */
+  /** content was cut to stay within the maxChars budget. */
   contentTruncated?: boolean;
-  /** A5: this node has children that were not expanded due to maxDepth. */
+  /** this node has children that were not expanded due to maxDepth. */
   childrenOmitted?: boolean;
 };
 
@@ -67,16 +67,16 @@ export const getSimplifiedKnowledgeText = async (
   context: Context,
   options?: {
     recursive?: boolean;
-    /** A5: maximum subtree depth (root = 0). Deeper nodes are not expanded. */
+    /** maximum subtree depth (root = 0). Deeper nodes are not expanded. */
     maxDepth?: number;
-    /** A5: total character budget across all node contents. */
+    /** total character budget across all node contents. */
     maxChars?: number;
   }
 ): Promise<SimplifiedKnowledgeText> => {
   // permission check for the root (throws if not visible)
   const root = await getKnowledgeTextById(id, context);
 
-  // A5: apply the char budget to a single node's content, truncating
+  // apply the char budget to a single node's content, truncating
   // explicitly (never silently) and reporting how much budget is left.
   const applyCharBudget = (
     content: string,
@@ -148,7 +148,7 @@ export const getSimplifiedKnowledgeText = async (
     };
     if (budgeted.truncated) node.contentTruncated = true;
 
-    // A5: stop expanding beyond maxDepth, but flag that children exist.
+    // stop expanding beyond maxDepth, but flag that children exist.
     if (
       options.maxDepth !== undefined &&
       depth >= options.maxDepth &&

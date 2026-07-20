@@ -51,7 +51,7 @@ export const knowledgeBlockTypeEnum = pgEnum("knowledge_block_type", [
   "html",
 ]);
 
-// How a wiki page's AI summary is maintained (B1 page summaries):
+// How a wiki page's AI summary is maintained:
 // - "auto":   regenerated in the background once the page goes quiet
 // - "manual": user-provided text; auto-generation never overwrites it
 // - "off":    no summary for this page
@@ -95,7 +95,7 @@ export const knowledgeText = pgBaseTable(
     // fractional-index key for manual ordering among sibling pages in the
     // wiki tree; null = unsorted (falls back to title sort)
     position: varchar("position", { length: 64 }),
-    // --- B1: AI page summary (the "docstring" of a page) ---
+    // --- AI page summary (the "docstring" of a page) ---
     // A short (1-2 sentence) description of the page, delivered in every
     // list-type response (tree, search, recent-changes, ...) so an agent can
     // tell similar pages apart without opening them. Stored, not generated on
@@ -114,7 +114,7 @@ export const knowledgeText = pgBaseTable(
     // When the summary was last (re)generated, and by which model.
     summaryUpdatedAt: timestamp("summary_updated_at", { mode: "string" }),
     summaryModel: varchar("summary_model", { length: 128 }),
-    // --- B3: controlled facets ---
+    // --- controlled facets ---
     // Small, controlled vocabulary (closed lists configured per tenant in the
     // wiki config, see wiki-config.ts) — NOT free tags. Delivered in every
     // list-type response and usable as filter parameters in search / tree /
@@ -146,7 +146,7 @@ export const knowledgeText = pgBaseTable(
       (): AnyPgColumn => knowledgeText.id,
       { onDelete: "set null" }
     ),
-    // --- B2: agent-instructions marker ---
+    // --- agent-instructions marker ---
     // Marks this page as the "CLAUDE.md of the wiki": curated orientation for
     // agents (what lives where, conventions, glossary, authoritative areas).
     // One per tenant (teamId null) and optionally one per team. Surfaced by the
@@ -208,7 +208,7 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_summary_stale_idx")
       .on(knowledgeText.updatedAt)
       .where(sql`${knowledgeText.summaryStale} = true`),
-    // B3 facet filters (scoped by tenant).
+    // facet filters (scoped by tenant).
     index("knowledge_text_page_type_idx").on(
       knowledgeText.tenantId,
       knowledgeText.pageType
@@ -217,7 +217,7 @@ export const knowledgeText = pgBaseTable(
       knowledgeText.tenantId,
       knowledgeText.status
     ),
-    // B2: quickly find a tenant's agent-instructions page(s).
+    // quickly find a tenant's agent-instructions page(s).
     index("knowledge_text_agent_instructions_idx")
       .on(knowledgeText.tenantId)
       .where(sql`${knowledgeText.isAgentInstructions} = true`),

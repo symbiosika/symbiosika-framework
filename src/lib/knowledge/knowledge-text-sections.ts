@@ -1,5 +1,5 @@
 /**
- * B4 — heading-based section addressing for long pages.
+ * Heading-based section addressing for long pages.
  *
  * Instead of reading a 3000-line page whole, an agent can fetch its heading
  * outline and then read just the relevant section. Markdown ATX headings

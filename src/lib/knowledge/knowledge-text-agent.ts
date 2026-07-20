@@ -1,11 +1,11 @@
 /**
- * Teil A — context-economy helpers for agents working the wiki.
+ * Context-economy helpers for agents working the wiki.
  *
  * These sit on top of the page CRUD and are built for cheap, oriented access:
- *   - A2 resolvePageByTitle  — find a page by exact title (wikilink semantics)
- *   - A3 listRecentChanges   — "what's new", sorted by updatedAt, filterable
- *   - A4 getPagesBatch       — read several pages in one call
- *   - A1 appendToKnowledgeText — append without a read-modify-write round trip
+ *   - resolvePageByTitle  — find a page by exact title (wikilink semantics)
+ *   - listRecentChanges   — "what's new", sorted by updatedAt, filterable
+ *   - getPagesBatch       — read several pages in one call
+ *   - appendToKnowledgeText — append without a read-modify-write round trip
  *
  * All of them go through the existing visibility mechanics
  * (buildKnowledgeTextVisibilityConditions / getKnowledgeTextById): pages the
@@ -37,7 +37,7 @@ const listColumns = () => {
 };
 
 /**
- * A2: resolve a page by exact title, case-insensitively, using the same
+ * resolve a page by exact title, case-insensitively, using the same
  * semantics as the wikilink resolver. Returns the visible page (without text)
  * or null. On multiple case-insensitive matches the first by title is
  * returned, deterministically.
@@ -103,7 +103,7 @@ export interface RecentChangesOptions extends FacetFilters {
 }
 
 /**
- * A3: recent changes — visible pages sorted by `updatedAt` (newest first),
+ * recent changes — visible pages sorted by `updatedAt` (newest first),
  * without text. Filterable by time window, subtree, team (via context) and
  * facets. Each item carries summary + facets + updatedAt + updatedBy so an
  * agent can triage "what's new" in one call.
@@ -145,7 +145,7 @@ export interface BatchReadOptions {
 }
 
 /**
- * A4: read several pages in one call. Silently drops ids the caller cannot see
+ * read several pages in one call. Silently drops ids the caller cannot see
  * (visibility) — the returned array only contains visible pages, in the order
  * the ids were given.
  */
@@ -183,7 +183,7 @@ export interface AppendResult {
 }
 
 /**
- * A1: append text to a page without the caller doing a read-modify-write and
+ * append text to a page without the caller doing a read-modify-write and
  * without returning the (potentially large) full content. Goes through
  * updateKnowledgeText so history, permissions, wikilink/file bookkeeping and
  * summary-stale marking all behave exactly like a normal edit.

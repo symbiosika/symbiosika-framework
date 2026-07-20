@@ -164,7 +164,7 @@ export default function defineRoutesForKnowledgeTexts(
         limit: v.optional(v.string()),
         page: v.optional(v.string()),
         includeHidden: v.optional(v.string()),
-        // B3 facet filters
+        // facet filters
         pageType: v.optional(v.string()),
         status: v.optional(v.string()),
       })
@@ -484,7 +484,7 @@ export default function defineRoutesForKnowledgeTexts(
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
         includeHidden: v.optional(v.string()),
-        // B4 facet + scope filters
+        // facet + scope filters
         pageType: v.optional(v.string()),
         status: v.optional(v.string()),
         parentId: v.optional(v.string()),
@@ -531,7 +531,7 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * B4: heading outline of a page (structure without the body). Registered
+   * heading outline of a page (structure without the body). Registered
    * before :id so the static path wins.
    */
   app.get(
@@ -562,7 +562,7 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * B4: read a single section of a page addressed by its heading anchor.
+   * read a single section of a page addressed by its heading anchor.
    */
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/section",
@@ -1058,7 +1058,7 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * A1: append text to a page without a read-modify-write round trip and
+   * append text to a page without a read-modify-write round trip and
    * without returning the full content. Goes through the normal edit path
    * (history, permissions, bookkeeping, summary-stale marking).
    */
@@ -1363,7 +1363,7 @@ export default function defineRoutesForKnowledgeTexts(
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
         includeHidden: v.optional(v.string()),
-        // A5: subtree limits — cap depth and total characters. Truncations are
+        // subtree limits — cap depth and total characters. Truncations are
         // flagged explicitly (contentTruncated / childrenOmitted), never silent.
         maxDepth: v.optional(v.string()),
         maxChars: v.optional(v.string()),

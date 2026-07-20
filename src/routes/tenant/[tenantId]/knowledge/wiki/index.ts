@@ -2,10 +2,10 @@
  * Agent-facing and admin routes for the wiki (knowledge_text), grouped under
  * /tenant/:tenantId/wiki. These complement the page CRUD under
  * /tenant/:tenantId/knowledge/texts with the orientation-layer endpoints:
- *   - B3: controlled-facet vocabulary config (GET/PUT)
- *   - B1: summary backfill trigger (POST)
- *   - Teil A: resolve-by-title, recent-changes, batch-read, append, subtree
- *   - B2: wiki overview
+ *   - controlled-facet vocabulary config (GET/PUT)
+ *   - summary backfill trigger (POST)
+ *   - resolve-by-title, recent-changes, batch-read, append, subtree
+ *   - wiki overview
  *
  * All routes go through the standard auth + tenant-membership chain, so the
  * existing visibility mechanics apply.
@@ -52,7 +52,7 @@ export default function defineWikiRoutes(
   const base = API_BASE_PATH + "/tenant/:tenantId/wiki";
 
   /**
-   * B2: wiki overview — the briefing an agent loads at session start. Metrics,
+   * wiki overview — the briefing an agent loads at session start. Metrics,
    * top-level structure with summaries/facets, recent changes, and the embedded
    * agent-instructions page.
    */
@@ -141,7 +141,7 @@ export default function defineWikiRoutes(
   );
 
   /**
-   * B1: trigger a summary backfill — flag existing summary-less auto pages so
+   * trigger a summary backfill — flag existing summary-less auto pages so
    * the debounced sweeper generates them. Admin only. Returns the number of
    * pages flagged.
    */
@@ -177,7 +177,7 @@ export default function defineWikiRoutes(
   );
 
   /**
-   * A2: resolve a page by exact title (case-insensitive, wikilink semantics).
+   * resolve a page by exact title (case-insensitive, wikilink semantics).
    * Returns the page ref (without text) or 404.
    */
   app.get(
@@ -204,7 +204,7 @@ export default function defineWikiRoutes(
   );
 
   /**
-   * A3: recent changes — visible pages newest-first, without text, filterable
+   * recent changes — visible pages newest-first, without text, filterable
    * by time window, subtree (parentId) and facets. Each item carries
    * summary + facets + updatedAt + updatedBy.
    */
@@ -250,7 +250,7 @@ export default function defineWikiRoutes(
   );
 
   /**
-   * A4: batch-read several pages in one call. Body: { ids, includeText? }.
+   * batch-read several pages in one call. Body: { ids, includeText? }.
    * Pages the caller cannot see are silently dropped.
    */
   app.post(

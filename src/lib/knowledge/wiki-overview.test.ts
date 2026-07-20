@@ -9,7 +9,7 @@ import { getWikiOverview } from "./wiki-overview";
 const TENANT = TEST_ORGANISATION_1.id;
 const ctx = { tenantId: TENANT };
 
-describe("B2 wiki overview", () => {
+describe("wiki overview", () => {
   beforeAll(async () => {
     await initTests();
   });

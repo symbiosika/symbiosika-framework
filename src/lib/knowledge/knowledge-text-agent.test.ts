@@ -12,12 +12,12 @@ import {
 const TENANT = TEST_ORGANISATION_1.id;
 const ctx = { tenantId: TENANT };
 
-describe("Teil A — context-economy endpoints", () => {
+describe("context-economy endpoints", () => {
   beforeAll(async () => {
     await initTests();
   });
 
-  test("A2: resolvePageByTitle finds a page case-insensitively, without text", async () => {
+  test("resolvePageByTitle finds a page case-insensitively, without text", async () => {
     await createKnowledgeText({
       tenantId: TENANT,
       title: "Onboarding Guide",
@@ -29,11 +29,11 @@ describe("Teil A — context-economy endpoints", () => {
     expect(resolved).not.toHaveProperty("text");
   });
 
-  test("A2: returns null for an unknown title", async () => {
+  test("returns null for an unknown title", async () => {
     expect(await resolvePageByTitle("does-not-exist-xyz", ctx)).toBeNull();
   });
 
-  test("A3: listRecentChanges returns pages newest-first without text", async () => {
+  test("listRecentChanges returns pages newest-first without text", async () => {
     await createKnowledgeText({ tenantId: TENANT, title: "RC one", text: "a" });
     await createKnowledgeText({ tenantId: TENANT, title: "RC two", text: "b" });
     const recent = await listRecentChanges(ctx, { limit: 5 });
@@ -45,7 +45,7 @@ describe("Teil A — context-economy endpoints", () => {
     expect(times).toEqual(sorted);
   });
 
-  test("A3: filters recent-changes by subtree (parentId)", async () => {
+  test("filters recent-changes by subtree (parentId)", async () => {
     const parent = await createKnowledgeText({
       tenantId: TENANT,
       title: "Subtree root",
@@ -63,7 +63,7 @@ describe("Teil A — context-economy endpoints", () => {
     expect(ids).toContain(child.id);
   });
 
-  test("A4: getPagesBatch returns requested pages in order", async () => {
+  test("getPagesBatch returns requested pages in order", async () => {
     const p1 = await createKnowledgeText({
       tenantId: TENANT,
       title: "Batch A",
@@ -82,7 +82,7 @@ describe("Teil A — context-economy endpoints", () => {
     expect(withText[0]?.text).toBe("aa");
   });
 
-  test("A1: appendToKnowledgeText concatenates and returns metadata only", async () => {
+  test("appendToKnowledgeText concatenates and returns metadata only", async () => {
     const page = await createKnowledgeText({
       tenantId: TENANT,
       title: "Append target",
@@ -98,7 +98,7 @@ describe("Teil A — context-economy endpoints", () => {
     expect(fetched.summaryStale).toBe(true);
   });
 
-  test("A5: subtree respects maxDepth and flags omitted children", async () => {
+  test("subtree respects maxDepth and flags omitted children", async () => {
     const root = await createKnowledgeText({
       tenantId: TENANT,
       title: "Depth root",
@@ -128,7 +128,7 @@ describe("Teil A — context-economy endpoints", () => {
     expect(midNode?.children?.length).toBe(0);
   });
 
-  test("A5: subtree respects maxChars and flags truncation", async () => {
+  test("subtree respects maxChars and flags truncation", async () => {
     const root = await createKnowledgeText({
       tenantId: TENANT,
       title: "Chars root",

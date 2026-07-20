@@ -1,5 +1,5 @@
 /**
- * B1 — AI page summaries: the "docstring" of every wiki page.
+ * AI page summaries: the "docstring" of every wiki page.
  *
  * A short (1-2 sentence) description is stored per page and delivered in all
  * list-type responses, so an agent can tell similar pages apart without
@@ -10,8 +10,9 @@
  *      write paths in knowledge-texts.ts / knowledge-text-blocks.ts.
  *   2. A per-minute cron sweeper (`sweepStaleSummaries`) finds pages that have
  *      been stale AND quiet for the configured debounce window (default 60 min,
- *      overridable via server_settings WIKI_SUMMARY_DEBOUNCE_MINUTES) and
- *      enqueues one durable job per page. Every new save pushes `updatedAt`
+ *      overridable at runtime via the app-config key
+ *      `wiki_summary_debounce_minutes`) and enqueues one durable job per page.
+ *      Every new save pushes `updatedAt`
  *      forward, so a page is only picked up once editing has actually stopped —
  *      one generation per editing session, regardless of autosave frequency.
  *   3. The job (`wiki:summarize`) regenerates the summary — but first compares a
@@ -33,18 +34,35 @@ import { createJob } from "../jobs";
 import type { JobHandlerRegister } from "../jobs";
 import { computeSourceHash } from "./source-hash";
 import { generateStructured, isAiEnabled } from "../ai";
-import {
-  getServerSettingInt,
-  SERVER_SETTING_KEYS,
-} from "../server-settings";
+import { getAppSpecificData } from "../specific-data";
 import { getWikiTenantConfig } from "./wiki-config";
 import log from "../log";
 
 /** Job type for the durable per-page summary generation. */
 export const SUMMARY_JOB_TYPE = "wiki:summarize";
 
-/** Debounce default (minutes) when WIKI_SUMMARY_DEBOUNCE_MINUTES is unset. */
+/**
+ * App-config key (in the global specific-data store) holding the summary
+ * debounce window as `{ minutes: number }`. Tunable at runtime without a
+ * redeploy; falls back to the default below when unset.
+ */
+export const SUMMARY_DEBOUNCE_CONFIG_KEY = "wiki_summary_debounce_minutes";
+
+/** Debounce default (minutes) when the app-config value is unset. */
 export const DEFAULT_SUMMARY_DEBOUNCE_MINUTES = 60;
+
+/** Read the configured summary debounce window (minutes) from app config. */
+const getSummaryDebounceMinutes = async (): Promise<number> => {
+  try {
+    const row = await getAppSpecificData(SUMMARY_DEBOUNCE_CONFIG_KEY);
+    const minutes = (row.data as { minutes?: unknown })?.minutes;
+    return typeof minutes === "number" && Number.isFinite(minutes)
+      ? minutes
+      : DEFAULT_SUMMARY_DEBOUNCE_MINUTES;
+  } catch {
+    return DEFAULT_SUMMARY_DEBOUNCE_MINUTES;
+  }
+};
 
 /** Above this content length the LLM gets a compressed excerpt, not full text. */
 const INPUT_COMPRESSION_THRESHOLD = 24_000;
@@ -234,10 +252,7 @@ export const sweepStaleSummaries = async (): Promise<{
 }> => {
   if (!isAiEnabled()) return { enqueued: 0 };
 
-  const debounceMinutes = await getServerSettingInt(
-    SERVER_SETTING_KEYS.WIKI_SUMMARY_DEBOUNCE_MINUTES,
-    DEFAULT_SUMMARY_DEBOUNCE_MINUTES
-  );
+  const debounceMinutes = await getSummaryDebounceMinutes();
 
   const candidates = await getDb()
     .select({ id: knowledgeText.id, tenantId: knowledgeText.tenantId })

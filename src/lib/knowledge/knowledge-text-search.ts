@@ -1,5 +1,5 @@
 /**
- * Hybrid search over knowledgeText wiki pages (B4 — search as the workhorse).
+ * Hybrid search over knowledgeText wiki pages.
  *
  * Combines two retrieval signals with Reciprocal Rank Fusion (RRF), the
  * standard recipe for hybrid lexical + semantic search:
@@ -16,8 +16,8 @@
  * The semantic leg needs an embedding provider; if it is unavailable or no
  * page has embeddings, the search degrades gracefully to full-text only.
  *
- * B4 additions on top of the base fusion:
- *   - results carry summary (B1), facets (B3) and updatedAt alongside the
+ * Enrichment and ranking on top of the base fusion:
+ *   - results carry summary, facets and updatedAt alongside the
  *     snippet, so an agent can decide which 2-3 pages to read in one call;
  *   - facet + scope filters (pageType / status / subtree);
  *   - trust-aware ranking (verified boosted, outdated demoted) and grouping of
@@ -57,13 +57,13 @@ export type KnowledgeTextSearchResult = {
   snippet: string;
   /** which retrieval legs found this page */
   matchedBy: ("fulltext" | "semantic")[];
-  /** B1 summary */
+  /** summary */
   summary: string | null;
-  /** B3 facets */
+  /** facets */
   pageType: string | null;
   status: string | null;
   updatedAt: string;
-  /** this page replaces the referenced page (B3) */
+  /** this page replaces the referenced page */
   supersedesId: string | null;
   /** superseded pages that also matched, folded under this (canonical) result */
   supersededAlternatives?: { id: string; title: string }[];

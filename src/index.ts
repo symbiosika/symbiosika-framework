@@ -163,7 +163,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
   );
 
   /**
-   * B1: debounced wiki page-summary sweeper. Runs every minute and enqueues
+   * debounced wiki page-summary sweeper. Runs every minute and enqueues
    * summary jobs for pages that have been stale AND quiet for the configured
    * window. Only registered when a global LLM is configured (AI_PROVIDER set);
    * with no LLM the whole feature is inert. Override the schedule via
@@ -571,19 +571,7 @@ export {
 export type { AiProviderId, EmbeddingProviderId } from "./lib/ai/types";
 
 /**
- * Export the global server-settings (GLOBAL_CONFIG) key/value accessor.
- */
-export {
-  getServerSetting,
-  getServerSettingInt,
-  getServerSettingBool,
-  setServerSetting,
-  deleteServerSetting,
-  SERVER_SETTING_KEYS,
-} from "./lib/server-settings";
-
-/**
- * Export B1 wiki page-summary controls and per-tenant wiki config.
+ * Export wiki page-summary controls and per-tenant wiki config.
  */
 export {
   SUMMARY_JOB_TYPE,
@@ -604,7 +592,7 @@ export {
 export type { WikiTenantConfig } from "./lib/knowledge/wiki-config";
 
 /**
- * Export B3 facet validation helpers.
+ * Export facet validation helpers.
  */
 export {
   validateFacetsForWrite,
@@ -613,7 +601,7 @@ export {
 export type { FacetFilters } from "./lib/knowledge/facets";
 
 /**
- * Export Teil A agent context-economy helpers.
+ * Export the wiki context-economy helpers.
  */
 export {
   resolvePageByTitle,
@@ -628,13 +616,13 @@ export type {
 } from "./lib/knowledge/knowledge-text-agent";
 
 /**
- * Export B2 wiki overview.
+ * Export wiki overview.
  */
 export { getWikiOverview } from "./lib/knowledge/wiki-overview";
 export type { WikiOverview } from "./lib/knowledge/wiki-overview";
 
 /**
- * Export B4 heading-addressing helpers and enriched search types.
+ * Export heading-addressing helpers and enriched search types.
  */
 export {
   getPageOutline,
