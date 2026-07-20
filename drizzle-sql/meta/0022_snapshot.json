@@ -1,5 +1,5 @@
 {
-  "id": "9f8046db-faee-42d5-b8e6-a5a3f847d5f5",
+  "id": "80d5361f-6ee6-4621-88b6-801d5b606ff8",
   "prevId": "bbf7aa38-8588-4d2a-ab01-757344a9f753",
   "version": "7",
   "dialect": "postgresql",
@@ -264,13 +264,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'login'"
-        },
-        "used_count": {
-          "name": "used_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         }
       },
       "indexes": {
@@ -3658,7 +3651,7 @@
           "name": "knowledge_text_fts_idx",
           "columns": [
             {
-              "expression": "to_tsvector('simple', coalesce(\"title\", '') || ' ' || coalesce(\"text\", ''))",
+              "expression": "base_safe_tsvector('simple', coalesce(\"title\", '') || ' ' || coalesce(\"text\", ''))",
               "asc": true,
               "isExpression": true,
               "nulls": "last"

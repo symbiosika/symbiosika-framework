@@ -112,10 +112,18 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_user_id_idx").on(knowledgeText.userId),
     index("knowledge_text_parent_id_idx").on(knowledgeText.parentId),
     // full-text search over title + content ('simple' config: language-
-    // agnostic, works for mixed German/English wikis)
+    // agnostic, works for mixed German/English wikis).
+    //
+    // base_safe_tsvector (created in migration 0022) wraps to_tsvector so an
+    // oversized document can never abort the row write: it caps the indexed
+    // input and falls back to a smaller slice / an empty tsvector when the
+    // resulting vector would exceed Postgres' 1MB tsvector limit. The full
+    // text always stays in the `text` column — only the search index input
+    // is bounded. The search side (knowledge-text-search.ts) must use the
+    // exact same expression, otherwise this index is not used.
     index("knowledge_text_fts_idx").using(
       "gin",
-      sql`to_tsvector('simple', coalesce(${knowledgeText.title}, '') || ' ' || coalesce(${knowledgeText.text}, ''))`
+      sql`base_safe_tsvector('simple', coalesce(${knowledgeText.title}, '') || ' ' || coalesce(${knowledgeText.text}, ''))`
     ),
   ]
 );

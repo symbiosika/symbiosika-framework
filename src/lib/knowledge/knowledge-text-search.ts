@@ -56,7 +56,9 @@ const fulltextSearch = async (
   limit: number
 ): Promise<RankedHit[]> => {
   const visibility = and(...buildKnowledgeTextVisibilityConditions(context));
-  const document = sql`to_tsvector('simple', coalesce(${knowledgeText.title}, '') || ' ' || coalesce(${knowledgeText.text}, ''))`;
+  // must match the expression of knowledge_text_fts_idx exactly (including
+  // the base_safe_tsvector wrapper), otherwise the GIN index is not used
+  const document = sql`base_safe_tsvector('simple', coalesce(${knowledgeText.title}, '') || ' ' || coalesce(${knowledgeText.text}, ''))`;
   const tsQuery = sql`websearch_to_tsquery('simple', ${query})`;
 
   const rows = (await getDb().execute<RankedHit>(sql`
