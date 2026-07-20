@@ -405,6 +405,105 @@ describe("Knowledge API Endpoints", () => {
     );
   });
 
+  test("GET history endpoint should paginate with limit and page", async () => {
+    const v1Response = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "P1",
+        title: "History Pagination",
+      }
+    );
+    const entryId = v1Response.jsonResponse.id;
+
+    for (const text of ["P2", "P3", "P4"]) {
+      await testFetcher.put(
+        app,
+        `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}`,
+        TEST_USER_1_TOKEN,
+        { tenantId: TEST_ORGANISATION_1.id, text }
+      );
+    }
+
+    // 3 updates => 3 history entries; first page of 2
+    const page1 = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}/history?limit=2&page=1`,
+      TEST_USER_1_TOKEN
+    );
+    expect(page1.status).toBe(200);
+    expect(page1.jsonResponse.length).toBe(2);
+    expect(page1.jsonResponse.map((h: any) => h.text)).toEqual(["P3", "P2"]);
+
+    const page2 = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}/history?limit=2&page=2`,
+      TEST_USER_1_TOKEN
+    );
+    expect(page2.status).toBe(200);
+    expect(page2.jsonResponse.length).toBe(1);
+    expect(page2.jsonResponse[0].text).toBe("P1");
+
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}`,
+      TEST_USER_1_TOKEN
+    );
+  });
+
+  test("GET single history version by id returns full content", async () => {
+    const v1Response = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "SV original",
+        title: "Single Version Route",
+      }
+    );
+    const entryId = v1Response.jsonResponse.id;
+
+    await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}`,
+      TEST_USER_1_TOKEN,
+      { tenantId: TEST_ORGANISATION_1.id, text: "SV updated" }
+    );
+
+    const historyResponse = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}/history`,
+      TEST_USER_1_TOKEN
+    );
+    const versionId = historyResponse.jsonResponse[0].id;
+
+    const versionResponse = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}/history/${versionId}`,
+      TEST_USER_1_TOKEN
+    );
+    expect(versionResponse.status).toBe(200);
+    expect(versionResponse.jsonResponse.id).toBe(versionId);
+    expect(versionResponse.jsonResponse.text).toBe("SV original");
+
+    // unknown version id => 404
+    const missing = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}/history/00000000-0000-0000-0000-0000000000ff`,
+      TEST_USER_1_TOKEN
+    );
+    expect(missing.status).toBe(404);
+
+    await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${entryId}`,
+      TEST_USER_1_TOKEN
+    );
+  });
+
   test("Parent-child hierarchy should persist when parent is updated", async () => {
     // Create parent entry
     const parentResponse = await testFetcher.post(

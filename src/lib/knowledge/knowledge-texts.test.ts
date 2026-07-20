@@ -4,6 +4,7 @@ import {
   getKnowledgeText,
   getKnowledgeTextById,
   getKnowledgeTextHistory,
+  getKnowledgeTextHistoryVersion,
   updateKnowledgeText,
   deleteKnowledgeText,
 } from "./knowledge-texts";
@@ -614,5 +615,122 @@ describe("Knowledge Texts Test", () => {
 
     expect(updated.createdBy).toBe(TEST_ORG1_USER_1.id);
     expect(updated.updatedBy).toBe(TEST_ORG1_USER_2.id);
+  });
+
+  it("should paginate history with limit and page", async () => {
+    const created = await createKnowledgeText({
+      text: "v1",
+      title: "Pagination History",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+    // 3 updates => 3 history entries (newest first)
+    await updateKnowledgeText(
+      created.id,
+      { text: "v2" },
+      { tenantId: created.tenantId }
+    );
+    await updateKnowledgeText(
+      created.id,
+      { text: "v3" },
+      { tenantId: created.tenantId }
+    );
+    await updateKnowledgeText(
+      created.id,
+      { text: "v4" },
+      { tenantId: created.tenantId }
+    );
+
+    const all = await getKnowledgeTextHistory(created.id, {
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+    expect(all.length).toBe(3);
+    // newest first: the snapshot of the most recent pre-update state is "v3"
+    expect(all[0]?.text).toBe("v3");
+
+    const firstPage = await getKnowledgeTextHistory(
+      created.id,
+      { tenantId: TEST_ORGANISATION_1.id },
+      { limit: 2, page: 1 }
+    );
+    expect(firstPage.length).toBe(2);
+    expect(firstPage.map((h) => h.text)).toEqual(["v3", "v2"]);
+
+    const secondPage = await getKnowledgeTextHistory(
+      created.id,
+      { tenantId: TEST_ORGANISATION_1.id },
+      { limit: 2, page: 2 }
+    );
+    expect(secondPage.length).toBe(1);
+    expect(secondPage[0]?.text).toBe("v1");
+  });
+
+  it("should get a single history version by id with full content", async () => {
+    const created = await createKnowledgeText({
+      text: "original content",
+      title: "Single Version",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+    await updateKnowledgeText(
+      created.id,
+      { text: "new content" },
+      { tenantId: created.tenantId }
+    );
+
+    const history = await getKnowledgeTextHistory(created.id, {
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+    const versionId = history[0]!.id;
+
+    const version = await getKnowledgeTextHistoryVersion(
+      created.id,
+      versionId,
+      { tenantId: TEST_ORGANISATION_1.id }
+    );
+    expect(version.id).toBe(versionId);
+    expect(version.text).toBe("original content");
+    expect(version.knowledgeTextId).toBe(created.id);
+  });
+
+  it("should reject an unknown history version id", async () => {
+    const created = await createKnowledgeText({
+      text: "x",
+      title: "Unknown Version",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+    await expect(
+      getKnowledgeTextHistoryVersion(
+        created.id,
+        "00000000-0000-0000-0000-0000000000ff",
+        { tenantId: TEST_ORGANISATION_1.id }
+      )
+    ).rejects.toThrow();
+  });
+
+  it("should not return a history version belonging to another page", async () => {
+    const pageA = await createKnowledgeText({
+      text: "a1",
+      title: "Page A",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+    await updateKnowledgeText(
+      pageA.id,
+      { text: "a2" },
+      { tenantId: pageA.tenantId }
+    );
+    const pageB = await createKnowledgeText({
+      text: "b1",
+      title: "Page B",
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+
+    const historyA = await getKnowledgeTextHistory(pageA.id, {
+      tenantId: TEST_ORGANISATION_1.id,
+    });
+    // asking for pageA's version through pageB must not resolve
+    await expect(
+      getKnowledgeTextHistoryVersion(pageB.id, historyA[0]!.id, {
+        tenantId: TEST_ORGANISATION_1.id,
+      })
+    ).rejects.toThrow();
   });
 });
