@@ -31,6 +31,7 @@ import {
   listRecentChanges,
   getPagesBatch,
 } from "../../../../../lib/knowledge/knowledge-text-agent";
+import { getWikiOverview } from "../../../../../lib/knowledge/wiki-overview";
 
 const wikiConfigSchema = v.object({
   autoSummaries: v.boolean(),
@@ -49,6 +50,36 @@ export default function defineWikiRoutes(
   API_BASE_PATH: string
 ) {
   const base = API_BASE_PATH + "/tenant/:tenantId/wiki";
+
+  /**
+   * B2: wiki overview — the briefing an agent loads at session start. Metrics,
+   * top-level structure with summaries/facets, recent changes, and the embedded
+   * agent-instructions page.
+   */
+  app.get(
+    base + "/overview",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["wiki"],
+      summary: "Get the wiki overview (metrics, top-level, recent, instructions)",
+      responses: { 200: { description: "Wiki overview" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    validator("query", v.object({ recentLimit: v.optional(v.string()) })),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      const { recentLimit } = c.req.valid("query");
+      const userId = c.get("usersId");
+      const overview = await getWikiOverview(
+        { tenantId, userId },
+        { recentLimit: recentLimit ? parseInt(recentLimit) : undefined }
+      );
+      return c.json(overview);
+    }
+  );
 
   /**
    * Get the tenant's wiki config (facet vocabularies + auto-summary switch).

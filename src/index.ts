@@ -628,6 +628,12 @@ export type {
 } from "./lib/knowledge/knowledge-text-agent";
 
 /**
+ * Export B2 wiki overview.
+ */
+export { getWikiOverview } from "./lib/knowledge/wiki-overview";
+export type { WikiOverview } from "./lib/knowledge/wiki-overview";
+
+/**
  * Export all services for the customer App
  */
 export { log };

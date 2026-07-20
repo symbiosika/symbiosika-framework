@@ -146,6 +146,14 @@ export const knowledgeText = pgBaseTable(
       (): AnyPgColumn => knowledgeText.id,
       { onDelete: "set null" }
     ),
+    // --- B2: agent-instructions marker ---
+    // Marks this page as the "CLAUDE.md of the wiki": curated orientation for
+    // agents (what lives where, conventions, glossary, authoritative areas).
+    // One per tenant (teamId null) and optionally one per team. Surfaced by the
+    // wiki overview endpoint.
+    isAgentInstructions: boolean("is_agent_instructions")
+      .notNull()
+      .default(false),
     // opt-in: mirror this page into the RAG pipeline (knowledge_entry +
     // knowledge_chunks) so it shows up in similarity search
     embeddingEnabled: boolean("embedding_enabled").notNull().default(false),
@@ -209,6 +217,10 @@ export const knowledgeText = pgBaseTable(
       knowledgeText.tenantId,
       knowledgeText.status
     ),
+    // B2: quickly find a tenant's agent-instructions page(s).
+    index("knowledge_text_agent_instructions_idx")
+      .on(knowledgeText.tenantId)
+      .where(sql`${knowledgeText.isAgentInstructions} = true`),
   ]
 );
 
