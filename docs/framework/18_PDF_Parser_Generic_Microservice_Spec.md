@@ -29,15 +29,66 @@ Reject any request with a missing or wrong key with `401` and body
 | Method | Path                   | Mode  | Required |
 |--------|------------------------|-------|----------|
 | `GET`  | `/health`              | –     | optional |
+| `GET`  | `/v1/capabilities`     | –     | **yes**  |
 | `POST` | `/v1/parse`            | sync  | **yes**  |
 | `POST` | `/v1/jobs`             | async | optional |
 | `GET`  | `/v1/jobs/:id`         | async | optional |
 | `GET`  | `/v1/jobs/:id/result`  | async | optional |
 
-You MUST implement synchronous `/v1/parse`. The async job endpoints are OPTIONAL
-and only needed for large documents where one HTTP request would exceed
-proxy/load-balancer timeouts (typically 30–60 s). The **result body is identical**
-for sync and async (§5).
+You MUST implement `/v1/capabilities` (§2.1) and synchronous `/v1/parse`. The
+async job endpoints are OPTIONAL and only needed for large documents where one
+HTTP request would exceed proxy/load-balancer timeouts (typically 30–60 s). The
+**result body is identical** for sync and async (§5).
+
+### 2.1 Capability discovery — `GET /v1/capabilities`
+
+Declares which **modalities** (document types) the service can process, so the
+framework knows whether to route a given file to it. A service is not limited to
+PDF — it can advertise images, audio, video, etc. All modalities go through the
+same `/v1/parse` (and job) endpoints; the file's content type identifies it.
+
+```bash
+curl https://parser.example.com/v1/capabilities -H "X-API-Key: sk-abc123..."
+```
+
+```json
+{
+  "service": "generic-v1",
+  "modalities": [
+    {
+      "modality": "pdf",
+      "mime_types": ["application/pdf"],
+      "extensions": [".pdf"],
+      "features": { "extract_images": true, "extract_fields": true, "async": true }
+    },
+    {
+      "modality": "image",
+      "mime_types": ["image/png", "image/jpeg", "image/webp"],
+      "extensions": [".png", ".jpg", ".jpeg", ".webp"],
+      "features": { "extract_fields": true }
+    },
+    {
+      "modality": "audio",
+      "mime_types": ["audio/mpeg", "audio/wav"],
+      "extensions": [".mp3", ".wav"],
+      "features": { "async": true }
+    }
+  ]
+}
+```
+
+| Field                  | Type      | Required | Description |
+|------------------------|-----------|----------|-------------|
+| `service`              | string    | ✅       | Service/build identifier (matches `model` in results). |
+| `modalities`           | array     | ✅       | Every modality the service accepts. At least one entry. |
+| `modalities[].modality`| string    | ✅       | Canonical class: `pdf`, `image`, `audio`, `video`, `text`, or `office`. |
+| `modalities[].mime_types` | string[] | ✅    | Accepted MIME types for this modality. Used as the primary routing key. |
+| `modalities[].extensions` | string[] | ✅    | Accepted file extensions (lowercase, leading dot). Fallback when MIME is unknown. |
+| `modalities[].features` | object   | ❌       | Optional per-modality flags: `extract_images`, `extract_fields`, `async` (all default `false`). Tells the framework which request options are meaningful for this type. |
+
+The response MUST be stable and cheap (no file processing). The framework may
+cache it. `/v1/parse` MUST reject a file whose type is not in any advertised
+modality with `415` `{ "error": "unsupported_modality" }`.
 
 ---
 
@@ -281,8 +332,11 @@ Any non-2xx response is treated as a failure. Use a JSON body:
 // 401 – missing/invalid API key
 { "error": "invalid_api_key" }
 
+// 415 – file type not in any advertised modality
+{ "error": "unsupported_modality" }
+
 // 415 / 422 – corrupt or unsupported file
-{ "error": "cannot_parse", "detail": "unsupported or corrupt PDF" }
+{ "error": "cannot_parse", "detail": "unsupported or corrupt file" }
 
 // 400 – malformed 'extract' JSON
 { "error": "invalid_extract", "detail": "extract must be a JSON array" }
@@ -323,9 +377,27 @@ def build_result(data: bytes, extract_images: bool, extract: str) -> dict:
     return {"model": "generic-v1", "pages": pages,
             "metadata": metadata, "warnings": warnings}
 
+CAPABILITIES = {
+    "service": "generic-v1",
+    "modalities": [
+        {"modality": "pdf", "mime_types": ["application/pdf"],
+         "extensions": [".pdf"],
+         "features": {"extract_images": True, "extract_fields": True, "async": True}},
+        {"modality": "image", "mime_types": ["image/png", "image/jpeg"],
+         "extensions": [".png", ".jpg", ".jpeg"],
+         "features": {"extract_fields": True}},
+    ],
+}
+ACCEPTED_MIME = {m for c in CAPABILITIES["modalities"] for m in c["mime_types"]}
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/v1/capabilities")
+def capabilities(x_api_key: str = Header(None)):
+    require_key(x_api_key)
+    return CAPABILITIES
 
 # --- synchronous (required) ---
 @app.post("/v1/parse")
@@ -336,6 +408,8 @@ async def parse(
     x_api_key: str = Header(None),
 ):
     require_key(x_api_key)
+    if file.content_type not in ACCEPTED_MIME:
+        raise HTTPException(415, "unsupported_modality")
     return build_result(await file.read(), extract_images, extract)
 
 # --- asynchronous (optional) ---

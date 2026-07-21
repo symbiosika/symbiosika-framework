@@ -210,7 +210,99 @@ export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
 
 ---
 
-## 4. Registration — `src/lib/knowledge/parsing/pdf/index.ts`
+## 4. Capability discovery
+
+The service advertises which **modalities** (document types) it accepts via
+`GET /v1/capabilities` (see the microservice spec §2.1). This lets the framework
+route a file to the service only when its type is supported, and know which
+request options (`extract_images`, `extract`, async) are meaningful.
+
+### 4.1 Types — `src/lib/knowledge/parsing/pdf/types.ts`
+
+```ts
+export type ParserModality =
+  | "pdf" | "image" | "audio" | "video" | "text" | "office";
+
+export type ServiceModality = {
+  modality: ParserModality;
+  mimeTypes: string[];
+  extensions: string[];
+  features?: {
+    extractImages?: boolean;
+    extractFields?: boolean;
+    async?: boolean;
+  };
+};
+
+export type ServiceCapabilities = {
+  service: string;
+  modalities: ServiceModality[];
+};
+```
+
+### 4.2 Fetch + cache — `src/lib/knowledge/parsing/pdf/generic.ts`
+
+```ts
+let cachedCapabilities: ServiceCapabilities | null = null;
+
+export const getGenericParserCapabilities =
+  async (): Promise<ServiceCapabilities> => {
+    if (cachedCapabilities) return cachedCapabilities;
+    if (!API_KEY || !BASE_URL) {
+      throw new Error("Generic parsing service not configured.");
+    }
+    const res = await fetch(`${BASE_URL}/v1/capabilities`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error(`Capabilities fetch failed: ${res.status} ${res.statusText}`);
+    }
+    const raw = (await res.json()) as {
+      service: string;
+      modalities: {
+        modality: ServiceModality["modality"];
+        mime_types: string[];
+        extensions: string[];
+        features?: Record<string, boolean>;
+      }[];
+    };
+    cachedCapabilities = {
+      service: raw.service,
+      modalities: raw.modalities.map((m) => ({
+        modality: m.modality,
+        mimeTypes: m.mime_types,
+        extensions: m.extensions,
+        features: {
+          extractImages: m.features?.extract_images ?? false,
+          extractFields: m.features?.extract_fields ?? false,
+          async: m.features?.async ?? false,
+        },
+      })),
+    };
+    return cachedCapabilities;
+  };
+
+/** True if the service accepts a file of this MIME type / extension. */
+export const genericParserSupports = async (
+  mimeType?: string,
+  extension?: string
+): Promise<boolean> => {
+  const caps = await getGenericParserCapabilities();
+  return caps.modalities.some(
+    (m) =>
+      (mimeType && m.mimeTypes.includes(mimeType)) ||
+      (extension && m.extensions.includes(extension.toLowerCase()))
+  );
+};
+```
+
+The wire field names are `snake_case` (`mime_types`, `extract_images`); the
+mapper normalizes them to the framework's `camelCase` types. Capabilities are
+cached in-process — the service guarantees a cheap, stable response.
+
+---
+
+## 5. Registration — `src/lib/knowledge/parsing/pdf/index.ts`
 
 One line in the registry:
 
@@ -230,7 +322,7 @@ unchanged.
 
 ---
 
-## 5. Open items (not blocking the wire contract)
+## 6. Open items (not blocking the wire contract)
 
 - **Where do `extract` targets come from?** They need to be plumbed into
   `PdfParserOptions.extract` at the call site (upload/import flow). The contract
@@ -239,3 +331,7 @@ unchanged.
   (search, required-field validation) can follow later.
 - **Sync vs. async selection.** Currently a global `PDF_PARSER_SERVICE_MODE`.
   Could later be per-document (e.g. by file size) without a contract change.
+- **Modality-based routing.** `genericParserSupports()` enables routing files to
+  the service only for advertised modalities (PDF/image/audio/video). Extending
+  the parser registry beyond PDF to a general "file parser" dispatcher is a
+  follow-up; the capability contract already supports it.
