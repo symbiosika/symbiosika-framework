@@ -146,6 +146,16 @@ export const knowledgeText = pgBaseTable(
       (): AnyPgColumn => knowledgeText.id,
       { onDelete: "set null" }
     ),
+    // --- catalog attributes ---
+    // Per-tenant key-value attributes, e.g. {"typ":"Datenblatt","hersteller":"Miele"}.
+    // The allowed keys (and optionally a closed value list per key) are defined
+    // in the tenant knowledge config and validated on write (facets.ts).
+    // Filterable via jsonb containment (attributes @> '{...}'), backed by the
+    // GIN index below. Distinct from `meta`, which holds technical bookkeeping.
+    attributes: jsonb("attributes")
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
     // --- agent-instructions marker ---
     // Marks this page as the "CLAUDE.md of the knowledge base": curated
     // orientation for agents (what lives where, conventions, glossary,
@@ -216,6 +226,11 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_status_idx").on(
       knowledgeText.tenantId,
       knowledgeText.status
+    ),
+    // containment filters over the catalog attributes (attributes @> '{...}')
+    index("knowledge_text_attributes_idx").using(
+      "gin",
+      knowledgeText.attributes.op("jsonb_path_ops")
     ),
     // quickly find a tenant's agent-instructions page(s).
     index("knowledge_text_agent_instructions_idx")

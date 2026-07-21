@@ -32,7 +32,11 @@ import {
   syncKnowledgeTextFileReferences,
   markKnowledgeTextFilesForCleanup,
 } from "./knowledge-text-files";
-import { validateFacetsForWrite, type FacetFilters } from "./facets";
+import {
+  validateFacetsForWrite,
+  attributesContainCondition,
+  type FacetFilters,
+} from "./facets";
 import log from "../log";
 
 /**
@@ -281,6 +285,10 @@ export const getKnowledgeText = async (
   if (filters.status) {
     permissionConditions.push(eq(knowledgeText.status, filters.status));
   }
+  const attributesCondition = attributesContainCondition(filters.attributes);
+  if (attributesCondition) {
+    permissionConditions.push(attributesCondition);
+  }
 
   const { text, ...rest } = getTableColumns(knowledgeText); // exclude "text" column
   const query = getDb()
@@ -299,6 +307,34 @@ export const getKnowledgeText = async (
   }
 
   return await query;
+};
+
+/**
+ * Discovery for attribute filters: the attribute values actually in use,
+ * grouped by key and restricted to pages visible in the given context.
+ * Combined with the tenant's attribute definitions (knowledge config) this
+ * lets a UI or agent offer filter options without guessing.
+ */
+export const getUsedAttributeValues = async (context: {
+  tenantId: string;
+  userId?: string;
+  teamId?: string;
+  workspaceId?: string;
+  includeHidden?: boolean;
+}): Promise<Record<string, string[]>> => {
+  const visibility = and(...buildKnowledgeTextVisibilityConditions(context));
+  const rows = (await getDb().execute<{ key: string; value: string }>(sql`
+    SELECT DISTINCT kv.key AS "key", kv.value AS "value"
+    FROM ${knowledgeText}, jsonb_each_text(${knowledgeText.attributes}) AS kv
+    WHERE ${visibility}
+    ORDER BY "key" ASC, "value" ASC;
+  `)) as { key: string; value: string }[];
+
+  const used: Record<string, string[]> = {};
+  for (const row of rows) {
+    (used[row.key] ??= []).push(row.value);
+  }
+  return used;
 };
 
 /**

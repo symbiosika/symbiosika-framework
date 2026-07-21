@@ -17,6 +17,20 @@ import {
 
 const KNOWLEDGE_CONFIG_KEY = "knowledge";
 
+/**
+ * Definition of one catalog attribute key a tenant allows on its knowledge
+ * pages (e.g. "typ", "hersteller"). When `values` is set the attribute is a
+ * closed list (like pageType); when omitted, any non-empty string value is
+ * accepted for the key.
+ */
+export interface KnowledgeAttributeDefinition {
+  key: string;
+  /** Display label for UIs; falls back to the key. */
+  label?: string;
+  /** Optional closed value list. Free-form values when omitted. */
+  values?: string[];
+}
+
 export interface KnowledgeTenantConfig {
   /**
    * Whether pages in `auto` summary mode are (re)generated in the background.
@@ -33,6 +47,12 @@ export interface KnowledgeTenantConfig {
    * Controlled vocabulary for the `status` facet (closed list).
    */
   statuses: string[];
+  /**
+   * Catalog attribute keys allowed on knowledge pages. Writes that set an
+   * attribute key outside this list (or a value outside a key's closed value
+   * list) are rejected. Default: none — attributes are opt-in per tenant.
+   */
+  attributes: KnowledgeAttributeDefinition[];
 }
 
 /** Default facet vocabularies. Tenants may override them via the config. */
@@ -43,6 +63,7 @@ const DEFAULT_KNOWLEDGE_TENANT_CONFIG: KnowledgeTenantConfig = {
   autoSummaries: true,
   pageTypes: DEFAULT_PAGE_TYPES,
   statuses: DEFAULT_STATUSES,
+  attributes: [],
 };
 
 /** Read a tenant's knowledge config, merged over the defaults. */

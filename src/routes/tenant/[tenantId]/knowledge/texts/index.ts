@@ -36,6 +36,7 @@ import {
   setKnowledgeTenantConfig,
 } from "../../../../../lib/knowledge/knowledge-config";
 import { enqueueSummaryBackfill } from "../../../../../lib/knowledge/summaries";
+import { getUsedAttributeValues } from "../../../../../lib/knowledge/knowledge-texts";
 import { getKnowledgeOverview } from "../../../../../lib/knowledge/knowledge-overview";
 import {
   getPageOutline,
@@ -72,6 +73,34 @@ import {
 } from "../../../../../lib/db/db-schema";
 import { isTenantMember, isTenantAdmin } from "../../..";
 import { validateScope } from "../../../../../lib/utils/validate-scope";
+
+/**
+ * Parse the `attributes` filter query param: a URL-encoded JSON object of
+ * string values, e.g. attributes={"hersteller":"Miele","typ":"Datenblatt"}.
+ * All entries are combined with AND.
+ */
+const parseAttributesFilter = (
+  raw?: string
+): Record<string, string> | undefined => {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      Object.values(parsed).every((value) => typeof value === "string")
+    ) {
+      return parsed as Record<string, string>;
+    }
+  } catch {
+    // fall through to the error below
+  }
+  throw new HTTPException(400, {
+    message:
+      'Invalid "attributes" filter — expected a JSON object of string values, e.g. {"hersteller":"Miele"}',
+  });
+};
 
 const blockInputSchema = v.object({
   id: v.optional(v.pipe(v.string(), v.uuid())),
@@ -178,6 +207,8 @@ export default function defineRoutesForKnowledgeTexts(
         // facet filters
         pageType: v.optional(v.string()),
         status: v.optional(v.string()),
+        // JSON object of attribute equality filters (AND-combined)
+        attributes: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -192,6 +223,7 @@ export default function defineRoutesForKnowledgeTexts(
           includeHidden: includeHiddenStr,
           pageType,
           status,
+          attributes: attributesStr,
         } = c.req.valid("query");
         const { tenantId } = c.req.valid("param");
         const userId = c.get("usersId");
@@ -209,6 +241,7 @@ export default function defineRoutesForKnowledgeTexts(
           includeHidden,
           pageType,
           status,
+          attributes: parseAttributesFilter(attributesStr),
         });
         return c.json(r);
       } catch (e) {
@@ -499,6 +532,8 @@ export default function defineRoutesForKnowledgeTexts(
         pageType: v.optional(v.string()),
         status: v.optional(v.string()),
         parentId: v.optional(v.string()),
+        // JSON object of attribute equality filters (AND-combined)
+        attributes: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -515,6 +550,7 @@ export default function defineRoutesForKnowledgeTexts(
           pageType,
           status,
           parentId,
+          attributes: attributesStr,
         } = c.req.valid("query");
         const { tenantId } = c.req.valid("param");
         const userId = c.get("usersId");
@@ -531,7 +567,12 @@ export default function defineRoutesForKnowledgeTexts(
           {
             mode,
             limit: limitStr ? parseInt(limitStr) : undefined,
-            filters: { pageType, status, parentId },
+            filters: {
+              pageType,
+              status,
+              parentId,
+              attributes: parseAttributesFilter(attributesStr),
+            },
           }
         );
         return c.json(r);
@@ -692,6 +733,8 @@ export default function defineRoutesForKnowledgeTexts(
         parentId: v.optional(v.string()),
         pageType: v.optional(v.string()),
         status: v.optional(v.string()),
+        // JSON object of attribute equality filters (AND-combined)
+        attributes: v.optional(v.string()),
         teamId: v.optional(v.string()),
         limit: v.optional(v.string()),
       })
@@ -708,6 +751,7 @@ export default function defineRoutesForKnowledgeTexts(
           parentId: q.parentId,
           pageType: q.pageType,
           status: q.status,
+          attributes: parseAttributesFilter(q.attributes),
           limit: q.limit ? parseInt(q.limit) : undefined,
         }
       );
@@ -789,6 +833,15 @@ export default function defineRoutesForKnowledgeTexts(
         autoSummaries: v.optional(v.boolean()),
         pageTypes: v.optional(v.array(v.string())),
         statuses: v.optional(v.array(v.string())),
+        attributes: v.optional(
+          v.array(
+            v.object({
+              key: v.pipe(v.string(), v.minLength(1)),
+              label: v.optional(v.string()),
+              values: v.optional(v.array(v.string())),
+            })
+          )
+        ),
       })
     ),
     isTenantAdmin,
@@ -796,6 +849,47 @@ export default function defineRoutesForKnowledgeTexts(
       const { tenantId } = c.req.valid("param");
       const patch = c.req.valid("json");
       return c.json(await setKnowledgeTenantConfig(tenantId, patch));
+    }
+  );
+
+  /**
+   * Attribute discovery: the tenant's attribute definitions plus the values
+   * actually in use on pages visible to the caller. Lets a UI or agent build
+   * filter options (e.g. attributes={"hersteller":"Miele"}) without guessing.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/attributes",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "List attribute definitions and the values in use",
+      responses: {
+        200: {
+          description:
+            "Attribute definitions (tenant config) and used values per key",
+        },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    validator(
+      "query",
+      v.object({
+        teamId: v.optional(v.string()),
+        workspaceId: v.optional(v.string()),
+      })
+    ),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      const { teamId, workspaceId } = c.req.valid("query");
+      const userId = c.get("usersId");
+      const [config, used] = await Promise.all([
+        getKnowledgeTenantConfig(tenantId),
+        getUsedAttributeValues({ tenantId, userId, teamId, workspaceId }),
+      ]);
+      return c.json({ definitions: config.attributes, used });
     }
   );
 

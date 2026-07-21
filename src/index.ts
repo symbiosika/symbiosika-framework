@@ -598,7 +598,10 @@ export {
   DEFAULT_PAGE_TYPES,
   DEFAULT_STATUSES,
 } from "./lib/knowledge/knowledge-config";
-export type { KnowledgeTenantConfig } from "./lib/knowledge/knowledge-config";
+export type {
+  KnowledgeTenantConfig,
+  KnowledgeAttributeDefinition,
+} from "./lib/knowledge/knowledge-config";
 
 /**
  * Export facet validation helpers.
@@ -608,6 +611,7 @@ export {
   FacetValidationError,
 } from "./lib/knowledge/facets";
 export type { FacetFilters } from "./lib/knowledge/facets";
+export { getUsedAttributeValues } from "./lib/knowledge/knowledge-texts";
 
 /**
  * Export the knowledge context-economy helpers.
