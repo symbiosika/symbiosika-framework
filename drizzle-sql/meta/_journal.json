@@ -225,6 +225,13 @@
       "when": 1784640445655,
       "tag": "0031_cuddly_namora",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1784648408100,
+      "tag": "0032_useful_frog_thor",
+      "breakpoints": true
     }
   ]
 }
