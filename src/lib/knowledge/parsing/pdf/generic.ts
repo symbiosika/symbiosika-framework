@@ -12,10 +12,15 @@ import {
 // Generic self-hosted parsing microservice. See
 // `docs/framework/18_PDF_Parser_Generic_Microservice_Spec.md` for the wire
 // contract and `19_..._Framework_Integration.md` for this integration.
-const API_KEY = process.env.PDF_PARSER_SERVICE_API_KEY;
-const BASE_URL = process.env.PDF_PARSER_SERVICE_URL;
+//
+// Config is read lazily (at call time, not module load) so the parser can be
+// registered/imported before the environment is fully set up — and so tests
+// can point it at a local server.
+const getApiKey = (): string | undefined =>
+  process.env.PDF_PARSER_SERVICE_API_KEY;
+const getBaseUrl = (): string | undefined => process.env.PDF_PARSER_SERVICE_URL;
 // "sync" (default) uses POST /v1/parse; "async" uses the job endpoints.
-const MODE = process.env.PDF_PARSER_SERVICE_MODE ?? "sync";
+const getMode = (): string => process.env.PDF_PARSER_SERVICE_MODE ?? "sync";
 
 type RawImage = { id: string; base64: string };
 type RawPage = { page: number; text: string; images?: RawImage[] };
@@ -26,14 +31,14 @@ type RawResult = {
 };
 
 const authHeaders = (): Record<string, string> => ({
-  "X-API-Key": API_KEY as string,
+  "X-API-Key": getApiKey() as string,
 });
 
 const requireConfig = (): void => {
-  if (!API_KEY) {
+  if (!getApiKey()) {
     throw new Error("No API key set for generic parsing service.");
   }
-  if (!BASE_URL) {
+  if (!getBaseUrl()) {
     throw new Error("No base URL set for generic parsing service.");
   }
 };
@@ -50,7 +55,7 @@ const buildForm = (file: File, options?: PdfParserOptions): FormData => {
 
 /** Synchronous flow: a single POST /v1/parse. */
 const runSync = async (form: FormData): Promise<RawResult> => {
-  const res = await fetch(`${BASE_URL}/v1/parse`, {
+  const res = await fetch(`${getBaseUrl()}/v1/parse`, {
     method: "POST",
     headers: authHeaders(),
     body: form,
@@ -63,7 +68,7 @@ const runSync = async (form: FormData): Promise<RawResult> => {
 
 /** Asynchronous flow: create job -> poll -> fetch result. */
 const runAsync = async (form: FormData): Promise<RawResult> => {
-  const createRes = await fetch(`${BASE_URL}/v1/jobs`, {
+  const createRes = await fetch(`${getBaseUrl()}/v1/jobs`, {
     method: "POST",
     headers: authHeaders(),
     body: form,
@@ -79,7 +84,7 @@ const runAsync = async (form: FormData): Promise<RawResult> => {
   // Poll until completed/failed.
   let isComplete = false;
   while (!isComplete) {
-    const statusRes = await fetch(`${BASE_URL}/v1/jobs/${jobId}`, {
+    const statusRes = await fetch(`${getBaseUrl()}/v1/jobs/${jobId}`, {
       headers: authHeaders(),
     });
     if (!statusRes.ok) {
@@ -101,7 +106,7 @@ const runAsync = async (form: FormData): Promise<RawResult> => {
     }
   }
 
-  const resultRes = await fetch(`${BASE_URL}/v1/jobs/${jobId}/result`, {
+  const resultRes = await fetch(`${getBaseUrl()}/v1/jobs/${jobId}/result`, {
     headers: authHeaders(),
   });
   if (!resultRes.ok) {
@@ -124,7 +129,7 @@ export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
   requireConfig();
 
   const form = buildForm(fileContent, options);
-  const data = MODE === "async" ? await runAsync(form) : await runSync(form);
+  const data = getMode() === "async" ? await runAsync(form) : await runSync(form);
 
   // Save images and rewrite `![id](id)` placeholders to storage paths, exactly
   // as the Mistral OCR parser does.
@@ -169,7 +174,7 @@ export const getGenericParserCapabilities =
     }
     requireConfig();
 
-    const res = await fetch(`${BASE_URL}/v1/capabilities`, {
+    const res = await fetch(`${getBaseUrl()}/v1/capabilities`, {
       headers: authHeaders(),
     });
     if (!res.ok) {

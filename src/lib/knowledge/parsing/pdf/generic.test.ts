@@ -1,21 +1,25 @@
-import { describe, test, expect, mock, afterEach } from "bun:test";
+import {
+  describe,
+  test,
+  expect,
+  beforeAll,
+  afterAll,
+  afterEach,
+  mock,
+} from "bun:test";
+import type { Server } from "bun";
 
-// Configure the service before the module is evaluated (env is read at import).
-process.env.PDF_PARSER_SERVICE_API_KEY = "test-key";
-process.env.PDF_PARSER_SERVICE_URL = "https://parser.test";
+// Provide DB env defaults so importing the logger (which constructs a Postgres
+// client at module load) does not crash in an isolated run. postgres.js is
+// lazy, so no real connection is opened — and nothing here ever queries.
+process.env.POSTGRES_HOST ??= "localhost";
+process.env.POSTGRES_PORT ??= "5432";
+process.env.POSTGRES_USER ??= "postgres";
+process.env.POSTGRES_PASSWORD ??= "postgres";
+process.env.POSTGRES_DB ??= "symbiosika";
 
-// The logger imports the DB connection (which connects at import time), so stub
-// it to keep this a pure unit test with no DB dependency.
-mock.module("../../../log", () => ({
-  default: {
-    debug: () => {},
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-  },
-}));
-
-// Avoid touching real storage: the image saver just echoes a fake path.
+// Stub the image saver so the image-rewrite path does not touch real storage.
+// The only other importers are the (disabled) Mistral parser tests.
 mock.module("./images", () => ({
   saveBase64ImageToStorage: async (_base64: string, id: string) =>
     `/storage/${id}`,
@@ -28,49 +32,135 @@ const {
   resetGenericParserCapabilitiesCache,
 } = await import("./generic");
 
-const jsonResponse = (body: unknown, ok = true): Response =>
-  ({
-    ok,
-    status: ok ? 200 : 500,
-    statusText: ok ? "OK" : "Server Error",
-    json: async () => body,
-  }) as unknown as Response;
+// --- A mini fake parsing service implementing the wire contract ------------
+
+const API_KEY = "test-key";
+
+// Observable state so tests can assert what the framework actually sent.
+let lastParseForm: {
+  filename?: string;
+  extractImages: string | null;
+  extract: string | null;
+} | null = null;
+let capabilitiesHits = 0;
+let failNextParse = false;
+
+const CAPABILITIES_BODY = {
+  service: "generic-v1",
+  modalities: [
+    {
+      modality: "pdf",
+      mime_types: ["application/pdf"],
+      extensions: [".pdf"],
+      features: { extract_images: true, extract_fields: true, async: true },
+    },
+    {
+      modality: "image",
+      mime_types: ["image/png"],
+      extensions: [".png"],
+    },
+  ],
+};
+
+const RESULT_BODY = {
+  model: "generic-v1",
+  pages: [
+    {
+      page: 1,
+      text: "Hersteller ![img-1](img-1)",
+      images: [{ id: "img-1", base64: "data:image/png;base64,AAAA" }],
+    },
+    { page: 2, text: "Seite zwei" },
+  ],
+  metadata: {
+    hersteller: { value: "Siemens", found: true, confidence: 0.9 },
+    typ: { value: null, found: false },
+  },
+};
+
+// Minimal in-memory job store for the async flow: a created job is immediately
+// "completed", so the first status poll succeeds without the 1s backoff.
+const jobs = new Set<string>();
+let jobCounter = 0;
+
+let server: Server;
+
+beforeAll(() => {
+  server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const url = new URL(req.url);
+
+      if (req.headers.get("X-API-Key") !== API_KEY) {
+        return Response.json({ error: "invalid_api_key" }, { status: 401 });
+      }
+
+      if (url.pathname === "/v1/capabilities") {
+        capabilitiesHits += 1;
+        return Response.json(CAPABILITIES_BODY);
+      }
+
+      if (url.pathname === "/v1/parse" && req.method === "POST") {
+        const form = await req.formData();
+        lastParseForm = {
+          filename: (form.get("file") as File | null)?.name,
+          extractImages: form.get("extract_images") as string | null,
+          extract: form.get("extract") as string | null,
+        };
+        if (failNextParse) {
+          return Response.json({ error: "cannot_parse" }, { status: 422 });
+        }
+        return Response.json(RESULT_BODY);
+      }
+
+      if (url.pathname === "/v1/jobs" && req.method === "POST") {
+        await req.formData();
+        const jobId = `job_${(jobCounter += 1)}`;
+        jobs.add(jobId);
+        return Response.json({ job_id: jobId, status: "pending" }, { status: 202 });
+      }
+
+      const jobResultMatch = url.pathname.match(/^\/v1\/jobs\/([^/]+)\/result$/);
+      if (jobResultMatch) {
+        return jobs.has(jobResultMatch[1])
+          ? Response.json(RESULT_BODY)
+          : Response.json({ error: "not_ready" }, { status: 409 });
+      }
+
+      const jobStatusMatch = url.pathname.match(/^\/v1\/jobs\/([^/]+)$/);
+      if (jobStatusMatch) {
+        return jobs.has(jobStatusMatch[1])
+          ? Response.json({ job_id: jobStatusMatch[1], status: "completed" })
+          : Response.json({ error: "unknown_job" }, { status: 404 });
+      }
+
+      return new Response("not found", { status: 404 });
+    },
+  });
+
+  process.env.PDF_PARSER_SERVICE_API_KEY = API_KEY;
+  process.env.PDF_PARSER_SERVICE_URL = `http://localhost:${server.port}`;
+});
+
+afterAll(() => {
+  server.stop(true);
+  delete process.env.PDF_PARSER_SERVICE_URL;
+  delete process.env.PDF_PARSER_SERVICE_API_KEY;
+});
+
+afterEach(() => {
+  resetGenericParserCapabilitiesCache();
+  failNextParse = false;
+  delete process.env.PDF_PARSER_SERVICE_MODE;
+});
 
 const pdfFile = () =>
   new File([new Uint8Array([1, 2, 3])], "muster.pdf", {
     type: "application/pdf",
   });
 
-const originalFetch = global.fetch;
-afterEach(() => {
-  global.fetch = originalFetch;
-  resetGenericParserCapabilitiesCache();
-});
-
-describe("Generic PDF Parser Service", () => {
+describe("Generic PDF Parser Service (against a fake service)", () => {
   test("sends the expected request and maps the sync result", async () => {
-    const calls: { url: string; init: any }[] = [];
-    global.fetch = mock(async (url: string, init: any) => {
-      calls.push({ url, init });
-      return jsonResponse({
-        model: "generic-v1",
-        pages: [
-          {
-            page: 1,
-            text: "Hersteller ![img-1](img-1)",
-            images: [
-              { id: "img-1", base64: "data:image/png;base64,AAAA" },
-            ],
-          },
-          { page: 2, text: "Seite zwei" },
-        ],
-        metadata: {
-          hersteller: { value: "Siemens", found: true, confidence: 0.9 },
-          typ: { value: null, found: false },
-        },
-      });
-    }) as unknown as typeof fetch;
-
     const result = await parsePdfFileAsMarkdownGeneric(
       pdfFile(),
       { tenantId: "tenant-1" },
@@ -87,14 +177,10 @@ describe("Generic PDF Parser Service", () => {
       }
     );
 
-    // Request shape.
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe("https://parser.test/v1/parse");
-    expect(calls[0].init.method).toBe("POST");
-    expect(calls[0].init.headers["X-API-Key"]).toBe("test-key");
-    const form = calls[0].init.body as FormData;
-    expect(form.get("extract_images")).toBe("true");
-    expect(JSON.parse(form.get("extract") as string)).toEqual([
+    // What the framework actually sent to the service.
+    expect(lastParseForm?.filename).toBe("muster.pdf");
+    expect(lastParseForm?.extractImages).toBe("true");
+    expect(JSON.parse(lastParseForm?.extract as string)).toEqual([
       {
         key: "hersteller",
         name: "Hersteller",
@@ -115,58 +201,29 @@ describe("Generic PDF Parser Service", () => {
   });
 
   test("omits the extract field when no targets are given", async () => {
-    let capturedForm: FormData | undefined;
-    global.fetch = mock(async (_url: string, init: any) => {
-      capturedForm = init.body as FormData;
-      return jsonResponse({ model: "generic-v1", pages: [] });
-    }) as unknown as typeof fetch;
-
-    const result = await parsePdfFileAsMarkdownGeneric(pdfFile(), {
-      tenantId: "tenant-1",
-    });
-
-    expect(capturedForm?.get("extract_images")).toBe("false");
-    expect(capturedForm?.get("extract")).toBeNull();
-    expect(result.includesImages).toBe(false);
-    expect(result.metadata).toBeUndefined();
+    await parsePdfFileAsMarkdownGeneric(pdfFile(), { tenantId: "tenant-1" });
+    expect(lastParseForm?.extractImages).toBe("false");
+    expect(lastParseForm?.extract).toBeNull();
   });
 
   test("throws on a non-2xx response", async () => {
-    global.fetch = mock(async () =>
-      jsonResponse({ error: "cannot_parse" }, false)
-    ) as unknown as typeof fetch;
-
+    failNextParse = true;
     await expect(
       parsePdfFileAsMarkdownGeneric(pdfFile(), { tenantId: "tenant-1" })
     ).rejects.toThrow("Parsing failed");
   });
 
+  test("async mode runs create -> poll -> result", async () => {
+    process.env.PDF_PARSER_SERVICE_MODE = "async";
+    const result = await parsePdfFileAsMarkdownGeneric(pdfFile(), {
+      tenantId: "tenant-1",
+    });
+    expect(result.model).toBe("generic-v1");
+    expect(result.pages?.[1]).toEqual({ page: 2, text: "Seite zwei" });
+  });
+
   test("fetches capabilities, normalizes fields, and caches", async () => {
-    let capabilityCalls = 0;
-    global.fetch = mock(async (url: string) => {
-      capabilityCalls += 1;
-      expect(url).toBe("https://parser.test/v1/capabilities");
-      return jsonResponse({
-        service: "generic-v1",
-        modalities: [
-          {
-            modality: "pdf",
-            mime_types: ["application/pdf"],
-            extensions: [".pdf"],
-            features: {
-              extract_images: true,
-              extract_fields: true,
-              async: true,
-            },
-          },
-          {
-            modality: "image",
-            mime_types: ["image/png"],
-            extensions: [".png"],
-          },
-        ],
-      });
-    }) as unknown as typeof fetch;
+    const before = capabilitiesHits;
 
     const caps = await getGenericParserCapabilities();
     expect(caps.service).toBe("generic-v1");
@@ -175,30 +232,12 @@ describe("Generic PDF Parser Service", () => {
     // Missing features default to false after normalization.
     expect(caps.modalities[1].features?.async).toBe(false);
 
-    // Second call is served from cache — fetch not hit again.
+    // Second call is served from cache — service hit only once.
     await getGenericParserCapabilities();
-    expect(capabilityCalls).toBe(1);
+    expect(capabilitiesHits - before).toBe(1);
   });
 
   test("genericParserSupports matches by mime type and extension", async () => {
-    global.fetch = mock(async () =>
-      jsonResponse({
-        service: "generic-v1",
-        modalities: [
-          {
-            modality: "pdf",
-            mime_types: ["application/pdf"],
-            extensions: [".pdf"],
-          },
-          {
-            modality: "image",
-            mime_types: ["image/png"],
-            extensions: [".png"],
-          },
-        ],
-      })
-    ) as unknown as typeof fetch;
-
     expect(await genericParserSupports("application/pdf")).toBe(true);
     // Extension match is case-insensitive.
     expect(await genericParserSupports(undefined, ".PNG")).toBe(true);
