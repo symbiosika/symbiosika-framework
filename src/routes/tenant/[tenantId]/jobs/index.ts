@@ -14,6 +14,7 @@ import {
   getJobsByOrganisation,
   updateJobProgress,
   cancelJob,
+  deleteJob,
 } from "../../../../lib/jobs";
 import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { jobsSelectSchema } from "../../../../lib/db/schema/jobs";
@@ -218,7 +219,11 @@ export default function defineJobRoutes(
     checkUserPermission,
     describeRoute({
       tags: ["jobs"],
-      summary: "Cancel a job",
+      summary: "Cancel or delete a job",
+      description:
+        "Pending or running jobs are cancelled (marked as failed, row kept). " +
+        "Jobs in a terminal state (completed/failed) are permanently deleted " +
+        "so they can be removed from the UI list.",
       responses: {
         200: {
           description: "Successful response",
@@ -247,8 +252,14 @@ export default function defineJobRoutes(
           });
         }
 
-        // Use the new cancelJob function
-        await cancelJob(jobId);
+        // Pending/running jobs are cancelled (kept as failed for the history);
+        // terminal jobs (completed/failed) are permanently removed so the UI
+        // can delete finished jobs from the list.
+        if (job.status === "pending" || job.status === "running") {
+          await cancelJob(jobId);
+        } else {
+          await deleteJob(jobId);
+        }
 
         return c.json(RESPONSES.SUCCESS);
       } catch (error) {
