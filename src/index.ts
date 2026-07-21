@@ -70,6 +70,7 @@ import {
   sweepStaleSummaries,
 } from "./lib/knowledge/summaries";
 import { reEmbedJobRegister } from "./lib/knowledge/re-embed";
+import { webhookDeliveryJobRegister } from "./lib/webhooks/delivery-job";
 import { isAiEnabled } from "./lib/ai";
 // Cron
 import scheduler from "./lib/cron";
@@ -457,6 +458,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
         knowledgeIngestJobRegister,
         summaryJobRegister,
         reEmbedJobRegister,
+        webhookDeliveryJobRegister,
       ];
       const allJobHandlers = [
         ...builtInJobHandlers,
