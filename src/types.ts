@@ -172,6 +172,12 @@ export interface ServerSpecificConfig {
    * Default: "0 3 * * 0" (weekly, Sunday 03:00).
    */
   fileCleanupCron?: string;
+  /**
+   * Schedule (standard Linux cron syntax) for the debounced knowledge page-summary
+   * sweeper. Only active when a global LLM is configured (AI_PROVIDER).
+   * Default: "* * * * *" (every minute).
+   */
+  knowledgeSummarySweepCron?: string;
 
   // stripe
   useStripe?: boolean;

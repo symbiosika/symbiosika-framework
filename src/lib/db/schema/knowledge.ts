@@ -51,6 +51,16 @@ export const knowledgeBlockTypeEnum = pgEnum("knowledge_block_type", [
   "html",
 ]);
 
+// How a knowledge page's AI summary is maintained:
+// - "auto":   regenerated in the background once the page goes quiet
+// - "manual": user-provided text; auto-generation never overwrites it
+// - "off":    no summary for this page
+export const knowledgeSummaryModeEnum = pgEnum("knowledge_summary_mode", [
+  "auto",
+  "manual",
+  "off",
+]);
+
 // Table to store input texts
 export const knowledgeText = pgBaseTable(
   "knowledge_text",
@@ -85,6 +95,65 @@ export const knowledgeText = pgBaseTable(
     // fractional-index key for manual ordering among sibling pages in the
     // wiki tree; null = unsorted (falls back to title sort)
     position: varchar("position", { length: 64 }),
+    // --- AI page summary (the "docstring" of a page) ---
+    // A short (1-2 sentence) description of the page, delivered in every
+    // list-type response (tree, search, recent-changes, ...) so an agent can
+    // tell similar pages apart without opening them. Stored, not generated on
+    // the fly. See src/lib/knowledge/summaries.ts.
+    summary: text("summary"),
+    // How the summary is maintained (auto | manual | off). See the enum above.
+    summaryMode: knowledgeSummaryModeEnum("summary_mode")
+      .notNull()
+      .default("auto"),
+    // Set true when the content changes; the debounced sweeper regenerates
+    // stale summaries once the page has been quiet for the configured period.
+    summaryStale: boolean("summary_stale").notNull().default(false),
+    // sha256 of the content at the last generation, so a save that did not
+    // change the content (or a revert) clears the flag without an LLM call.
+    summaryContentHash: varchar("summary_content_hash", { length: 64 }),
+    // When the summary was last (re)generated, and by which model.
+    summaryUpdatedAt: timestamp("summary_updated_at", { mode: "string" }),
+    summaryModel: varchar("summary_model", { length: 128 }),
+    // --- controlled facets ---
+    // Small, controlled vocabulary (closed lists configured per tenant in the
+    // knowledge config, see knowledge-config.ts) — NOT free tags. Delivered in every
+    // list-type response and usable as filter parameters in search / tree /
+    // lists / recent-changes. Stored as text validated against the tenant
+    // vocabulary on write.
+    //
+    // Type of page, e.g. "FAQ" | "manual" | "text" | "policy" | "note".
+    pageType: varchar("page_type", { length: 64 }),
+    // Trust signal, e.g. "draft" | "verified" | "outdated".
+    status: varchar("status", { length: 64 }),
+    // For status transitions to "verified": when and by whom.
+    verifiedAt: timestamp("verified_at", { mode: "string" }),
+    verifiedBy: uuid("verified_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // Responsibility / point of contact. Distinct from the userId/teamId
+    // access fields — an owner need not be the (only) reader.
+    ownerUserId: uuid("owner_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    ownerTeamId: uuid("owner_team_id").references(() => teams.id, {
+      onDelete: "set null",
+    }),
+    // Expiry for time-bound content (price lists, deadlines). Null = no expiry.
+    validUntil: timestamp("valid_until", { mode: "string" }),
+    // Successor/duplicate resolution: this page "replaces" the referenced page.
+    // Self-FK; SET NULL so removing the superseded page doesn't cascade-delete.
+    supersedesId: uuid("supersedes_id").references(
+      (): AnyPgColumn => knowledgeText.id,
+      { onDelete: "set null" }
+    ),
+    // --- agent-instructions marker ---
+    // Marks this page as the "CLAUDE.md of the knowledge base": curated
+    // orientation for agents (what lives where, conventions, glossary,
+    // authoritative areas). One per tenant (teamId null) and optionally one per
+    // team. Surfaced by the knowledge overview endpoint.
+    isAgentInstructions: boolean("is_agent_instructions")
+      .notNull()
+      .default(false),
     // opt-in: mirror this page into the RAG pipeline (knowledge_entry +
     // knowledge_chunks) so it shows up in similarity search
     embeddingEnabled: boolean("embedding_enabled").notNull().default(false),
@@ -135,6 +204,23 @@ export const knowledgeText = pgBaseTable(
       "gin",
       sql`base_safe_tsvector('simple', coalesce(${knowledgeText.title}, '') || ' ' || coalesce(${knowledgeText.text}, ''))`
     ),
+    // Partial index for the summary sweeper: it only ever scans stale pages.
+    index("knowledge_text_summary_stale_idx")
+      .on(knowledgeText.updatedAt)
+      .where(sql`${knowledgeText.summaryStale} = true`),
+    // facet filters (scoped by tenant).
+    index("knowledge_text_page_type_idx").on(
+      knowledgeText.tenantId,
+      knowledgeText.pageType
+    ),
+    index("knowledge_text_status_idx").on(
+      knowledgeText.tenantId,
+      knowledgeText.status
+    ),
+    // quickly find a tenant's agent-instructions page(s).
+    index("knowledge_text_agent_instructions_idx")
+      .on(knowledgeText.tenantId)
+      .where(sql`${knowledgeText.isAgentInstructions} = true`),
   ]
 );
 
@@ -270,7 +356,7 @@ export const knowledgeTextBlock = pgBaseTable(
 export type KnowledgeTextBlockSelect = typeof knowledgeTextBlock.$inferSelect;
 export type KnowledgeTextBlockInsert = typeof knowledgeTextBlock.$inferInsert;
 
-// Obsidian-style wikilinks between knowledgeText pages, extracted from
+// Obsidian-style page links between knowledgeText pages, extracted from
 // [[Target Title]] / [[Target Title|alias]] markers on every content save.
 // targetId is null while the linked title has no matching page yet
 // ("phantom link"); it is resolved automatically when such a page appears
@@ -314,9 +400,9 @@ export const knowledgeTextLink = pgBaseTable(
 export type KnowledgeTextLinkSelect = typeof knowledgeTextLink.$inferSelect;
 export type KnowledgeTextLinkInsert = typeof knowledgeTextLink.$inferInsert;
 
-// Tracks which files (images, attachments in the "wiki" bucket) are
+// Tracks which files (images, attachments in the "knowledge" bucket) are
 // referenced by which knowledgeText page. Rebuilt from the page content on
-// every save — the same pattern as wikilinks. Files without any reference
+// every save — the same pattern as page links. Files without any reference
 // get an expiry (grace period) and are removed by the cleanup cron, so no
 // orphaned blobs accumulate.
 export const knowledgeTextFile = pgBaseTable(

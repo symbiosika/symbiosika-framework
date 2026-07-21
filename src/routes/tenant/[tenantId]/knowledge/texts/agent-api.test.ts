@@ -136,7 +136,7 @@ describe("Agent API: file-like access, search and links", () => {
     expect(response.status).toBe(400);
   });
 
-  test("GET links returns the resolved wikilink", async () => {
+  test("GET links returns the resolved page link", async () => {
     const response = await testFetcher.get(
       app,
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${guideId}/links`,

@@ -1,5 +1,5 @@
 /**
- * Obsidian-style wikilinks between knowledgeText pages.
+ * Obsidian-style [[…]] page links between knowledgeText pages.
  *
  * Pages link to each other with `[[Target Title]]` (or `[[Target Title|shown
  * text]]`) anywhere in their markdown/html content. On every content save the
@@ -39,12 +39,12 @@ type Context = {
 };
 
 /** [[Target]] or [[Target|alias]] — target must not contain [, ] or | */
-const WIKILINK_PATTERN = /\[\[([^\[\]|]+)(?:\|[^\[\]]*)?\]\]/g;
+const PAGE_LINK_PATTERN = /\[\[([^\[\]|]+)(?:\|[^\[\]]*)?\]\]/g;
 
-/** Extract the distinct wikilink targets from a page's content */
-export const extractWikilinkTargets = (content: string): string[] => {
+/** Extract the distinct page link targets from a page's content */
+export const extractPageLinkTargets = (content: string): string[] => {
   const targets = new Set<string>();
-  for (const match of content.matchAll(WIKILINK_PATTERN)) {
+  for (const match of content.matchAll(PAGE_LINK_PATTERN)) {
     const target = match[1]?.trim();
     if (target) targets.add(target);
   }
@@ -93,7 +93,7 @@ export const syncKnowledgeTextLinks = async (page: {
   tenantId: string;
   text: string;
 }): Promise<void> => {
-  const targets = extractWikilinkTargets(page.text).filter(
+  const targets = extractPageLinkTargets(page.text).filter(
     (t) => t.length <= 1000
   );
   const resolved = await resolveTitles(page.tenantId, targets);

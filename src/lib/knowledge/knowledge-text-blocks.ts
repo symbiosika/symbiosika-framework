@@ -324,6 +324,8 @@ export const syncKnowledgeTextBlocks = async (
           text: newText,
           contentMode: "blocks",
           updatedAt: sql`now()`,
+          // content changed → mark the summary stale for the sweeper
+          summaryStale: true,
           // audit: record who performed this edit (unchanged for service
           // calls that run without a user context)
           ...(context.userId ? { updatedBy: context.userId } : {}),

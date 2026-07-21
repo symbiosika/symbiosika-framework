@@ -1,0 +1,2 @@
+ALTER TABLE "base_knowledge_text" ADD COLUMN "is_agent_instructions" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE INDEX "knowledge_text_agent_instructions_idx" ON "base_knowledge_text" USING btree ("tenant_id") WHERE "base_knowledge_text"."is_agent_instructions" = true;

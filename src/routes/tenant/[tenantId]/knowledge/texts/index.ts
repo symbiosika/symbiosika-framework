@@ -25,6 +25,22 @@ import {
   readKnowledgeTextContent,
   editKnowledgeTextContent,
 } from "../../../../../lib/knowledge/knowledge-text-edit";
+import {
+  appendToKnowledgeText,
+  resolvePageByTitle,
+  listRecentChanges,
+  getPagesBatch,
+} from "../../../../../lib/knowledge/knowledge-text-agent";
+import {
+  getKnowledgeTenantConfig,
+  setKnowledgeTenantConfig,
+} from "../../../../../lib/knowledge/knowledge-config";
+import { enqueueSummaryBackfill } from "../../../../../lib/knowledge/summaries";
+import { getKnowledgeOverview } from "../../../../../lib/knowledge/knowledge-overview";
+import {
+  getPageOutline,
+  readPageSection,
+} from "../../../../../lib/knowledge/knowledge-text-sections";
 import { searchKnowledgeTexts } from "../../../../../lib/knowledge/knowledge-text-search";
 import {
   getKnowledgeTextLinks,
@@ -54,7 +70,7 @@ import {
   knowledgeTextBlockSchema,
   jobsSelectSchema,
 } from "../../../../../lib/db/db-schema";
-import { isTenantMember } from "../../..";
+import { isTenantMember, isTenantAdmin } from "../../..";
 import { validateScope } from "../../../../../lib/utils/validate-scope";
 
 const blockInputSchema = v.object({
@@ -159,6 +175,9 @@ export default function defineRoutesForKnowledgeTexts(
         limit: v.optional(v.string()),
         page: v.optional(v.string()),
         includeHidden: v.optional(v.string()),
+        // facet filters
+        pageType: v.optional(v.string()),
+        status: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -171,6 +190,8 @@ export default function defineRoutesForKnowledgeTexts(
           limit: limitStr,
           page: pageStr,
           includeHidden: includeHiddenStr,
+          pageType,
+          status,
         } = c.req.valid("query");
         const { tenantId } = c.req.valid("param");
         const userId = c.get("usersId");
@@ -186,6 +207,8 @@ export default function defineRoutesForKnowledgeTexts(
           teamId,
           workspaceId,
           includeHidden,
+          pageType,
+          status,
         });
         return c.json(r);
       } catch (e) {
@@ -472,6 +495,10 @@ export default function defineRoutesForKnowledgeTexts(
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
         includeHidden: v.optional(v.string()),
+        // facet + scope filters
+        pageType: v.optional(v.string()),
+        status: v.optional(v.string()),
+        parentId: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string() })),
@@ -485,6 +512,9 @@ export default function defineRoutesForKnowledgeTexts(
           teamId,
           workspaceId,
           includeHidden: includeHiddenStr,
+          pageType,
+          status,
+          parentId,
         } = c.req.valid("query");
         const { tenantId } = c.req.valid("param");
         const userId = c.get("usersId");
@@ -501,12 +531,302 @@ export default function defineRoutesForKnowledgeTexts(
           {
             mode,
             limit: limitStr ? parseInt(limitStr) : undefined,
+            filters: { pageType, status, parentId },
           }
         );
         return c.json(r);
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
       }
+    }
+  );
+
+  /**
+   * heading outline of a page (structure without the body). Registered
+   * before :id so the static path wins.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/outline",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Get a page's heading outline (structure without body text)",
+      responses: { 200: { description: "Heading outline" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+        return c.json(await getPageOutline(id, { tenantId, userId }));
+      } catch (e) {
+        const msg = e + "";
+        if (msg.includes("not found") || msg.includes("access denied")) {
+          throw new HTTPException(404, { message: msg });
+        }
+        throw new HTTPException(400, { message: msg });
+      }
+    }
+  );
+
+  /**
+   * read a single section of a page addressed by its heading anchor.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/section",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Read one section of a page addressed by its heading anchor",
+      responses: { 200: { description: "The requested section" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    validator("query", v.object({ anchor: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { tenantId, id } = c.req.valid("param");
+        const { anchor } = c.req.valid("query");
+        const userId = c.get("usersId");
+        const section = await readPageSection(id, anchor, { tenantId, userId });
+        if (section.notFound) {
+          throw new HTTPException(404, {
+            message: `Section "${anchor}" not found`,
+          });
+        }
+        return c.json(section);
+      } catch (e) {
+        if (e instanceof HTTPException) throw e;
+        const msg = e + "";
+        if (msg.includes("not found") || msg.includes("access denied")) {
+          throw new HTTPException(404, { message: msg });
+        }
+        throw new HTTPException(400, { message: msg });
+      }
+    }
+  );
+
+  /**
+   * Knowledge overview — the briefing an agent loads at session start: metrics,
+   * top-level structure with summaries/facets, recent changes, and the embedded
+   * agent-instructions page.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/overview",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Get the knowledge overview (metrics, top-level, recent, instructions)",
+      responses: { 200: { description: "Knowledge overview" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    validator("query", v.object({ recentLimit: v.optional(v.string()) })),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      const { recentLimit } = c.req.valid("query");
+      const userId = c.get("usersId");
+      const overview = await getKnowledgeOverview(
+        { tenantId, userId },
+        { recentLimit: recentLimit ? parseInt(recentLimit) : undefined }
+      );
+      return c.json(overview);
+    }
+  );
+
+  /**
+   * Resolve a page by exact title (case-insensitive, page link semantics).
+   * Returns the page reference (without text) or 404.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/resolve",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Resolve a knowledge page by its exact title",
+      responses: { 200: { description: "Resolved page (without text)" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    validator("query", v.object({ title: v.string() })),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      const { title } = c.req.valid("query");
+      const userId = c.get("usersId");
+      const page = await resolvePageByTitle(title, { tenantId, userId });
+      if (!page) throw new HTTPException(404, { message: "Page not found" });
+      return c.json(page);
+    }
+  );
+
+  /**
+   * Recent changes — visible pages newest-first, without text, filterable by
+   * time window, subtree (parentId) and facets. Each item carries
+   * summary + facets + updatedAt + updatedBy.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/recent-changes",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "List recently changed knowledge pages",
+      responses: { 200: { description: "Recently changed pages (no text)" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    validator(
+      "query",
+      v.object({
+        since: v.optional(v.string()),
+        parentId: v.optional(v.string()),
+        pageType: v.optional(v.string()),
+        status: v.optional(v.string()),
+        teamId: v.optional(v.string()),
+        limit: v.optional(v.string()),
+      })
+    ),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      const q = c.req.valid("query");
+      const userId = c.get("usersId");
+      const r = await listRecentChanges(
+        { tenantId, userId, teamId: q.teamId },
+        {
+          since: q.since,
+          parentId: q.parentId,
+          pageType: q.pageType,
+          status: q.status,
+          limit: q.limit ? parseInt(q.limit) : undefined,
+        }
+      );
+      return c.json(r);
+    }
+  );
+
+  /**
+   * Batch-read several pages in one call. Body: { ids, includeText? }.
+   * Pages the caller cannot see are silently dropped.
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/batch",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Read several knowledge pages by id in one request",
+      responses: { 200: { description: "Requested visible pages" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    validator(
+      "json",
+      v.object({
+        ids: v.array(v.string()),
+        includeText: v.optional(v.boolean()),
+      })
+    ),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      const { ids, includeText } = c.req.valid("json");
+      const userId = c.get("usersId");
+      const r = await getPagesBatch(ids, { tenantId, userId }, { includeText });
+      return c.json(r);
+    }
+  );
+
+  /**
+   * Get the tenant's knowledge config (facet vocabularies + auto-summary switch).
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/config",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Get the tenant knowledge configuration (facet vocabularies, flags)",
+      responses: { 200: { description: "Knowledge configuration" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      return c.json(await getKnowledgeTenantConfig(tenantId));
+    }
+  );
+
+  /**
+   * Update the tenant's knowledge config. Admin only (it changes the controlled
+   * vocabulary and the cost/privacy-relevant auto-summary switch).
+   */
+  app.put(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/config",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Update the tenant knowledge configuration",
+      responses: { 200: { description: "Updated knowledge configuration" } },
+    }),
+    validateScope("knowledge:write"),
+    validator("param", v.object({ tenantId: v.string() })),
+    validator(
+      "json",
+      v.object({
+        autoSummaries: v.optional(v.boolean()),
+        pageTypes: v.optional(v.array(v.string())),
+        statuses: v.optional(v.array(v.string())),
+      })
+    ),
+    isTenantAdmin,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      const patch = c.req.valid("json");
+      return c.json(await setKnowledgeTenantConfig(tenantId, patch));
+    }
+  );
+
+  /**
+   * Trigger a summary backfill — flag existing summary-less auto pages so the
+   * debounced sweeper generates them. Admin only. Returns the number flagged.
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/summaries/backfill",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Flag summary-less pages for background summary generation",
+      responses: {
+        200: {
+          description: "Backfill result",
+          content: {
+            "application/json": {
+              schema: resolver(v.object({ flagged: v.number() })),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantAdmin,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      return c.json(await enqueueSummaryBackfill(tenantId));
     }
   );
 
@@ -968,6 +1288,70 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
+   * append text to a page without a read-modify-write round trip and
+   * without returning the full content. Goes through the normal edit path
+   * (history, permissions, bookkeeping, summary-stale marking).
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/append",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Append text to a knowledge page (no full content in response)",
+      responses: {
+        200: {
+          description: "Append result (id, appendedChars, totalChars)",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({
+                  id: v.string(),
+                  appendedChars: v.number(),
+                  totalChars: v.number(),
+                })
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator(
+      "json",
+      v.object({
+        text: v.string(),
+        separator: v.optional(v.string()),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { text, separator } = c.req.valid("json");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+        const r = await appendToKnowledgeText(
+          id,
+          text,
+          { tenantId, userId },
+          { separator }
+        );
+        return c.json(r);
+      } catch (e) {
+        const errorMsg = e + "";
+        if (
+          errorMsg.includes("not found") ||
+          errorMsg.includes("access denied")
+        ) {
+          throw new HTTPException(404, { message: errorMsg });
+        }
+        throw new HTTPException(400, { message: errorMsg });
+      }
+    }
+  );
+
+  /**
    * Upload an image for a wiki page (block editor image upload).
    * Returns the file id, the auth-protected path and a ready-to-insert
    * markdown snippet. The upload expires automatically unless a following
@@ -1031,7 +1415,7 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * Outgoing wikilinks of a page ([[Title]] markers in its content)
+   * Outgoing page links of a page ([[Title]] markers in its content)
    */
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/links",
@@ -1040,7 +1424,7 @@ export default function defineRoutesForKnowledgeTexts(
     describeRoute({
       tags: ["knowledge"],
       summary:
-        "Get the outgoing wikilinks of a page (resolved and phantom links)",
+        "Get the outgoing page links of a page (resolved and phantom links)",
       responses: {
         200: { description: "List of outgoing links" },
       },
@@ -1209,6 +1593,10 @@ export default function defineRoutesForKnowledgeTexts(
         teamId: v.optional(v.string()),
         workspaceId: v.optional(v.string()),
         includeHidden: v.optional(v.string()),
+        // subtree limits — cap depth and total characters. Truncations are
+        // flagged explicitly (contentTruncated / childrenOmitted), never silent.
+        maxDepth: v.optional(v.string()),
+        maxChars: v.optional(v.string()),
       })
     ),
     validator("param", v.object({ tenantId: v.string(), id: v.string() })),
@@ -1220,16 +1608,20 @@ export default function defineRoutesForKnowledgeTexts(
           teamId,
           workspaceId,
           includeHidden: includeHiddenStr,
+          maxDepth: maxDepthStr,
+          maxChars: maxCharsStr,
         } = c.req.valid("query");
         const { tenantId, id } = c.req.valid("param");
         const userId = c.get("usersId");
         const includeHidden = includeHiddenStr === "true";
         const recursive = recursiveStr === "true";
+        const maxDepth = maxDepthStr ? parseInt(maxDepthStr) : undefined;
+        const maxChars = maxCharsStr ? parseInt(maxCharsStr) : undefined;
 
         const r = await getSimplifiedKnowledgeText(
           id,
           { tenantId, userId, teamId, workspaceId, includeHidden },
-          { recursive }
+          { recursive, maxDepth, maxChars }
         );
         return c.json(r);
       } catch (e) {

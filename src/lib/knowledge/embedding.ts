@@ -1,33 +1,68 @@
 import { embed } from "ai";
-import { mistral } from "@ai-sdk/mistral";
 import log from "../log";
-
-const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
+import {
+  DEFAULT_EMBEDDING_PROVIDER,
+  type EmbeddingProviderId,
+} from "../ai/types";
+import {
+  buildEmbeddingModel,
+  isEmbeddingProviderConfigured,
+} from "../ai/providers";
 
 /**
- * Generate an embedding for the given text using Mistral's embedding model
+ * The embedding provider selected via the `EMBEDDING_PROVIDER` env var, exactly
+ * like `PDF_PARSER_SERVICE` selects the PDF parser. Defaults to Mistral, which
+ * preserves the historical behaviour.
+ *
+ *   EMBEDDING_PROVIDER=mistral     (default) → mistral-embed (1024 dims)
+ *   EMBEDDING_PROVIDER=openrouter  → OpenAI-compatible embeddings endpoint
+ *
+ * NOTE: different providers/models produce different vector dimensions and
+ * vectors are only comparable within one model. Changing this on a populated
+ * deployment requires re-embedding existing content.
+ */
+const getEmbeddingProvider = (): EmbeddingProviderId =>
+  (process.env.EMBEDDING_PROVIDER as EmbeddingProviderId) ??
+  DEFAULT_EMBEDDING_PROVIDER;
+
+/**
+ * Generate an embedding for the given text using the configured embedding
+ * provider (Mistral by default).
  * @param text - The text to generate an embedding for
  * @param options - Options containing tenantId and userId (for future use)
- * @returns An object containing the embedding vector and model identifier
+ * @returns An object containing the embedding vector, model id and dimensions
  */
 export const generateEmbedding = async (
   text: string,
   options: { tenantId?: string; userId?: string }
 ) => {
-  if (!MISTRAL_API_KEY) {
-    log.error("MISTRAL_API_KEY is not set in environment variables");
-    throw new Error("Mistral API key is not configured");
+  const provider = getEmbeddingProvider();
+
+  if (!isEmbeddingProviderConfigured(provider)) {
+    log.error(
+      `Embedding provider "${provider}" is not configured (missing API key).`
+    );
+    throw new Error(
+      `Embedding provider "${provider}" is not configured. Set the matching ` +
+        "API key (e.g. MISTRAL_API_KEY or OPENROUTER_API_KEY)."
+    );
   }
 
   try {
+    const model = buildEmbeddingModel(provider);
     const { embedding } = await embed({
-      model: mistral.textEmbeddingModel("mistral-embed"),
+      model,
       value: text,
     });
 
+    // buildEmbeddingModel always returns a model object (never a bare string),
+    // so modelId is present; the union type just doesn't narrow to it.
+    const modelId =
+      typeof model === "string" ? model : model.modelId;
+
     return {
       embedding,
-      model: "mistral-embed",
+      model: modelId,
       dimensions: embedding.length,
     };
   } catch (error) {

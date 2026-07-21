@@ -4,6 +4,7 @@
   "author": "Symbiosika GmbH",
   "main": "./lib/index.js",
   "devDependencies": {
+    "@ai-sdk/openai-compatible": "2.0.62",
     "@electric-sql/pglite": "^0.5.2",
     "@electric-sql/pglite-pgvector": "^0.0.3",
     "@electric-sql/pglite-socket": "^0.2.2",
@@ -24,6 +25,7 @@
     "@mozilla/readability": "^0.6.0",
     "@valibot/to-json-schema": "^1.5.0",
     "@ai-sdk/mistral": "^3.0.5",
+    "@ai-sdk/openai-compatible": "~2.0.62",
     "@ai-sdk/valibot": "^2.0.10",
     "ai": "^6.0.48",
     "cron": "4.3.3",

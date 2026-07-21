@@ -32,10 +32,11 @@ import {
   syncKnowledgeTextFileReferences,
   markKnowledgeTextFilesForCleanup,
 } from "./knowledge-text-files";
+import { validateFacetsForWrite, type FacetFilters } from "./facets";
 import log from "../log";
 
 /**
- * Run a post-write bookkeeping step (wikilinks, file references) without
+ * Run a post-write bookkeeping step (page links, file references) without
  * letting a failure abort the surrounding create/update: the page row is
  * already written at that point, so throwing would report an error for a
  * write that actually succeeded. Failures are logged instead — the
@@ -139,10 +140,24 @@ export const checkKnowledgeTextWritePermission = async (
 export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
   data = sanitizeKnowledgeTextData(data);
 
+  // reject facet values outside the tenant's controlled vocabulary.
+  await validateFacetsForWrite(data.tenantId, data);
+
   // Audit: a freshly created page is "updated" by its creator, so default
   // updatedBy to createdBy when only the creator was provided.
   if (data.createdBy && data.updatedBy == null) {
     data = { ...data, updatedBy: data.createdBy };
+  }
+
+  // a new page with content and an auto summary starts out stale, so the
+  // sweeper generates its summary once it has been quiet for the debounce
+  // window. Explicit/manual summaries are left as provided.
+  if (
+    (data.text ?? "").trim().length > 0 &&
+    data.summary == null &&
+    (data.summaryMode ?? "auto") === "auto"
+  ) {
+    data = { ...data, summaryStale: true };
   }
 
   // creating a page inside a team / tenant-wide requires access to that
@@ -165,7 +180,7 @@ export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
     throw new Error("Failed to create knowledge text");
   }
 
-  // wikilink + file-reference bookkeeping: extract this page's outgoing
+  // page link + file-reference bookkeeping: extract this page's outgoing
   // links and image references, and snap phantom links of other pages
   // that were waiting for this title
   const page = e[0];
@@ -245,17 +260,27 @@ export const buildKnowledgeTextVisibilityConditions = (filters: {
  * Get list of all knowledge text entries WITHOUT text content
  * Sorted alphabetically by title
  */
-export const getKnowledgeText = async (filters: {
-  tenantId: string;
-  teamId?: string;
-  userId?: string;
-  workspaceId?: string;
-  limit?: number;
-  page?: number;
-  includeHidden?: boolean; // Optional: include system/hidden entries
-}) => {
+export const getKnowledgeText = async (
+  filters: {
+    tenantId: string;
+    teamId?: string;
+    userId?: string;
+    workspaceId?: string;
+    limit?: number;
+    page?: number;
+    includeHidden?: boolean; // Optional: include system/hidden entries
+  } & FacetFilters
+) => {
   // Exclude 'text' field to reduce payload size
   const permissionConditions = buildKnowledgeTextVisibilityConditions(filters);
+
+  // optional facet filters
+  if (filters.pageType) {
+    permissionConditions.push(eq(knowledgeText.pageType, filters.pageType));
+  }
+  if (filters.status) {
+    permissionConditions.push(eq(knowledgeText.status, filters.status));
+  }
 
   const { text, ...rest } = getTableColumns(knowledgeText); // exclude "text" column
   const query = getDb()
@@ -424,6 +449,9 @@ export const updateKnowledgeText = async (
 
   await checkKnowledgeTextWritePermission(currentEntry, context);
 
+  // reject facet values outside the tenant's controlled vocabulary.
+  await validateFacetsForWrite(context.tenantId, data);
+
   // moving a page into a team or making it tenant-wide additionally
   // requires access to the TARGET container
   if (context.userId) {
@@ -498,6 +526,13 @@ export const updateKnowledgeText = async (
     delete updateData.updatedBy;
   }
 
+  // a content change marks the summary stale so the debounced sweeper
+  // regenerates it once the page goes quiet. Respect an explicit summaryStale
+  // in the update (e.g. a manual summary edit clearing it).
+  if (updateData.text !== undefined && updateData.summaryStale === undefined) {
+    updateData.summaryStale = true;
+  }
+
   const result = await getDb()
     .update(knowledgeText)
     .set({
@@ -511,7 +546,7 @@ export const updateKnowledgeText = async (
     throw new Error("Failed to update knowledge text");
   }
 
-  // wikilink + file-reference bookkeeping
+  // page link + file-reference bookkeeping
   const updatedPage = result[0];
   if (data.text !== undefined) {
     await runBookkeepingSafe("links", () =>

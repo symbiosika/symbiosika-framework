@@ -183,6 +183,27 @@
       "when": 1784562470494,
       "tag": "0025_open_zarda",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1784573501098,
+      "tag": "0026_lying_wolverine",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784574026621,
+      "tag": "0027_serious_the_fury",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784574676735,
+      "tag": "0028_ambitious_frightful_four",
+      "breakpoints": true
     }
   ]
 }

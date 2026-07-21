@@ -10,7 +10,7 @@
  *     text pages and block pages
  *
  * Edits on block pages are applied inside the affected block(s), then run
- * through the normal block sync, so text cache, history, wikilinks and the
+ * through the normal block sync, so text cache, history, page links and the
  * embedding mirror all stay consistent.
  */
 

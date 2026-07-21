@@ -64,7 +64,13 @@ import defineNotificationRoutes from "./routes/user/notifications";
 import { addMessageToAllAdmins } from "./lib/notifications";
 // Jobs
 import { defineJob, startJobQueue } from "./lib/jobs";
+import { logAiConfiguration } from "./lib/ai";
 import { knowledgeIngestJobRegister } from "./lib/knowledge/ingestion-jobs";
+import {
+  summaryJobRegister,
+  sweepStaleSummaries,
+} from "./lib/knowledge/summaries";
+import { isAiEnabled } from "./lib/ai";
 // Cron
 import scheduler from "./lib/cron";
 import { cleanupExpiredFiles } from "./lib/knowledge/knowledge-text-files";
@@ -154,6 +160,23 @@ export const defineServer = (config: ServerSpecificConfig) => {
       await cleanupExpiredFiles();
     }
   );
+
+  /**
+   * debounced knowledge page-summary sweeper. Runs every minute and enqueues
+   * summary jobs for pages that have been stale AND quiet for the configured
+   * window. Only registered when a global LLM is configured (AI_PROVIDER set);
+   * with no LLM the whole feature is inert. Override the schedule via
+   * config.knowledgeSummarySweepCron.
+   */
+  if (isAiEnabled()) {
+    scheduler.registerTask(
+      "knowledge-summary-sweeper",
+      config.knowledgeSummarySweepCron ?? "* * * * *",
+      async () => {
+        await sweepStaleSummaries();
+      }
+    );
+  }
 
   /**
    * Init the main Hono app
@@ -429,7 +452,12 @@ export const defineServer = (config: ServerSpecificConfig) => {
        * disables it via `disableJobQueue` (e.g. when running a dedicated worker
        * process). Consumer-provided `jobHandlers` are registered on top.
        */
-      const builtInJobHandlers = [knowledgeIngestJobRegister];
+      logAiConfiguration();
+
+      const builtInJobHandlers = [
+        knowledgeIngestJobRegister,
+        summaryJobRegister,
+      ];
       const allJobHandlers = [
         ...builtInJobHandlers,
         ...(config.jobHandlers ?? []),
@@ -516,6 +544,97 @@ export * from "./types";
  * Export the resource system for composable CRUD resources
  */
 export * from "./lib/resource";
+
+/**
+ * Export the central AI access layer (text generation).
+ * Provider is selected via AI_PROVIDER (default "none").
+ */
+export {
+  isAiEnabled,
+  getAiProvider,
+  getStandardModel,
+  getModel,
+  assertAiConfigured,
+  generateText,
+  generateStructured,
+  logAiConfiguration,
+  AiNotConfiguredError,
+} from "./lib/ai";
+export {
+  AI_PROVIDER,
+  DEFAULT_AI_PROVIDER,
+  EMBEDDING_PROVIDER,
+  DEFAULT_EMBEDDING_PROVIDER,
+} from "./lib/ai/types";
+export type { AiProviderId, EmbeddingProviderId } from "./lib/ai/types";
+
+/**
+ * Export knowledge page-summary controls and per-tenant knowledge config.
+ */
+export {
+  SUMMARY_JOB_TYPE,
+  DEFAULT_SUMMARY_DEBOUNCE_MINUTES,
+  processSummaryForPage,
+  generatePageSummary,
+  buildSummaryInput,
+  computeSummaryContentHash,
+  sweepStaleSummaries,
+  enqueueSummaryBackfill,
+} from "./lib/knowledge/summaries";
+export {
+  getKnowledgeTenantConfig,
+  setKnowledgeTenantConfig,
+  DEFAULT_PAGE_TYPES,
+  DEFAULT_STATUSES,
+} from "./lib/knowledge/knowledge-config";
+export type { KnowledgeTenantConfig } from "./lib/knowledge/knowledge-config";
+
+/**
+ * Export facet validation helpers.
+ */
+export {
+  validateFacetsForWrite,
+  FacetValidationError,
+} from "./lib/knowledge/facets";
+export type { FacetFilters } from "./lib/knowledge/facets";
+
+/**
+ * Export the knowledge context-economy helpers.
+ */
+export {
+  resolvePageByTitle,
+  listRecentChanges,
+  getPagesBatch,
+  appendToKnowledgeText,
+} from "./lib/knowledge/knowledge-text-agent";
+export type {
+  RecentChangesOptions,
+  BatchReadOptions,
+  AppendResult,
+} from "./lib/knowledge/knowledge-text-agent";
+
+/**
+ * Export the knowledge overview.
+ */
+export { getKnowledgeOverview } from "./lib/knowledge/knowledge-overview";
+export type { KnowledgeOverview } from "./lib/knowledge/knowledge-overview";
+
+/**
+ * Export heading-addressing helpers and enriched search types.
+ */
+export {
+  getPageOutline,
+  readPageSection,
+} from "./lib/knowledge/knowledge-text-sections";
+export type {
+  OutlineHeading,
+  PageSection,
+} from "./lib/knowledge/knowledge-text-sections";
+export type {
+  SearchFilters,
+  KnowledgeTextSearchResult,
+  KnowledgeTextSearchMode,
+} from "./lib/knowledge/knowledge-text-search";
 
 /**
  * Export all services for the customer App
