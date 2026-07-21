@@ -22,7 +22,11 @@ import {
   type KnowledgeChunksInsert,
   type KnowledgeEntryInsert,
 } from "../db/schema/knowledge";
-import { parseDocument, parseFile } from "./parsing";
+import {
+  parseDocument,
+  parseFile,
+  extractedMetadataToAttributes,
+} from "./parsing";
 import { applyPostProcessors } from "./parsing/post-processors";
 import { urlToMarkdown } from "./parsing/url";
 import type { PageContent } from "./parsing/pdf/types";
@@ -210,13 +214,21 @@ export const extractKnowledgeFromExistingDbEntry = async (data: {
   usePostProcessors?: string[];
 }) => {
   // Get the file (from DB or local disc) or content from URL
-  let { content, pages, title, includesImages } = await parseDocument(data);
+  let { content, pages, title, includesImages, parserMetadata } =
+    await parseDocument(data);
+
+  // Fold any parser-extracted attribute values into the entry metadata so they
+  // travel with the knowledge entry (opt-in via `enablePdfParserExtraction`).
+  const mergedMetadata = {
+    ...(data.metadata ?? {}),
+    ...extractedMetadataToAttributes(parserMetadata),
+  };
 
   return extractKnowledgeFromText({
     title,
     text: content,
     pages: pages,
-    metadata: data.metadata,
+    metadata: mergedMetadata,
     sourceType: data.sourceType,
     sourceFileBucket: data.sourceFileBucket,
     sourceId: data.sourceId,

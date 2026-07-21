@@ -60,6 +60,11 @@ export const _GLOBAL_SERVER_CONFIG = {
   // sha256 of the source and skips re-embedding an unchanged source on the next
   // run. Default false because computing the hash costs a little performance.
   enableSourceHashing: false,
+  // Opt-in: pass the tenant's configured catalog attributes to the document
+  // parsing service as structured extraction targets and write found values
+  // back onto the page's `attributes`. Default false (adds a tenant-config
+  // read per parse and only helps with a parser that supports extraction).
+  enablePdfParserExtraction: false,
   // OAuth2 / OIDC Authorization Server (opt-in, default off)
   oauth2: {
     enabled: false,
@@ -114,6 +119,8 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
   _GLOBAL_SERVER_CONFIG.chunkingStrategy = config.chunkingStrategy ?? "simple";
   _GLOBAL_SERVER_CONFIG.enableSourceHashing =
     config.enableSourceHashing ?? false;
+  _GLOBAL_SERVER_CONFIG.enablePdfParserExtraction =
+    config.enablePdfParserExtraction ?? false;
 
   // Email Templates
   if (config.emailTemplates?.verifyEmail) {

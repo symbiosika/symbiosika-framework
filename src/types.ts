@@ -164,6 +164,19 @@ export interface ServerSpecificConfig {
    */
   enableSourceHashing?: boolean;
 
+  /**
+   * Opt-in: pass the tenant's configured catalog attributes (see
+   * knowledge-config `attributes`) to the PDF/document parsing service as
+   * structured extraction targets. When true, `parseFile`/`parseDocument`
+   * load the tenant attribute definitions and set `PdfParserOptions.extract`
+   * so a capable parser tries to fill those fields from the document; the
+   * extracted values are written back onto the resulting page's `attributes`
+   * (only into keys that are still empty and pass facet validation).
+   * Can be overridden per call via `extractAttributes`.
+   * Default: false.
+   */
+  enablePdfParserExtraction?: boolean;
+
   // CRON
   customCronJobs?: Task[];
   /**
