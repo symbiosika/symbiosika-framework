@@ -337,9 +337,20 @@ export const extractedMetadataToAttributes = (
   for (const [key, entry] of Object.entries(metadata)) {
     if (!entry || entry.found !== true) continue;
     const { value } = entry;
-    if (value === null || value === undefined) continue;
-    const asString =
-      typeof value === "string" ? value : String(value);
+    // Accept only real scalars. Anything else (null/undefined, objects,
+    // arrays, NaN/Infinity) is dropped instead of being coerced into a junk
+    // string like "[object Object]" — the parser may return values that
+    // violate its own type contract.
+    let asString: string;
+    if (typeof value === "string") {
+      asString = value;
+    } else if (typeof value === "boolean") {
+      asString = String(value);
+    } else if (typeof value === "number" && Number.isFinite(value)) {
+      asString = String(value);
+    } else {
+      continue;
+    }
     if (asString.length === 0) continue;
     out[key] = asString;
   }

@@ -72,4 +72,27 @@ describe("extractedMetadataToAttributes", () => {
   test("undefined metadata yields an empty map", () => {
     expect(extractedMetadataToAttributes(undefined)).toEqual({});
   });
+
+  test("drops non-scalar values and non-finite numbers instead of coercing them", () => {
+    const attrs = extractedMetadataToAttributes({
+      // parser violating its own type contract
+      obj: { value: { nested: 1 } as never, found: true },
+      arr: { value: [1, 2] as never, found: true },
+      nan: { value: NaN, found: true },
+      inf: { value: Infinity, found: true },
+      // a clean value still comes through
+      ok: { value: "yes", found: true },
+    });
+    expect(attrs).toEqual({ ok: "yes" });
+  });
+
+  test("survives a malformed (non-object) metadata payload without throwing", () => {
+    // e.g. the service returns an array or a bare string
+    expect(
+      extractedMetadataToAttributes([] as never)
+    ).toEqual({});
+    expect(
+      extractedMetadataToAttributes("oops" as never)
+    ).toEqual({});
+  });
 });
