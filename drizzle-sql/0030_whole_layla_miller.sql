@@ -1,0 +1,1 @@
+CREATE INDEX "knowledge_chunks_fts_idx" ON "base_knowledge_chunks" USING gin (base_safe_tsvector('simple', coalesce("header", '') || ' ' || coalesce("text", '')));

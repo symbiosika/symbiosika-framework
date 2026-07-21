@@ -3,6 +3,52 @@ import { getNearestEmbeddings } from "./similarity-search";
 import { extractKnowledgeFromExistingDbEntry } from "./add-knowledge";
 import { createKnowledgeText } from "./knowledge-texts";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
+import { getDb } from "../db/db-connection";
+import { knowledgeEntry, knowledgeChunks } from "../db/db-schema";
+
+describe("Hybrid chunk search (fulltext leg, no embedding provider)", () => {
+  beforeAll(async () => {
+    await initTests();
+  });
+
+  it("degrades gracefully to fulltext when the embedding provider is unavailable", async () => {
+    const previousProvider = process.env.EMBEDDING_PROVIDER;
+    // an unknown provider makes generateEmbedding fail immediately, so the
+    // semantic leg is unavailable and only the fulltext leg can match
+    process.env.EMBEDDING_PROVIDER = "__not-configured__";
+    try {
+      const db = getDb();
+      const [entry] = await db
+        .insert(knowledgeEntry)
+        .values({
+          tenantId: TEST_ORGANISATION_1.id,
+          name: `Hybrid FTS Test Entry ${crypto.randomUUID()}`,
+        })
+        .returning();
+      await db.insert(knowledgeChunks).values({
+        knowledgeEntryId: entry!.id,
+        text: "Worker bees must visit over two million flowers to produce one pound of honey.",
+        order: 0,
+        embeddingModel: "test",
+        dimensions: 1024,
+        textEmbedding1024: new Array(1024).fill(0),
+      });
+
+      const results = await getNearestEmbeddings({
+        tenantId: TEST_ORGANISATION_1.id,
+        searchText: "honey flowers bees",
+        n: 3,
+        filterKnowledgeEntryIds: [entry!.id],
+      });
+
+      expect(results.length).toBe(1);
+      expect(results[0]!.text).toContain("Worker bees");
+    } finally {
+      if (previousProvider === undefined) delete process.env.EMBEDDING_PROVIDER;
+      else process.env.EMBEDDING_PROVIDER = previousProvider;
+    }
+  });
+});
 
 const testTexts = [
   {
