@@ -20,7 +20,7 @@ import {
   getKnowledgeTextById,
   updateKnowledgeText,
 } from "./knowledge-texts";
-import type { FacetFilters } from "./facets";
+import { attributesContainCondition, type FacetFilters } from "./facets";
 
 type Context = {
   tenantId: string;
@@ -122,6 +122,10 @@ export const listRecentChanges = async (
   }
   if (options.status) {
     conditions.push(eq(knowledgeText.status, options.status));
+  }
+  const attributesCondition = attributesContainCondition(options.attributes);
+  if (attributesCondition) {
+    conditions.push(attributesCondition);
   }
   if (options.parentId) {
     const subtreeIds = await getVisibleSubtreeIds(options.parentId, context);

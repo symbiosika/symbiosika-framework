@@ -29,7 +29,7 @@ import { getDb } from "../db/db-connection";
 import { knowledgeText, knowledgeChunks } from "../db/schema/knowledge";
 import { buildKnowledgeTextVisibilityConditions } from "./knowledge-texts";
 import { generateEmbedding } from "./embedding";
-import type { FacetFilters } from "./facets";
+import { attributesContainCondition, type FacetFilters } from "./facets";
 import log from "../log";
 
 type Context = {
@@ -262,6 +262,10 @@ export const searchKnowledgeTexts = async (
   }
   if (filters.status) {
     extraConditions.push(sql`${knowledgeText.status} = ${filters.status}`);
+  }
+  const attributesCondition = attributesContainCondition(filters.attributes);
+  if (attributesCondition) {
+    extraConditions.push(attributesCondition);
   }
   if (filters.parentId) {
     const ids = await visibleSubtreeIds(filters.parentId, context);
