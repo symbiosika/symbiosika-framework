@@ -26,7 +26,7 @@ describe("getPageChunkContext", () => {
       .values({ tenantId: TENANT, name: "Chunk context entry" })
       .returning();
 
-    // 5 Chunks, order 0..4, Dummy-Vektor erfüllt den CHECK-Constraint
+    // 5 chunks, order 0..4; a dummy vector satisfies the CHECK constraint
     const vec = new Array(1024).fill(0);
     await getDb()
       .insert(knowledgeChunks)
@@ -42,11 +42,11 @@ describe("getPageChunkContext", () => {
         }))
       );
 
-    // Seite mit dem knowledge_entry verknüpfen
+    // link the page to the knowledge_entry
     await updateKnowledgeText(pageId, { knowledgeEntryId: entry.id }, ctx);
   });
 
-  test("liefert den Treffer plus Nachbarn davor/danach in order-Reihenfolge", async () => {
+  test("returns the hit plus neighbours before/after in order", async () => {
     const r = await getPageChunkContext(pageId, ctx, {
       order: 2,
       before: 1,
@@ -59,7 +59,7 @@ describe("getPageChunkContext", () => {
     expect(r.chunks.find((c) => c.order === 2)?.sourcePage).toBe(3);
   });
 
-  test("klemmt am Anfang sauber ab (order 0)", async () => {
+  test("clamps cleanly at the start (order 0)", async () => {
     const r = await getPageChunkContext(pageId, ctx, {
       order: 0,
       before: 2,
@@ -68,7 +68,7 @@ describe("getPageChunkContext", () => {
     expect(r.chunks.map((c) => c.order)).toEqual([0, 1, 2]);
   });
 
-  test("Seite ohne Embeddings -> knowledgeEntryId null, keine Chunks", async () => {
+  test("page without embeddings -> knowledgeEntryId null, no chunks", async () => {
     const plain = await createKnowledgeText({
       tenantId: TENANT,
       title: "No embeddings page",

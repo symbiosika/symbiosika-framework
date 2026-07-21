@@ -1,12 +1,11 @@
 /**
- * Chunk-Kontext einer Seite: der Chunk an `order` plus seine Nachbarn
- * (davor/danach), in Lesereihenfolge. Erlaubt einem Agenten, den Kontext
- * nachzuladen, den ein einzelner Such-Snippet verloren hat.
+ * Chunk context of a page: the chunk at `order` plus its neighbours
+ * (before/after), in reading order. Lets an agent reload the context a
+ * single search snippet has lost.
  *
- * Die Chunks gehören zum knowledge_entry, in den die Seite bei aktiviertem
- * Embedding gespiegelt wird (knowledgeText.knowledgeEntryId). Die
- * knowledgeEntryId wird aus der sichtbaren Seite abgeleitet — Sichtbarkeit
- * der Seite == Sichtbarkeit ihrer Chunks.
+ * The chunks belong to the knowledge_entry the page is mirrored into once
+ * embedding is enabled (knowledgeText.knowledgeEntryId). The knowledgeEntryId
+ * is derived from the visible page — page visibility == chunk visibility.
  */
 import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "../db/db-connection";
@@ -27,35 +26,35 @@ export type PageChunkContextItem = {
   text: string;
   /** source page number (PDF), when known */
   sourcePage: number | null;
-  /** true für den per `order` adressierten Chunk (der Treffer), false für Nachbarn */
+  /** true for the chunk addressed by `order` (the hit), false for neighbours */
   matched: boolean;
 };
 
 export type PageChunkContext = {
   pageId: string;
   title: string;
-  /** null, wenn die Seite keine Embeddings hat (nicht gechunkt) */
+  /** null when the page has no embeddings (not chunked) */
   knowledgeEntryId: string | null;
-  /** Gesamtzahl der Chunks des knowledge_entry (Grenzen für den Agenten) */
+  /** total chunk count of the knowledge_entry (bounds for the agent) */
   totalChunks: number;
   chunks: PageChunkContextItem[];
 };
 
 const DEFAULT_BEFORE = 2;
 const DEFAULT_AFTER = 2;
-const MAX_SPAN = 20; // Kappe pro Seite, damit ein Aufruf den Kontext nicht sprengt
+const MAX_SPAN = 20; // per-side cap so a single call can't blow up the context
 
 export const getPageChunkContext = async (
   pageId: string,
   context: Context,
   options: { order?: number; before?: number; after?: number } = {}
 ): Promise<PageChunkContext> => {
-  // Permission-Check + verknüpften knowledge_entry auflösen (wirft, wenn unsichtbar)
+  // permission check + resolve the linked knowledge_entry (throws if invisible)
   const page = await getKnowledgeTextById(pageId, context);
   const base = { pageId: page.id, title: page.title };
 
   if (!page.knowledgeEntryId) {
-    // Seite ohne Embeddings: keine Chunks vorhanden
+    // page without embeddings: no chunks exist
     return { ...base, knowledgeEntryId: null, totalChunks: 0, chunks: [] };
   }
 

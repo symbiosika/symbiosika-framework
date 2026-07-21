@@ -1657,8 +1657,8 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * Chunk context window: der adressierte Chunk + Nachbarn (davor/danach nach order).
-   * Nur sinnvoll für embedding-enabled Seiten (sonst chunks: []).
+   * Chunk context window: the addressed chunk + neighbours (before/after by order).
+   * Only meaningful for embedding-enabled pages (otherwise chunks: []).
    */
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/chunk-context",
