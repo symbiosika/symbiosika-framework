@@ -88,6 +88,34 @@ export const validateFacetsForWrite = async (
   }
 };
 
+/**
+ * Keep only the attribute entries that would pass `validateFacetsForWrite`:
+ * a known key, a non-empty string value, and (for closed-list keys) a value on
+ * the allowed list. Unlike `validateFacetsForWrite` this never throws — it
+ * silently drops invalid entries. Use it for machine-produced attributes (e.g.
+ * values extracted by the parsing service) where a single off-list value must
+ * not fail the whole write.
+ */
+export const filterValidAttributes = async (
+  tenantId: string,
+  candidate: Record<string, string>
+): Promise<Record<string, string>> => {
+  const keys = Object.keys(candidate);
+  if (keys.length === 0) return {};
+  const config = await getKnowledgeTenantConfig(tenantId);
+  const definitions = new Map(config.attributes.map((d) => [d.key, d]));
+  const out: Record<string, string> = {};
+  for (const key of keys) {
+    const definition = definitions.get(key);
+    if (!definition) continue;
+    const value = candidate[key];
+    if (typeof value !== "string" || value.length === 0) continue;
+    if (definition.values && !definition.values.includes(value)) continue;
+    out[key] = value;
+  }
+  return out;
+};
+
 /** Facet filter parameters accepted by list/search/recent-changes queries. */
 export interface FacetFilters {
   pageType?: string;

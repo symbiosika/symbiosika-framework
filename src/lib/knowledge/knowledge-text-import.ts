@@ -16,7 +16,9 @@
 
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
-import { parseFile } from "./parsing";
+import { parseFile, extractedMetadataToAttributes } from "./parsing";
+import type { ExtractedValue } from "./parsing/pdf/types";
+import { filterValidAttributes } from "./facets";
 import { urlToMarkdown } from "./parsing/url";
 import { applyPostProcessors } from "./parsing/post-processors";
 import {
@@ -106,11 +108,11 @@ export const splitMarkdownIntoSections = (markdown: string): string[] => {
   return sections;
 };
 
-/** Convert an uploaded file to markdown text */
+/** Convert an uploaded file to markdown text (plus any parser-extracted metadata) */
 const fileToMarkdown = async (
   file: File,
   context: { tenantId: string; userId?: string; teamId?: string; workspaceId?: string }
-): Promise<string> => {
+): Promise<{ text: string; metadata?: Record<string, ExtractedValue> }> => {
   const name = file.name ?? "";
   const mime = (file.type ?? "").trim().toLowerCase();
 
@@ -118,14 +120,14 @@ const fileToMarkdown = async (
     mime.startsWith("text/markdown") ||
     /\.(md|markdown)$/i.test(name)
   ) {
-    return await file.text();
+    return { text: await file.text() };
   }
   if (mime.startsWith("text/html") || /\.html?$/i.test(name)) {
-    return getTurndown().turndown(await file.text()).trim();
+    return { text: getTurndown().turndown(await file.text()).trim() };
   }
   // PDF, plain text, … via the existing parsing pipeline
   const parsed = await parseFile(file, context);
-  return parsed.text;
+  return { text: parsed.text, metadata: parsed.metadata };
 };
 
 /**
@@ -133,7 +135,18 @@ const fileToMarkdown = async (
  * URL and sync ingestion paths.
  */
 export const importMarkdownAsKnowledgeText = async (
-  data: { title: string; text: string; sourceUri?: string },
+  data: {
+    title: string;
+    text: string;
+    sourceUri?: string;
+    /**
+     * Structured values a parsing service extracted for the tenant's catalog
+     * attributes (see `enablePdfParserExtraction`). Valid entries are written
+     * onto the new page's `attributes`; the raw result (with confidence) is
+     * kept under `meta.parserExtraction` for provenance.
+     */
+    parserMetadata?: Record<string, ExtractedValue>;
+  },
   options: ImportKnowledgeTextOptions
 ): Promise<ImportKnowledgeTextResult> => {
   const context = {
@@ -142,6 +155,19 @@ export const importMarkdownAsKnowledgeText = async (
     teamId: options.teamId,
     workspaceId: options.workspaceId,
   };
+
+  // Turn parser-extracted metadata into catalog attributes, keeping only
+  // entries that pass facet validation (unknown keys / off-list enum values
+  // are dropped so one bad value can't fail the whole import).
+  let extractedAttributes: Record<string, string> = {};
+  const hasExtraction =
+    data.parserMetadata && Object.keys(data.parserMetadata).length > 0;
+  if (hasExtraction) {
+    extractedAttributes = await filterValidAttributes(
+      options.tenantId,
+      extractedMetadataToAttributes(data.parserMetadata)
+    );
+  }
 
   // Run post processors on the parsed markdown before storing (e.g. clean up
   // / restructure a datasheet via an LLM). The cleaned text also feeds the
@@ -184,10 +210,14 @@ export const importMarkdownAsKnowledgeText = async (
     parentId: options.parentId,
     title,
     text,
+    ...(Object.keys(extractedAttributes).length > 0
+      ? { attributes: extractedAttributes }
+      : {}),
     meta: {
       ...(options.meta ?? {}),
       ...processorMeta,
       ...(data.sourceUri ? { sourceUri: data.sourceUri } : {}),
+      ...(hasExtraction ? { parserExtraction: data.parserMetadata } : {}),
     },
   });
 
@@ -229,7 +259,7 @@ export const importKnowledgeTextFromFile = async (
   file: File,
   options: ImportKnowledgeTextOptions
 ): Promise<ImportKnowledgeTextResult> => {
-  const text = await fileToMarkdown(file, {
+  const { text, metadata } = await fileToMarkdown(file, {
     tenantId: options.tenantId,
     userId: options.userId,
     teamId: options.teamId,
@@ -242,7 +272,7 @@ export const importKnowledgeTextFromFile = async (
     options.title ??
     (file.name ? stripExtension(file.name) : "Imported document");
   return await importMarkdownAsKnowledgeText(
-    { title, text, sourceUri: file.name },
+    { title, text, sourceUri: file.name, parserMetadata: metadata },
     options
   );
 };

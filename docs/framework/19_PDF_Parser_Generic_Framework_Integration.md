@@ -32,6 +32,47 @@ Add these to `.env.default` (commented, as examples):
 Authentication uses the `X-API-Key` header — same scheme as the existing
 Symbiosika parser.
 
+### 1.1 Attribute extraction (opt-in)
+
+Set `enablePdfParserExtraction: true` in the server config (`setGlobalServerConfig`)
+to have every document parse automatically request the tenant's configured
+catalog attributes as structured extraction targets:
+
+```ts
+setGlobalServerConfig({
+  // ...
+  enablePdfParserExtraction: true,
+});
+```
+
+When on, `parseFile`/`parseDocument` load the tenant's
+`knowledge` config `attributes` (see `knowledge-config.ts`), map each definition
+to an `ExtractionTarget` (`attributeDefinitionsToExtractionTargets`), and pass
+them as `PdfParserOptions.extract`. The values the service returns are written
+back:
+
+- **wiki import** (`importKnowledgeTextFromFile`): valid values (facet-checked)
+  land on the new page's `attributes`; the raw result — with `found` /
+  `confidence` / `page` — is kept under `meta.parserExtraction`.
+- **RAG ingestion** (`extractKnowledgeFromExistingDbEntry`): found values are
+  folded into the knowledge entry's `meta`.
+
+An explicit `options.extract` at a call site always wins over this automatic
+resolution. When the flag is off, no tenant-config read happens and behaviour is
+unchanged.
+
+Give each attribute a `description` (and optionally a `type`) in the tenant
+config so the extractor gets a real instruction:
+
+```ts
+setKnowledgeTenantConfig(tenantId, {
+  attributes: [
+    { key: "hersteller", label: "Hersteller", description: "Name des Herstellers" },
+    { key: "typ", values: ["Datenblatt", "Handbuch"] }, // -> type "enum"
+  ],
+});
+```
+
 ---
 
 ## 2. Types — `src/lib/knowledge/parsing/pdf/types.ts`
@@ -324,11 +365,14 @@ unchanged.
 
 ## 6. Open items (not blocking the wire contract)
 
-- **Where do `extract` targets come from?** They need to be plumbed into
-  `PdfParserOptions.extract` at the call site (upload/import flow). The contract
-  is defined; the UI/config source for the targets is a separate task.
-- **Persisting `metadata`.** Store as JSON on the document record. Consuming it
-  (search, required-field validation) can follow later.
+- **Where do `extract` targets come from?** ✅ Done — the tenant's catalog
+  attribute definitions are used as the source, gated by the global
+  `enablePdfParserExtraction` flag (see §1.1). A call site may still pass an
+  explicit `options.extract` to override.
+- **Persisting `metadata`.** ✅ Done — extracted values are written onto the
+  page's `attributes` (wiki import) / entry `meta` (RAG), with the raw result
+  kept under `meta.parserExtraction`. Consuming it further (required-field
+  validation, confidence thresholds) can still follow later.
 - **Sync vs. async selection.** Currently a global `PDF_PARSER_SERVICE_MODE`.
   Could later be per-document (e.g. by file size) without a contract change.
 - **Modality-based routing.** `genericParserSupports()` enables routing files to

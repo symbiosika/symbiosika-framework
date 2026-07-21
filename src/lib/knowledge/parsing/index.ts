@@ -6,11 +6,37 @@ import { parsePdfFileAsMardown } from "./pdf";
 import { knowledgeText } from "../../../lib/db/db-schema";
 import { getDb } from "../../../lib/db/db-connection";
 import { eq } from "drizzle-orm";
-import type { PageContent } from "./pdf/types";
+import type {
+  ExtractedValue,
+  ExtractionTarget,
+  PageContent,
+} from "./pdf/types";
 import { applyPostProcessors } from "./post-processors";
 import { urlToMarkdown } from "./url";
 import { computeSourceHash } from "../source-hash";
 import { _GLOBAL_SERVER_CONFIG } from "../../../store";
+import {
+  attributeDefinitionsToExtractionTargets,
+  getKnowledgeTenantConfig,
+} from "../knowledge-config";
+
+/**
+ * Resolve the structured extraction targets to hand the parsing service.
+ * An explicit `provided` list always wins. Otherwise, when the global
+ * `enablePdfParserExtraction` flag is on, the tenant's configured catalog
+ * attributes are mapped to targets. Returns undefined when nothing applies
+ * (no config read happens while the flag is off).
+ */
+export const resolveExtractionTargets = async (
+  tenantId: string,
+  provided?: ExtractionTarget[]
+): Promise<ExtractionTarget[] | undefined> => {
+  if (provided && provided.length > 0) return provided;
+  if (!_GLOBAL_SERVER_CONFIG.enablePdfParserExtraction) return undefined;
+  const config = await getKnowledgeTenantConfig(tenantId);
+  if (!config.attributes || config.attributes.length === 0) return undefined;
+  return attributeDefinitionsToExtractionTargets(config.attributes);
+};
 
 /**
  * Helper function to parse a file and return the text content and pages if available
@@ -26,11 +52,19 @@ export const parseFile = async (
   options?: {
     model?: string;
     extractImages?: boolean;
+    /**
+     * Structured extraction targets passed through to the parser. When
+     * omitted and `enablePdfParserExtraction` is on, the tenant's configured
+     * catalog attributes are used automatically.
+     */
+    extract?: ExtractionTarget[];
   }
 ): Promise<{
   text: string;
   pages?: PageContent[];
   includesImages: boolean;
+  /** Extracted key/value metadata keyed by `ExtractionTarget.key`. */
+  metadata?: Record<string, ExtractedValue>;
 }> => {
   log.debug(`Parse file: ${file.name} from type ${file.type}`);
 
@@ -51,8 +85,16 @@ export const parseFile = async (
 
   // PDF
   if (fileForPdf) {
+    const extract = await resolveExtractionTargets(
+      context.tenantId,
+      options?.extract
+    );
     // try to parse the content
-    const result = await parsePdfFileAsMardown(fileForPdf, context, options);
+    const result = await parsePdfFileAsMardown(fileForPdf, context, {
+      model: options?.model,
+      extractImages: options?.extractImages,
+      extract,
+    });
 
     // Create a combined text from all pages if available
     let fullText = "";
@@ -64,6 +106,7 @@ export const parseFile = async (
       text: fullText,
       pages: result.pages,
       includesImages: result.includesImages,
+      metadata: result.metadata,
     };
   }
 
@@ -99,6 +142,12 @@ export const parseDocument = async (data: {
   workspaceId?: string;
   model?: string;
   extractImages?: boolean;
+  /**
+   * Structured extraction targets passed through to the parser. When omitted
+   * and `enablePdfParserExtraction` is on, the tenant's configured catalog
+   * attributes are used automatically.
+   */
+  extract?: ExtractionTarget[];
   usePostProcessors?: string[];
   /**
    * Compute a sha256 over the raw source (file bytes for db/local, fetched
@@ -114,6 +163,7 @@ export const parseDocument = async (data: {
   let title: string;
   let docIncludesImages = false;
   let sourceHash: string | undefined;
+  let parserMetadata: Record<string, ExtractedValue> | undefined;
 
   const hashingEnabled =
     data.computeSourceHash ?? _GLOBAL_SERVER_CONFIG.enableSourceHashing;
@@ -132,6 +182,7 @@ export const parseDocument = async (data: {
       text,
       pages: filePages,
       includesImages,
+      metadata,
     } = await parseFile(
       file,
       {
@@ -142,12 +193,14 @@ export const parseDocument = async (data: {
       {
         model: data.model,
         extractImages: data.extractImages,
+        extract: data.extract,
       }
     );
     content = text;
     pages = filePages;
     title = file.name;
     docIncludesImages = includesImages;
+    parserMetadata = metadata;
   } else if (
     data.sourceType === "local" &&
     data.sourceId &&
@@ -166,6 +219,7 @@ export const parseDocument = async (data: {
       text,
       pages: filePages,
       includesImages,
+      metadata,
     } = await parseFile(
       file,
       {
@@ -176,12 +230,14 @@ export const parseDocument = async (data: {
       {
         model: data.model,
         extractImages: data.extractImages,
+        extract: data.extract,
       }
     );
     content = text;
     pages = filePages;
     title = file.name;
     docIncludesImages = includesImages;
+    parserMetadata = metadata;
   } else if (data.sourceType === "url" && data.sourceUrl) {
     log.debug(`Fetch and parse content from URL: ${data.sourceUrl}`);
     const result = await urlToMarkdown(data.sourceUrl, {
@@ -259,5 +315,33 @@ export const parseDocument = async (data: {
     includesImages: docIncludesImages,
     meta,
     sourceHash,
+    /** Structured values the parser extracted for the requested targets. */
+    parserMetadata,
   };
+};
+
+/**
+ * Reduce a parser's extraction result to a flat `{ key: value }` map suitable
+ * for `knowledgeText.attributes`: only entries that were `found`, carry a
+ * non-empty string value, and match a known target key survive. Numbers /
+ * booleans are stringified (the attributes store is `Record<string,string>`).
+ * Callers still pass the result through `validateFacetsForWrite`, which drops
+ * nothing but rejects values outside a closed list — so pre-filter with
+ * `allowedKeys`/`allowedValues` when a hard failure must be avoided.
+ */
+export const extractedMetadataToAttributes = (
+  metadata: Record<string, ExtractedValue> | undefined
+): Record<string, string> => {
+  const out: Record<string, string> = {};
+  if (!metadata) return out;
+  for (const [key, entry] of Object.entries(metadata)) {
+    if (!entry || entry.found !== true) continue;
+    const { value } = entry;
+    if (value === null || value === undefined) continue;
+    const asString =
+      typeof value === "string" ? value : String(value);
+    if (asString.length === 0) continue;
+    out[key] = asString;
+  }
+  return out;
 };
