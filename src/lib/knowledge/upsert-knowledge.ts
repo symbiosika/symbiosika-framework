@@ -319,6 +319,7 @@ export const upsertKnowledgeFromText = async (
         header: e.header,
         order: e.order,
         embeddingModel: e.embedding.model,
+        dimensions: e.embedding.dimensions,
         textEmbedding1536:
           e.embedding.dimensions === 1536 ? e.embedding.embedding : null,
         textEmbedding1024:

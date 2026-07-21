@@ -164,26 +164,34 @@ const semanticSearch = async (
   const queryVector = sql.raw(`'[${embed.embedding}]'`);
   const visibility = and(...buildKnowledgeTextVisibilityConditions(context));
 
-  const rows = (await getDb().execute<RankedHit>(sql`
+  // Top chunks by distance first, dedupe to the best chunk per page in JS.
+  // A `DISTINCT ON (page) ORDER BY page, distance` subquery cannot use the
+  // HNSW index (the sort must start with the distance expression), so we
+  // over-fetch chunks index-friendly and reduce here.
+  const chunkRows = (await getDb().execute<RankedHit>(sql`
     SELECT
-      "id", "title", "snippet"
-    FROM (
-      SELECT DISTINCT ON (${knowledgeText.id})
-        ${knowledgeText.id} AS "id",
-        ${knowledgeText.title} AS "title",
-        ${knowledgeChunks.text} AS "snippet",
-        ${embeddingColumn} <-> ${queryVector} AS "distance"
-      FROM ${knowledgeChunks}
-      JOIN ${knowledgeText}
-        ON ${knowledgeText.knowledgeEntryId} = ${knowledgeChunks.knowledgeEntryId}
-      WHERE ${visibility} AND ${embeddingColumn} IS NOT NULL${extra}
-      ORDER BY ${knowledgeText.id}, "distance" ASC
-    ) AS best_chunk_per_page
+      ${knowledgeText.id} AS "id",
+      ${knowledgeText.title} AS "title",
+      ${knowledgeChunks.text} AS "snippet",
+      ${embeddingColumn} <=> ${queryVector} AS "distance"
+    FROM ${knowledgeChunks}
+    JOIN ${knowledgeText}
+      ON ${knowledgeText.knowledgeEntryId} = ${knowledgeChunks.knowledgeEntryId}
+    WHERE ${visibility} AND ${embeddingColumn} IS NOT NULL${extra}
     ORDER BY "distance" ASC
-    LIMIT ${limit};
+    LIMIT ${limit * 4};
   `)) as RankedHit[];
 
-  return rows.map((row) => ({
+  const bestPerPage: RankedHit[] = [];
+  const seenPages = new Set<string>();
+  for (const row of chunkRows) {
+    if (seenPages.has(row.id)) continue;
+    seenPages.add(row.id);
+    bestPerPage.push(row);
+    if (bestPerPage.length >= limit) break;
+  }
+
+  return bestPerPage.map((row) => ({
     ...row,
     snippet: row.snippet.length > 240 ? row.snippet.slice(0, 240) + "…" : row.snippet,
   }));

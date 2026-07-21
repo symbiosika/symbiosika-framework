@@ -294,7 +294,7 @@ export const getRelatedKnowledgeTexts = async (
     SELECT
       ${knowledgeText.id} AS "id",
       ${knowledgeText.title} AS "title",
-      MIN(${embeddingColumn} <-> ${sql.raw(`'[${centroid.join(",")}]'`)}) AS "distance"
+      MIN(${embeddingColumn} <=> ${sql.raw(`'[${centroid.join(",")}]'`)}) AS "distance"
     FROM ${knowledgeChunks}
     JOIN ${knowledgeText}
       ON ${knowledgeText.knowledgeEntryId} = ${knowledgeChunks.knowledgeEntryId}

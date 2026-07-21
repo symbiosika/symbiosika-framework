@@ -98,7 +98,7 @@ export async function getNearestEmbeddings(q: {
         embed.dimensions === 1536
           ? knowledgeChunks.textEmbedding1536
           : knowledgeChunks.textEmbedding1024
-      } <-> ${sql.raw(`'[${embed.embedding}]'`)} ASC
+      } <=> ${sql.raw(`'[${embed.embedding}]'`)} ASC
     LIMIT
       ${q.n};
   `)) as KnowledgeChunk[];
