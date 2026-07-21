@@ -33,9 +33,7 @@ export type PageChunkContextItem = {
 export type PageChunkContext = {
   pageId: string;
   title: string;
-  /** null when the page has no embeddings (not chunked) */
-  knowledgeEntryId: string | null;
-  /** total chunk count of the knowledge_entry (bounds for the agent) */
+  /** total chunk count of the page (bounds for the agent; 0 = not embedded) */
   totalChunks: number;
   chunks: PageChunkContextItem[];
 };
@@ -55,7 +53,7 @@ export const getPageChunkContext = async (
 
   if (!page.knowledgeEntryId) {
     // page without embeddings: no chunks exist
-    return { ...base, knowledgeEntryId: null, totalChunks: 0, chunks: [] };
+    return { ...base, totalChunks: 0, chunks: [] };
   }
 
   const before = Math.min(
@@ -90,7 +88,6 @@ export const getPageChunkContext = async (
 
   return {
     ...base,
-    knowledgeEntryId: page.knowledgeEntryId,
     totalChunks,
     chunks: rows.map((r) => ({
       order: r.order,

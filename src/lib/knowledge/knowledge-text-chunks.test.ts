@@ -52,7 +52,6 @@ describe("getPageChunkContext", () => {
       before: 1,
       after: 1,
     });
-    expect(r.knowledgeEntryId).not.toBeNull();
     expect(r.totalChunks).toBe(5);
     expect(r.chunks.map((c) => c.order)).toEqual([1, 2, 3]);
     expect(r.chunks.find((c) => c.matched)?.order).toBe(2);
@@ -68,14 +67,14 @@ describe("getPageChunkContext", () => {
     expect(r.chunks.map((c) => c.order)).toEqual([0, 1, 2]);
   });
 
-  test("page without embeddings -> knowledgeEntryId null, no chunks", async () => {
+  test("page without embeddings -> totalChunks 0, no chunks", async () => {
     const plain = await createKnowledgeText({
       tenantId: TENANT,
       title: "No embeddings page",
       text: "body",
     });
     const r = await getPageChunkContext(plain.id, ctx, { order: 0 });
-    expect(r.knowledgeEntryId).toBeNull();
+    expect(r.totalChunks).toBe(0);
     expect(r.chunks).toEqual([]);
   });
 });

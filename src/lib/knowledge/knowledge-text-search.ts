@@ -70,10 +70,10 @@ export type KnowledgeTextSearchResult = {
   /**
    * Chunk provenance of the semantic hit — set only when the semantic leg
    * matched this page (null for fulltext-only hits). `snippet` is a slice of
-   * the chunk at `chunkOrder` inside knowledge_entry `knowledgeEntryId`;
-   * getPageChunkContext(id, { order: chunkOrder }) pulls the surrounding chunks.
+   * the chunk at `chunkOrder`; getPageChunkContext(id, { order: chunkOrder })
+   * pulls the surrounding chunks. The knowledge_entry is an internal join and
+   * is deliberately not surfaced — callers address chunks by page id + order.
    */
-  knowledgeEntryId: string | null;
   chunkOrder: number | null;
   /** source page number (e.g. the PDF page the chunk came from), when known */
   sourcePage: number | null;
@@ -93,7 +93,6 @@ type RankedHit = {
   title: string;
   snippet: string;
   // only set by the semantic leg:
-  knowledgeEntryId?: string;
   chunkOrder?: number;
   sourcePage?: number | null;
 };
@@ -191,7 +190,6 @@ const semanticSearch = async (
       ${knowledgeText.id} AS "id",
       ${knowledgeText.title} AS "title",
       ${knowledgeChunks.text} AS "snippet",
-      ${knowledgeChunks.knowledgeEntryId} AS "knowledgeEntryId",
       ${knowledgeChunks.order} AS "chunkOrder",
       (${knowledgeChunks.meta} ->> 'page')::int AS "sourcePage",
       ${embeddingColumn} <=> ${queryVector} AS "distance"
@@ -325,7 +323,6 @@ export const searchKnowledgeTexts = async (
     score: number;
     snippet: string;
     matchedBy: ("fulltext" | "semantic")[];
-    knowledgeEntryId?: string;
     chunkOrder?: number;
     sourcePage?: number | null;
   };
@@ -338,8 +335,8 @@ export const searchKnowledgeTexts = async (
         existing.score += contribution;
         existing.matchedBy.push(leg);
         if (leg === "fulltext" && hit.snippet) existing.snippet = hit.snippet;
-        if (hit.knowledgeEntryId != null) {
-          existing.knowledgeEntryId = hit.knowledgeEntryId;
+        // only the semantic leg carries chunk provenance
+        if (hit.chunkOrder != null) {
           existing.chunkOrder = hit.chunkOrder;
           existing.sourcePage = hit.sourcePage ?? null;
         }
@@ -350,7 +347,6 @@ export const searchKnowledgeTexts = async (
           score: contribution,
           snippet: hit.snippet,
           matchedBy: [leg],
-          knowledgeEntryId: hit.knowledgeEntryId,
           chunkOrder: hit.chunkOrder,
           sourcePage: hit.sourcePage ?? null,
         });
@@ -389,7 +385,6 @@ export const searchKnowledgeTexts = async (
       status,
       updatedAt: m?.updatedAt ?? "",
       supersedesId: m?.supersedesId ?? null,
-      knowledgeEntryId: f.knowledgeEntryId ?? null,
       chunkOrder: f.chunkOrder ?? null,
       sourcePage: f.sourcePage ?? null,
     };
