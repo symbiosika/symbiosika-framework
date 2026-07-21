@@ -124,6 +124,43 @@ describe("Jobs API Endpoints", () => {
     expect(data.status).toBe("failed");
   });
 
+  test("Deleting a finished job removes it from the list", async () => {
+    // Create a job and force it into a terminal (failed) state, mirroring a
+    // URL import job that has already finished.
+    let response = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/jobs`,
+      TEST_USER_1_TOKEN,
+      {
+        type: "test-job",
+        metadata: { testData: "to-be-deleted" },
+      }
+    );
+    expect(response.status).toBe(200);
+    const finishedJobId = response.jsonResponse.id;
+
+    await getDb()
+      .update(jobs)
+      .set({ status: "failed" })
+      .where(eq(jobs.id, finishedJobId));
+
+    // The UI delete action must succeed for a terminal job...
+    response = await testFetcher.delete(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/jobs/${finishedJobId}`,
+      TEST_USER_1_TOKEN
+    );
+    expect(response.status).toBe(200);
+
+    // ...and the job must be gone afterwards (hard-deleted, not just cancelled).
+    response = await testFetcher.get(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/jobs/${finishedJobId}`,
+      TEST_USER_1_TOKEN
+    );
+    expect(response.status).toBe(404);
+  });
+
   test("Job Filtering and Querying", async () => {
     console.log("Testing job filtering and querying...");
 

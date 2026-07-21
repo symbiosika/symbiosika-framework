@@ -327,6 +327,31 @@ export async function cancelJob(id: string) {
   return await getJob(id);
 }
 
+/**
+ * Hard-delete a job row from the database.
+ *
+ * Unlike {@link cancelJob} (which only marks pending/running jobs as failed and
+ * keeps the row for the history), this removes the job entirely and works for
+ * any status. Used by the UI "delete" action so finished (completed/failed)
+ * jobs — e.g. a URL import job — can be removed from the list.
+ *
+ * If the job is still pending or running it is cancelled first (so any
+ * `onCancel` handler runs to release resources) before the row is removed.
+ */
+export async function deleteJob(id: string) {
+  const job = await getJob(id);
+
+  // Give a still-active job the chance to clean up before it disappears.
+  if (job.status === "pending" || job.status === "running") {
+    const handler = jobHandlers[job.type];
+    if (handler && handler.onCancel) {
+      await handler.onCancel(job);
+    }
+  }
+
+  await getDb().delete(jobs).where(eq(jobs.id, id));
+}
+
 /*
 ..in index.ts use "startJobQueue" to register the job queue
 import { startJobQueue } from "../lib/jobs";
