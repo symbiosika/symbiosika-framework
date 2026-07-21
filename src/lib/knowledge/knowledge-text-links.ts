@@ -29,6 +29,7 @@ import {
   getKnowledgeTextById,
   buildKnowledgeTextVisibilityConditions,
 } from "./knowledge-texts";
+import { getConfiguredEmbeddingModelId } from "./embedding";
 
 type Context = {
   tenantId: string;
@@ -264,13 +265,26 @@ export const getRelatedKnowledgeTexts = async (
   const ownChunks = await getDb()
     .select({
       dimensions: knowledgeChunks.dimensions,
+      embeddingModel: knowledgeChunks.embeddingModel,
       textEmbedding1536: knowledgeChunks.textEmbedding1536,
       textEmbedding1024: knowledgeChunks.textEmbedding1024,
     })
     .from(knowledgeChunks)
     .where(eq(knowledgeChunks.knowledgeEntryId, page.knowledgeEntryId));
 
+  // Vectors are only comparable within one model. Prefer the currently
+  // configured model; fall back to this page's stored model (page not yet
+  // re-embedded), so centroid and candidates always share one vector space.
+  const configuredModel = getConfiguredEmbeddingModelId();
+  const model =
+    configuredModel &&
+    ownChunks.some((c) => c.embeddingModel === configuredModel)
+      ? configuredModel
+      : ownChunks[0]?.embeddingModel;
+  if (!model) return [];
+
   const vectors = ownChunks
+    .filter((c) => c.embeddingModel === model)
     .map((c) =>
       c.dimensions === 1536 ? c.textEmbedding1536 : c.textEmbedding1024
     )
@@ -301,6 +315,7 @@ export const getRelatedKnowledgeTexts = async (
     WHERE ${visibility}
       AND ${knowledgeChunks.knowledgeEntryId} != ${page.knowledgeEntryId}
       AND ${embeddingColumn} IS NOT NULL
+      AND ${knowledgeChunks.embeddingModel} = ${model}
     GROUP BY ${knowledgeText.id}, ${knowledgeText.title}
     ORDER BY "distance" ASC
     LIMIT ${limit};

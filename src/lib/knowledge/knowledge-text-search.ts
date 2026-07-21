@@ -177,7 +177,9 @@ const semanticSearch = async (
     FROM ${knowledgeChunks}
     JOIN ${knowledgeText}
       ON ${knowledgeText.knowledgeEntryId} = ${knowledgeChunks.knowledgeEntryId}
-    WHERE ${visibility} AND ${embeddingColumn} IS NOT NULL${extra}
+    WHERE ${visibility}
+      AND ${embeddingColumn} IS NOT NULL
+      AND ${knowledgeChunks.embeddingModel} = ${embed.model}${extra}
     ORDER BY "distance" ASC
     LIMIT ${limit * 4};
   `)) as RankedHit[];

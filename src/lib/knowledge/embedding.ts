@@ -26,6 +26,19 @@ const getEmbeddingProvider = (): EmbeddingProviderId =>
   DEFAULT_EMBEDDING_PROVIDER;
 
 /**
+ * The model id the configured embedding provider would use for new embeddings,
+ * resolved without an API call. Returns `null` when the provider is not
+ * configured. Vectors are only comparable within one model, so searches filter
+ * stored chunks by this id and the re-embed job finds chunks that differ.
+ */
+export const getConfiguredEmbeddingModelId = (): string | null => {
+  const provider = getEmbeddingProvider();
+  if (!isEmbeddingProviderConfigured(provider)) return null;
+  const model = buildEmbeddingModel(provider);
+  return typeof model === "string" ? model : model.modelId;
+};
+
+/**
  * Generate an embedding for the given text using the configured embedding
  * provider (Mistral by default).
  * @param text - The text to generate an embedding for

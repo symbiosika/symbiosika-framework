@@ -12,6 +12,13 @@ import {
 } from "./knowledge-texts";
 import { syncKnowledgeTextBlocks } from "./knowledge-text-blocks";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
+import { getDb } from "../db/db-connection";
+import {
+  knowledgeEntry,
+  knowledgeChunks,
+  knowledgeText,
+} from "../db/db-schema";
+import { eq } from "drizzle-orm";
 
 const ctx = { tenantId: TEST_ORGANISATION_1.id };
 
@@ -196,5 +203,48 @@ describe("Knowledge Text Links", () => {
     });
     const related = await getRelatedKnowledgeTexts(page.id, ctx);
     expect(related).toEqual([]);
+  });
+
+  it("only relates pages embedded with the same model", async () => {
+    const db = getDb();
+    const vec = () => {
+      const v = new Array(1024).fill(0);
+      v[0] = 1;
+      return v;
+    };
+    const createEmbeddedPage = async (name: string, model: string) => {
+      const page = await createKnowledgeText({
+        title: uniqueTitle(name),
+        text: "embedded content",
+        tenantId: ctx.tenantId,
+      });
+      const [entry] = await db
+        .insert(knowledgeEntry)
+        .values({ tenantId: ctx.tenantId, name: page.title })
+        .returning();
+      await db.insert(knowledgeChunks).values({
+        knowledgeEntryId: entry!.id,
+        text: `chunk of ${page.title}`,
+        order: 0,
+        embeddingModel: model,
+        dimensions: 1024,
+        textEmbedding1024: vec(),
+      });
+      await db
+        .update(knowledgeText)
+        .set({ knowledgeEntryId: entry!.id })
+        .where(eq(knowledgeText.id, page.id));
+      return page;
+    };
+
+    // A + B share a model, C is embedded with a different (incompatible) one
+    const pageA = await createEmbeddedPage("Model Filter A", "test-model-a");
+    const pageB = await createEmbeddedPage("Model Filter B", "test-model-a");
+    const pageC = await createEmbeddedPage("Model Filter C", "other-model");
+
+    const related = await getRelatedKnowledgeTexts(pageA.id, ctx);
+    const relatedIds = related.map((r) => r.id);
+    expect(relatedIds).toContain(pageB.id);
+    expect(relatedIds).not.toContain(pageC.id);
   });
 });
