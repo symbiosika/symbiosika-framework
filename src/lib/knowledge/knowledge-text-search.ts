@@ -67,6 +67,16 @@ export type KnowledgeTextSearchResult = {
   supersedesId: string | null;
   /** superseded pages that also matched, folded under this (canonical) result */
   supersededAlternatives?: { id: string; title: string }[];
+  /**
+   * Chunk provenance of the semantic hit — set only when the semantic leg
+   * matched this page (null for fulltext-only hits). `snippet` is a slice of
+   * the chunk at `chunkOrder`; getPageChunkContext(id, { order: chunkOrder })
+   * pulls the surrounding chunks. The knowledge_entry is an internal join and
+   * is deliberately not surfaced — callers address chunks by page id + order.
+   */
+  chunkOrder: number | null;
+  /** source page number (e.g. the PDF page the chunk came from), when known */
+  sourcePage: number | null;
 };
 
 const RRF_K = 60;
@@ -78,7 +88,14 @@ const statusWeight = (status: string | null): number => {
   return 1;
 };
 
-type RankedHit = { id: string; title: string; snippet: string };
+type RankedHit = {
+  id: string;
+  title: string;
+  snippet: string;
+  // only set by the semantic leg:
+  chunkOrder?: number;
+  sourcePage?: number | null;
+};
 
 /** Combine extra (facet/scope) conditions into a single SQL fragment. */
 const extraWhere = (conditions: SQL[]): SQL =>
@@ -173,6 +190,8 @@ const semanticSearch = async (
       ${knowledgeText.id} AS "id",
       ${knowledgeText.title} AS "title",
       ${knowledgeChunks.text} AS "snippet",
+      ${knowledgeChunks.order} AS "chunkOrder",
+      (${knowledgeChunks.meta} ->> 'page')::int AS "sourcePage",
       ${embeddingColumn} <=> ${queryVector} AS "distance"
     FROM ${knowledgeChunks}
     JOIN ${knowledgeText}
@@ -304,6 +323,8 @@ export const searchKnowledgeTexts = async (
     score: number;
     snippet: string;
     matchedBy: ("fulltext" | "semantic")[];
+    chunkOrder?: number;
+    sourcePage?: number | null;
   };
   const fused = new Map<string, Fused>();
   const addLeg = (hits: RankedHit[], leg: "fulltext" | "semantic") => {
@@ -314,6 +335,11 @@ export const searchKnowledgeTexts = async (
         existing.score += contribution;
         existing.matchedBy.push(leg);
         if (leg === "fulltext" && hit.snippet) existing.snippet = hit.snippet;
+        // only the semantic leg carries chunk provenance
+        if (hit.chunkOrder != null) {
+          existing.chunkOrder = hit.chunkOrder;
+          existing.sourcePage = hit.sourcePage ?? null;
+        }
       } else {
         fused.set(hit.id, {
           id: hit.id,
@@ -321,6 +347,8 @@ export const searchKnowledgeTexts = async (
           score: contribution,
           snippet: hit.snippet,
           matchedBy: [leg],
+          chunkOrder: hit.chunkOrder,
+          sourcePage: hit.sourcePage ?? null,
         });
       }
     });
@@ -357,6 +385,8 @@ export const searchKnowledgeTexts = async (
       status,
       updatedAt: m?.updatedAt ?? "",
       supersedesId: m?.supersedesId ?? null,
+      chunkOrder: f.chunkOrder ?? null,
+      sourcePage: f.sourcePage ?? null,
     };
   });
 

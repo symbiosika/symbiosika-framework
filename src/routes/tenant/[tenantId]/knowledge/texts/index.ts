@@ -43,6 +43,7 @@ import {
   readPageSection,
 } from "../../../../../lib/knowledge/knowledge-text-sections";
 import { searchKnowledgeTexts } from "../../../../../lib/knowledge/knowledge-text-search";
+import { getPageChunkContext } from "../../../../../lib/knowledge/knowledge-text-chunks";
 import {
   getKnowledgeTextLinks,
   getKnowledgeTextBacklinks,
@@ -1651,6 +1652,58 @@ export default function defineRoutesForKnowledgeTexts(
           throw new HTTPException(404, { message: errorMsg });
         }
         throw new HTTPException(400, { message: errorMsg });
+      }
+    }
+  );
+
+  /**
+   * Chunk context window: the addressed chunk + neighbours (before/after by order).
+   * Only meaningful for embedding-enabled pages (otherwise chunks: []).
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/:id/chunk-context",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Get a matched chunk plus its neighbouring chunks (before/after by order) for an embedding-enabled page",
+      responses: {
+        200: { description: "Chunk context window (chunks ordered by order)" },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator(
+      "query",
+      v.object({
+        order: v.optional(v.string()),
+        before: v.optional(v.string()),
+        after: v.optional(v.string()),
+      })
+    ),
+    validator("param", v.object({ tenantId: v.string(), id: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { order, before, after } = c.req.valid("query");
+        const { tenantId, id } = c.req.valid("param");
+        const userId = c.get("usersId");
+        const r = await getPageChunkContext(
+          id,
+          { tenantId, userId },
+          {
+            order: order ? parseInt(order) : undefined,
+            before: before ? parseInt(before) : undefined,
+            after: after ? parseInt(after) : undefined,
+          }
+        );
+        return c.json(r);
+      } catch (e) {
+        const msg = e + "";
+        if (msg.includes("not found") || msg.includes("access denied")) {
+          throw new HTTPException(404, { message: msg });
+        }
+        throw new HTTPException(400, { message: msg });
       }
     }
   );
