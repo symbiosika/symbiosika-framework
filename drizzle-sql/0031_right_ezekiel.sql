@@ -1,1 +1,0 @@
-DROP TABLE "base_knowledge_filters" CASCADE;
