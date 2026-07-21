@@ -1,5 +1,4 @@
 import log from "../../../log";
-import { parsePdfFileAsMarkdownGeneric } from "./generic";
 import { parsePdfFileAsMarkdownLlama } from "./llama-api";
 import { parsePdfFileAsMarkdownMistral } from "./mistral-ocr";
 import { parsePdfFileAsMarkdownMistralOpenRouter } from "./mistral-openrouter";
@@ -25,7 +24,6 @@ const PDF_PARSERS: Record<string, PdfParser> = {
   [PDF_PARSER.MISTRAL]: parsePdfFileAsMarkdownMistral,
   [PDF_PARSER.MISTRAL_OPENROUTER]: parsePdfFileAsMarkdownMistralOpenRouter,
   [PDF_PARSER.LLAMA]: parsePdfFileAsMarkdownLlama,
-  [PDF_PARSER.GENERIC]: parsePdfFileAsMarkdownGeneric,
 };
 
 /** Resolve a requested model id to a registered parser, applying legacy aliases. */

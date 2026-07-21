@@ -96,15 +96,11 @@ export const testing_createKnowledgeEntry = async (data: {
   teamId?: string;
   knowledgeGroupId?: string;
   userOwned?: boolean;
-  filters?: Record<string, string>;
 }): Promise<KnowledgeEntrySelect> => {
-  const knowledgeEntry = await storeKnowledgeEntry(
-    {
-      ...data,
-      name: nanoid(8),
-    },
-    data.filters ?? {}
-  );
+  const knowledgeEntry = await storeKnowledgeEntry({
+    ...data,
+    name: nanoid(8),
+  });
 
   return knowledgeEntry;
 };

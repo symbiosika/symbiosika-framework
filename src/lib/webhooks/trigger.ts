@@ -2,13 +2,6 @@ import { getDb } from "../db/db-connection";
 import { webhooks } from "../db/schema/webhooks";
 import { and, eq } from "drizzle-orm";
 import { fetchWithSsrfGuard, SsrfBlockedError } from "../utils/url-guard";
-import { decryptAes } from "../crypt/aes";
-import {
-  buildSignatureHeaders,
-  DELIVERY_HEADER,
-  EVENT_HEADER,
-} from "./signature";
-import { randomUUID } from "node:crypto";
 
 export interface WebhookTriggerOptions {
   payload?: any;
@@ -25,51 +18,32 @@ export class WebhookTriggerError extends Error {
 }
 
 /**
- * Trigger a webhook by its ID (manual / on-demand delivery).
- *
- * Unlike the event dispatcher this sends synchronously and returns the receiver
- * response, but it uses the SAME authentication scheme: when the webhook is set
- * to HMAC auth the body is signed so the receiver can verify the origin.
+ * Trigger a webhook by its ID
  */
 export const triggerWebhook = async (
   webhookId: string,
   tenantId: string,
   options: WebhookTriggerOptions = {}
 ) => {
-  // Get webhook details (scoped to the tenant; any event/type is triggerable)
+  // Get webhook details
   const webhook = await getDb().query.webhooks.findFirst({
-    where: and(eq(webhooks.id, webhookId), eq(webhooks.tenantId, tenantId)),
+    where: and(
+      eq(webhooks.id, webhookId),
+      eq(webhooks.tenantId, tenantId),
+      eq(webhooks.event, "chat-output")
+    ),
   });
 
   if (!webhook) {
     throw new WebhookTriggerError("Webhook not found", 404);
   }
 
-  const rawBody =
-    webhook.method !== "GET" ? JSON.stringify(options.payload ?? {}) : undefined;
-
   // Prepare headers
-  const headers: Record<string, string> = {
+  const headers = {
     "Content-Type": "application/json",
-    [EVENT_HEADER]: webhook.event,
-    [DELIVERY_HEADER]: randomUUID(),
-    ...((webhook.headers as Record<string, string>) || {}),
+    ...(webhook.headers || {}),
     ...(options.headers || {}),
   };
-
-  // Sign the body when the webhook uses HMAC auth.
-  if (
-    webhook.authMode === "hmac" &&
-    webhook.signingSecret &&
-    rawBody !== undefined
-  ) {
-    const secret = decryptAes(
-      webhook.signingSecret,
-      "aes-256-cbc",
-      webhook.signingSecretKeyVersion ?? 1
-    ).value;
-    Object.assign(headers, buildSignatureHeaders(secret, rawBody));
-  }
 
   try {
     // SSRF guard: the webhook URL is operator/tenant supplied; ensure it cannot
@@ -77,7 +51,10 @@ export const triggerWebhook = async (
     const response = await fetchWithSsrfGuard(webhook.webhookUrl, {
       method: webhook.method,
       headers,
-      body: rawBody,
+      body:
+        webhook.method !== "GET"
+          ? JSON.stringify(options.payload || {})
+          : undefined,
     });
 
     if (!response.ok) {

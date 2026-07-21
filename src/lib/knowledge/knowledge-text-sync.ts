@@ -98,8 +98,6 @@ export const upsertKnowledgeTextFromSource = async (
     teamId: data.teamId,
     workspaceId: data.workspaceId,
     includeHidden: true,
-    // these writes originate from a source sync, not a direct user edit
-    source: "sync" as const,
   };
 
   const existing = await findKnowledgeTextBySourceIdentifier(
@@ -126,7 +124,7 @@ export const upsertKnowledgeTextFromSource = async (
         ...(data.matchScope ?? {}),
         [TEXT_SOURCE_IDENTIFIER_META_KEY]: data.sourceIdentifier,
       },
-    }, { source: "sync" });
+    });
     return { id: page.id, created: true, changed: true };
   }
 
@@ -206,7 +204,6 @@ export const deleteOrphanedKnowledgeTexts = async (opts: {
     await deleteKnowledgeText(orphan.id, {
       tenantId: opts.tenantId,
       includeHidden: true,
-      source: "sync",
     });
   }
 

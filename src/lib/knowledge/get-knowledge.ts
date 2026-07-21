@@ -60,9 +60,6 @@ export const getKnowledgeEntries = async (query: {
   userOwned?: boolean;
   ids?: string[];
   filterIds?: string[];
-  filterNames?: {
-    [category: string]: string[];
-  };
 }): Promise<
   (KnowledgeEntrySelect & {
     knowledgeGroup: KnowledgeGroupSelect | null;

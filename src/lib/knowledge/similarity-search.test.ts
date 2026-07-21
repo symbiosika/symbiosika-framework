@@ -117,9 +117,6 @@ const testTexts = [
 //           tenantId: TEST_ORGANISATION_1.id,
 //           sourceType: "text",
 //           sourceId: text.id,
-//           filters: {
-//             "test-texts": "test",
-//           },
 //         })
 //       )
 //     );
@@ -132,9 +129,6 @@ const testTexts = [
 //       tenantId: TEST_ORGANISATION_1.id,
 //       searchText: searchQuery,
 //       n: 1,
-//       filter: {
-//         "test-texts": ["test"],
-//       },
 //     });
 
 //     // 4. Verify results

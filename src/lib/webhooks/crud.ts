@@ -4,22 +4,6 @@ import type { WebhookInsert, WebhookSelect } from "../db/schema/webhooks";
 import { webhooks } from "../db/schema/webhooks";
 
 /**
- * The public shape of a webhook: everything EXCEPT the (encrypted) signing
- * secret and its key version. The secret is only ever revealed once, in clear,
- * at creation / rotation time — it must never leak through read endpoints.
- */
-export type PublicWebhook = Omit<
-  WebhookSelect,
-  "signingSecret" | "signingSecretKeyVersion"
-> & { hasSigningSecret: boolean };
-
-/** Strip the signing secret from a webhook row before returning it to a client. */
-export const toPublicWebhook = (w: WebhookSelect): PublicWebhook => {
-  const { signingSecret, signingSecretKeyVersion, ...rest } = w;
-  return { ...rest, hasSigningSecret: signingSecret != null };
-};
-
-/**
  * Returns the webhook only if it belongs to the given tenant. All by-id
  * operations go through this so a webhook of another tenant cannot be read,
  * modified, or deleted by guessing its id (IDOR — webhook rows hold the target

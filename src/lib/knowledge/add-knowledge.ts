@@ -32,10 +32,7 @@ import { generateEntryDescription } from "./entry-summaries";
 /**
  * Helper function to store a knowledge entry in the database
  */
-export const storeKnowledgeEntry = async (
-  data: KnowledgeEntryInsert,
-  filters: Record<string, string>
-) => {
+export const storeKnowledgeEntry = async (data: KnowledgeEntryInsert) => {
   const db = getDb();
 
   // Store the main entry
@@ -75,7 +72,6 @@ export const extractKnowledgeFromText = async (data: {
   title: string;
   text?: string;
   pages?: PageContent[];
-  filters?: Record<string, string>;
   metadata?: Record<string, string | number | boolean | undefined>;
   sourceType?: FileSourceType;
   sourceFileBucket?: string;
@@ -165,8 +161,7 @@ export const extractKnowledgeFromText = async (data: {
       knowledgeGroupId: data.knowledgeGroupId,
       userOwned: data.userOwned,
       description,
-    },
-    data.filters || {}
+    }
   );
 
   // Store the chunks in the database
@@ -201,7 +196,6 @@ export const extractKnowledgeFromExistingDbEntry = async (data: {
   sourceId?: string;
   sourceFileBucket?: string;
   sourceUrl?: string;
-  filters?: Record<string, string>;
   metadata?: Record<string, string | number | boolean | undefined>;
   userId?: string;
   teamId?: string;
@@ -222,7 +216,6 @@ export const extractKnowledgeFromExistingDbEntry = async (data: {
     title,
     text: content,
     pages: pages,
-    filters: data.filters,
     metadata: data.metadata,
     sourceType: data.sourceType,
     sourceFileBucket: data.sourceFileBucket,
@@ -247,8 +240,7 @@ export const extractKnowledgeFromExistingDbEntry = async (data: {
 export const extractKnowledgeInOneStep = async (
   data: {
     tenantId: string;
-    filters?: Record<string, string>;
-    teamId?: string;
+      teamId?: string;
     workspaceId?: string;
     knowledgeGroupId?: string;
     userOwned?: boolean;
@@ -318,8 +310,7 @@ export const extractKnowledgeInOneStep = async (
       title,
       text,
       pages,
-      filters: data.filters,
-      teamId: data.teamId,
+        teamId: data.teamId,
       workspaceId: data.workspaceId,
       knowledgeGroupId: data.knowledgeGroupId,
       userOwned: data.userOwned,
@@ -364,8 +355,7 @@ export const extractKnowledgeInOneStep = async (
       tenantId: data.tenantId,
       title,
       text,
-      filters: data.filters,
-      teamId: data.teamId,
+        teamId: data.teamId,
       workspaceId: data.workspaceId,
       knowledgeGroupId: data.knowledgeGroupId,
       userOwned: data.userOwned,
@@ -396,7 +386,6 @@ export const extractKnowledgeInOneStep = async (
 export const extractKnowledgeFromUrl = async (data: {
   tenantId: string;
   url: string;
-  filters?: Record<string, string>;
   teamId?: string;
   userId?: string;
   workspaceId?: string;
@@ -431,7 +420,6 @@ export const extractKnowledgeFromUrl = async (data: {
     tenantId: data.tenantId,
     title: processed.title ?? parsed.title,
     text: processed.text,
-    filters: data.filters,
     teamId: data.teamId,
     workspaceId: data.workspaceId,
     knowledgeGroupId: data.knowledgeGroupId,
@@ -460,7 +448,6 @@ export const extractKnowledgeFromPlainText = async (data: {
   tenantId: string;
   text: string;
   title: string;
-  filters?: Record<string, string>;
   teamId?: string;
   userId?: string;
   workspaceId?: string;
@@ -484,7 +471,6 @@ export const extractKnowledgeFromPlainText = async (data: {
     tenantId: data.tenantId,
     title: processed.title ?? data.title,
     text: processed.text,
-    filters: data.filters,
     teamId: data.teamId,
     workspaceId: data.workspaceId,
     knowledgeGroupId: data.knowledgeGroupId,

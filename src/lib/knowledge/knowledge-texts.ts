@@ -33,12 +33,6 @@ import {
   markKnowledgeTextFilesForCleanup,
 } from "./knowledge-text-files";
 import { validateFacetsForWrite, type FacetFilters } from "./facets";
-import {
-  emitKnowledgeTextCreated,
-  emitKnowledgeTextUpdated,
-  emitKnowledgeTextDeleted,
-} from "./knowledge-text-events";
-import type { WebhookEventSource } from "../webhooks/dispatch";
 import log from "../log";
 
 /**
@@ -143,10 +137,7 @@ export const checkKnowledgeTextWritePermission = async (
 /**
  * Create a new knowledgeText entry
  */
-export const createKnowledgeText = async (
-  data: KnowledgeTextInsert,
-  options?: { source?: WebhookEventSource }
-) => {
+export const createKnowledgeText = async (data: KnowledgeTextInsert) => {
   data = sanitizeKnowledgeTextData(data);
 
   // reject facet values outside the tenant's controlled vocabulary.
@@ -200,7 +191,6 @@ export const createKnowledgeText = async (
   );
 
   // initial embedding sync for pages created with embedding already on
-  let resultPage = e[0];
   if (e[0].embeddingEnabled) {
     const syncResult = await syncKnowledgeTextEmbeddingSafe(
       e[0].id,
@@ -212,14 +202,11 @@ export const createKnowledgeText = async (
         .select()
         .from(knowledgeText)
         .where(eq(knowledgeText.id, e[0].id));
-      resultPage = fresh[0] ?? e[0];
+      return fresh[0] ?? e[0];
     }
   }
 
-  // fire the outgoing "created" webhook (fire-and-forget; never throws)
-  await emitKnowledgeTextCreated(resultPage, options?.source ?? "user");
-
-  return resultPage;
+  return e[0];
 };
 
 /**
@@ -455,8 +442,6 @@ export const updateKnowledgeText = async (
     teamId?: string;
     workspaceId?: string;
     includeHidden?: boolean;
-    /** Origin of the change; forwarded to the outgoing webhook (default "user"). */
-    source?: WebhookEventSource;
   }
 ) => {
   // Get the current entry (including text) to create history
@@ -580,7 +565,6 @@ export const updateKnowledgeText = async (
   // Keep the RAG mirror in sync: covers newly enabled embedding, changed
   // content, and cleanup after embedding was turned off. No-op otherwise;
   // failures are logged and never fail the update itself.
-  let resultPage = result[0];
   if (result[0].embeddingEnabled || currentEntry.knowledgeEntryId) {
     const syncResult = await syncKnowledgeTextEmbeddingSafe(
       result[0].id,
@@ -588,17 +572,11 @@ export const updateKnowledgeText = async (
     );
     if (syncResult && (syncResult.synced || syncResult.removed)) {
       // the sync wrote knowledgeEntryId/meta — return the fresh row
-      resultPage = await getKnowledgeTextById(id, {
-        ...context,
-        includeHidden: true,
-      });
+      return await getKnowledgeTextById(id, { ...context, includeHidden: true });
     }
   }
 
-  // fire the outgoing "updated" webhook (fire-and-forget; never throws)
-  await emitKnowledgeTextUpdated(resultPage, context.source ?? "user");
-
-  return resultPage;
+  return result[0];
 };
 
 /**
@@ -612,8 +590,6 @@ export const deleteKnowledgeText = async (
     teamId?: string;
     workspaceId?: string;
     includeHidden?: boolean;
-    /** Origin of the change; forwarded to the outgoing webhook (default "user"). */
-    source?: WebhookEventSource;
   }
 ) => {
   const item = await getKnowledgeTextById(id, context);
@@ -646,12 +622,6 @@ export const deleteKnowledgeText = async (
         )
       );
   }
-
-  // fire the outgoing "deleted" webhook (fire-and-forget; never throws)
-  await emitKnowledgeTextDeleted(
-    { id: item.id, tenantId: item.tenantId, userId: item.userId },
-    context.source ?? "user"
-  );
 
   return RESPONSES.SUCCESS;
 };

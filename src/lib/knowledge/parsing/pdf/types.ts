@@ -5,38 +5,9 @@ export type PdfParserContext = {
   workspaceId?: string;
 };
 
-/**
- * One structured value a parsing service should try to extract from a document.
- * The caller names the field (`key`, `name`, `description`); the service fills
- * it. See `docs/framework/18_PDF_Parser_Generic_Microservice_Spec.md` §3.1.
- */
-export type ExtractionTarget = {
-  /** Stable machine key. Used verbatim as the key in the result metadata. */
-  key: string;
-  /** Human-readable label handed to the extractor as the field name. */
-  name: string;
-  /** What exactly to extract — the primary instruction to the extractor. */
-  description: string;
-  /** Whether the field is expected to exist. Missing != error. */
-  required?: boolean;
-  type?: "string" | "number" | "date" | "boolean" | "enum";
-  /** Allowed values, only for `type: "enum"`. */
-  options?: string[];
-};
-
-/** One extracted value in a parser result, keyed by `ExtractionTarget.key`. */
-export type ExtractedValue = {
-  value: string | number | boolean | null;
-  found: boolean;
-  confidence?: number;
-  page?: number;
-};
-
 export type PdfParserOptions = {
   model?: string;
   extractImages?: boolean;
-  /** Structured extraction targets passed through to the service. */
-  extract?: ExtractionTarget[];
 };
 
 export interface PageContent {
@@ -48,36 +19,7 @@ export interface PdfParserResult {
   includesImages: boolean;
   model: string;
   pages?: PageContent[];
-  /** Extracted key/value metadata, keyed by `ExtractionTarget.key`. */
-  metadata?: Record<string, ExtractedValue>;
 }
-
-/** Canonical class of document a parsing service can accept. */
-export type ParserModality =
-  | "pdf"
-  | "image"
-  | "audio"
-  | "video"
-  | "text"
-  | "office";
-
-/** One modality a service advertises via `GET /v1/capabilities`. */
-export type ServiceModality = {
-  modality: ParserModality;
-  mimeTypes: string[];
-  extensions: string[];
-  features?: {
-    extractImages?: boolean;
-    extractFields?: boolean;
-    async?: boolean;
-  };
-};
-
-/** The set of modalities a parsing service can process. */
-export type ServiceCapabilities = {
-  service: string;
-  modalities: ServiceModality[];
-};
 
 /**
  * Canonical identifiers for the available PDF parser services.
@@ -95,8 +37,6 @@ export const PDF_PARSER = {
   MISTRAL_OPENROUTER: "mistral-openrouter",
   /** LlamaParse (LlamaIndex Cloud). */
   LLAMA: "llama",
-  /** Generic self-hosted parsing microservice (X-API-Key + URL from env). */
-  GENERIC: "generic",
 } as const;
 
 export type PdfParserId = (typeof PDF_PARSER)[keyof typeof PDF_PARSER];

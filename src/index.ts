@@ -39,7 +39,6 @@ import { defineOAuth2Routes } from "./lib/oauth2";
 import { defineFilesRoutes } from "./routes/tenant/[tenantId]/files";
 
 import aiKnowledgeRoutes from "./routes/tenant/[tenantId]/knowledge";
-// import aiKnowledgeFiltersRoutes from "./routes/tenant/[tenantId]/knowledge/filters";
 import aiKnowledgeGroupRoutes from "./routes/tenant/[tenantId]/knowledge/groups";
 import aiKnowledgeTextsRoutes from "./routes/tenant/[tenantId]/knowledge/texts";
 import aiKnowledgeChunksRoutes from "./routes/tenant/[tenantId]/knowledge/chunks";
@@ -71,7 +70,6 @@ import {
   sweepStaleSummaries,
 } from "./lib/knowledge/summaries";
 import { reEmbedJobRegister } from "./lib/knowledge/re-embed";
-import { webhookDeliveryJobRegister } from "./lib/webhooks/delivery-job";
 import { isAiEnabled } from "./lib/ai";
 // Cron
 import scheduler from "./lib/cron";
@@ -339,7 +337,6 @@ export const defineServer = (config: ServerSpecificConfig) => {
        */
 
       aiKnowledgeRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
-      // aiKnowledgeFiltersRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeTextsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeChunksRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
@@ -460,7 +457,6 @@ export const defineServer = (config: ServerSpecificConfig) => {
         knowledgeIngestJobRegister,
         summaryJobRegister,
         reEmbedJobRegister,
-        webhookDeliveryJobRegister,
       ];
       const allJobHandlers = [
         ...builtInJobHandlers,

@@ -137,7 +137,6 @@ export type UpsertKnowledgeFromTextInput = {
   title: string;
   text?: string;
   pages?: PageContent[];
-  filters?: Record<string, string>;
   metadata?: Record<string, string | number | boolean | undefined>;
   sourceType?: FileSourceType;
   sourceFileBucket?: string;

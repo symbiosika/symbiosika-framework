@@ -37,8 +37,6 @@ import {
 import { syncKnowledgeTextEmbeddingSafe } from "./knowledge-text-embedding";
 import { syncKnowledgeTextLinks } from "./knowledge-text-links";
 import { syncKnowledgeTextFileReferences } from "./knowledge-text-files";
-import { emitKnowledgeTextUpdated } from "./knowledge-text-events";
-import type { WebhookEventSource } from "../webhooks/dispatch";
 
 /** Minimum age of the newest history entry before a new snapshot is written */
 export const HISTORY_COALESCE_MINUTES = 10;
@@ -64,8 +62,6 @@ type Context = {
   teamId?: string;
   workspaceId?: string;
   includeHidden?: boolean;
-  /** Origin of the change; forwarded to the outgoing webhook (default "user"). */
-  source?: WebhookEventSource;
 };
 
 let turndown: TurndownService | null = null;
@@ -363,13 +359,6 @@ export const syncKnowledgeTextBlocks = async (
     .from(knowledgeTextBlock)
     .where(eq(knowledgeTextBlock.knowledgeTextId, knowledgeTextId))
     .orderBy(asc(knowledgeTextBlock.position));
-
-  // A block-editor save materializes content straight into knowledge_text
-  // (bypassing updateKnowledgeText), so emit the "updated" event here — but
-  // only when something actually changed. Fire-and-forget; never throws.
-  if (!nothingToDo) {
-    await emitKnowledgeTextUpdated(finalPage, context.source ?? "user");
-  }
 
   return {
     knowledgeText: finalPage,

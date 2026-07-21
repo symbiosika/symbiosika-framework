@@ -65,7 +65,6 @@ export type StoredIngestFile = {
 
 /** Options forwarded to `extractKnowledgeInOneStep` for an uploaded file. */
 type RagUploadOptions = {
-  filters?: Record<string, string>;
   teamId?: string;
   workspaceId?: string;
   knowledgeGroupId?: string;
@@ -85,7 +84,6 @@ type RagExistingParams = {
   sourceId?: string;
   sourceFileBucket?: string;
   sourceUrl?: string;
-  filters?: Record<string, string>;
   metadata?: Record<string, string | number | boolean | undefined>;
   teamId?: string;
   workspaceId?: string;
@@ -101,7 +99,6 @@ type RagExistingParams = {
 
 type RagUrlParams = {
   url: string;
-  filters?: Record<string, string>;
   teamId?: string;
   workspaceId?: string;
   knowledgeGroupId?: string;
@@ -112,7 +109,6 @@ type RagUrlParams = {
 type RagTextParams = {
   text: string;
   title: string;
-  filters?: Record<string, string>;
   teamId?: string;
   workspaceId?: string;
   knowledgeGroupId?: string;
