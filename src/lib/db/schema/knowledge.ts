@@ -687,6 +687,22 @@ export const knowledgeChunks = pgBaseTable(
     ),
     index("knowledge_chunks_created_at_idx").on(knowledgeChunks.createdAt),
     index("knowledge_chunks_header_idx").on(knowledgeChunks.header),
+    // ANN indexes for similarity search. Partial (per non-null column) so each
+    // index only carries the rows that actually hold a vector of its size.
+    // Opclass is cosine — every query side must use the `<=>` operator,
+    // otherwise these indexes are not used.
+    index("knowledge_chunks_embedding_1024_hnsw_idx")
+      .using(
+        "hnsw",
+        knowledgeChunks.textEmbedding1024.op("vector_cosine_ops")
+      )
+      .where(sql`text_embedding_1024 IS NOT NULL`),
+    index("knowledge_chunks_embedding_1536_hnsw_idx")
+      .using(
+        "hnsw",
+        knowledgeChunks.textEmbedding1536.op("vector_cosine_ops")
+      )
+      .where(sql`text_embedding_1536 IS NOT NULL`),
     check(
       "knowledge_chunks_embedding_required",
       sql`text_embedding_1536 IS NOT NULL OR text_embedding_1024 IS NOT NULL`

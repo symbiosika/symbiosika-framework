@@ -27,6 +27,7 @@ import { applyPostProcessors } from "./parsing/post-processors";
 import { urlToMarkdown } from "./parsing/url";
 import type { PageContent } from "./parsing/pdf/types";
 import { generateEmbedding } from "./embedding";
+import { generateEntryDescription } from "./entry-summaries";
 
 /**
  * Helper function to store a knowledge entry in the database
@@ -127,45 +128,19 @@ export const extractKnowledgeFromText = async (data: {
   );
   log.debug(`Embeddings generated. Chunks: ${chunks.length}`);
 
-  // Generate summary if requested
-  let description = undefined;
-  let abstract = undefined;
+  // Generate the entry description if requested. Skipped without a global
+  // LLM; a failed generation stores the entry without a description.
+  let description: string | undefined = undefined;
 
   if (data.generateSummary ?? true) {
-    log.debug(`Generating summary for knowledge entry: ${title}`);
-
-    // Use chunk-based summary generation for longer texts
-    if (fullText.length > 10000 && chunks.length > 1) {
-      log.debug(`Using chunk-based summary generation for long document`);
-      // const summary = await generateChunkBasedSummary(
-      //   chunks,
-      //   data.title,
-      //   {
-      //     tenantId: data.tenantId,
-      //     userId: data.userId,
-      //   },
-      //   {
-      //     model: data.summaryModel,
-      //     customPrompt: data.summaryCustomPrompt,
-      //   }
-      // );
-      // description = summary.description;
-    } else {
-      // Use the original method for shorter texts
-      // const summary = await generateDocumentSummary(
-      //   fullText,
-      //   data.title,
-      //   {
-      //     tenantId: data.tenantId,
-      //     userId: data.userId,
-      //   },
-      //   {
-      //     model: data.summaryModel,
-      //     customPrompt: data.summaryCustomPrompt,
-      //   }
-      // );
-      // description = summary.description;
-    }
+    log.debug(`Generating description for knowledge entry: ${title}`);
+    description = await generateEntryDescription({
+      title,
+      fullText,
+      chunks,
+      model: data.summaryModel,
+      customPrompt: data.summaryCustomPrompt,
+    });
   }
 
   // merge metadata
@@ -204,6 +179,7 @@ export const extractKnowledgeFromText = async (data: {
         header: e.header,
         order: e.order,
         embeddingModel: e.embedding.model,
+        dimensions: e.embedding.dimensions,
         textEmbedding1536: e.embedding.dimensions === 1536 ? e.embedding.embedding : null,
         textEmbedding1024: e.embedding.dimensions === 1024 ? e.embedding.embedding : null,
         meta: e.meta,
