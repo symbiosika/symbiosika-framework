@@ -687,6 +687,16 @@ export const knowledgeChunks = pgBaseTable(
     ),
     index("knowledge_chunks_created_at_idx").on(knowledgeChunks.createdAt),
     index("knowledge_chunks_header_idx").on(knowledgeChunks.header),
+    // full-text search over header + chunk text for the lexical leg of the
+    // hybrid RAG search ('simple' config: language-agnostic, mixed German/
+    // English content). Uses the same base_safe_tsvector wrapper as
+    // knowledge_text_fts_idx so oversized chunks can never abort a row write.
+    // The search side (similarity-search.ts) must use the exact same
+    // expression, otherwise this index is not used.
+    index("knowledge_chunks_fts_idx").using(
+      "gin",
+      sql`base_safe_tsvector('simple', coalesce(${knowledgeChunks.header}, '') || ' ' || coalesce(${knowledgeChunks.text}, ''))`
+    ),
     // ANN indexes for similarity search. Partial (per non-null column) so each
     // index only carries the rows that actually hold a vector of its size.
     // Opclass is cosine — every query side must use the `<=>` operator,

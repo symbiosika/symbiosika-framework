@@ -19,8 +19,20 @@ type KnowledgeChunk = {
   meta: KnowledgeChunkMeta;
 };
 
+/** RRF constant, same value as the hybrid page search (knowledge-text-search.ts). */
+const RRF_K = 60;
+
 /**
- * Get the n nearest embeddings to the search text
+ * Hybrid chunk retrieval: the n best chunks for the search text.
+ *
+ * Two legs, fused with Reciprocal Rank Fusion (the same recipe as the
+ * knowledgeText page search):
+ *   1. Semantic: query embedding vs. stored chunk embeddings (HNSW, cosine).
+ *   2. Full-text: websearch_to_tsquery over header + chunk text, backed by
+ *      the GIN index knowledge_chunks_fts_idx.
+ *
+ * The semantic leg needs the embedding provider; when it is unavailable the
+ * search degrades gracefully to full-text only instead of throwing.
  */
 export async function getNearestEmbeddings(q: {
   tenantId: string;
@@ -44,11 +56,6 @@ export async function getNearestEmbeddings(q: {
     order: number;
   }[]
 > {
-  // Generate the embedding for the search text
-  const embed = await generateEmbedding(q.searchText, {
-    tenantId: q.tenantId,
-  });
-
   // set some default values
   if (!q.n) {
     q.n = 5;
@@ -80,29 +87,93 @@ export async function getNearestEmbeddings(q: {
       ? sql`WHERE ${sql.join(filters, sql` AND `)} AND ${knowledgeEntry.tenantId} = ${q.tenantId}`
       : sql`WHERE ${knowledgeEntry.tenantId} = ${q.tenantId}`;
 
-  const rows = (await getDb().execute<KnowledgeChunk>(sql`
-    SELECT
+  const selectColumns = sql`
       ${knowledgeChunks.id},
       ${knowledgeChunks.text},
       ${knowledgeChunks.knowledgeEntryId} AS "knowledgeEntryId",
       ${knowledgeEntry.name} AS "knowledgeEntryName",
       ${knowledgeChunks.order},
-      ${knowledgeChunks.meta}
-    FROM 
-      ${knowledgeChunks}
-    JOIN 
-      ${knowledgeEntry} ON ${knowledgeChunks.knowledgeEntryId} = ${knowledgeEntry.id}
-    ${whereClause}
-    ORDER BY
-      ${
-        embed.dimensions === 1536
-          ? knowledgeChunks.textEmbedding1536
-          : knowledgeChunks.textEmbedding1024
-      } <=> ${sql.raw(`'[${embed.embedding}]'`)} ASC
-    LIMIT
-      ${q.n};
-  `)) as KnowledgeChunk[];
-  log.debug(`Found ${rows.length} chunks by similarity search`);
+      ${knowledgeChunks.meta}`;
+
+  // fetch more per leg than requested so the fusion has material to rank
+  const perLeg = Math.max(q.n * 2, 20);
+
+  // Semantic leg: query embedding vs. stored chunk embeddings (HNSW, cosine).
+  const semanticLeg = async (): Promise<KnowledgeChunk[]> => {
+    const embed = await generateEmbedding(q.searchText, {
+      tenantId: q.tenantId,
+    });
+    return (await getDb().execute<KnowledgeChunk>(sql`
+      SELECT ${selectColumns}
+      FROM
+        ${knowledgeChunks}
+      JOIN
+        ${knowledgeEntry} ON ${knowledgeChunks.knowledgeEntryId} = ${knowledgeEntry.id}
+      ${whereClause}
+      ORDER BY
+        ${
+          embed.dimensions === 1536
+            ? knowledgeChunks.textEmbedding1536
+            : knowledgeChunks.textEmbedding1024
+        } <=> ${sql.raw(`'[${embed.embedding}]'`)} ASC
+      LIMIT
+        ${perLeg};
+    `)) as KnowledgeChunk[];
+  };
+
+  // Full-text leg. The document expression must match the one of
+  // knowledge_chunks_fts_idx exactly, otherwise the GIN index is not used.
+  const fulltextLeg = async (): Promise<KnowledgeChunk[]> => {
+    const document = sql`base_safe_tsvector('simple', coalesce(${knowledgeChunks.header}, '') || ' ' || coalesce(${knowledgeChunks.text}, ''))`;
+    const tsQuery = sql`websearch_to_tsquery('simple', ${q.searchText})`;
+    return (await getDb().execute<KnowledgeChunk>(sql`
+      SELECT ${selectColumns}
+      FROM
+        ${knowledgeChunks}
+      JOIN
+        ${knowledgeEntry} ON ${knowledgeChunks.knowledgeEntryId} = ${knowledgeEntry.id}
+      ${whereClause}
+        AND ${document} @@ ${tsQuery}
+      ORDER BY
+        ts_rank_cd(${document}, ${tsQuery}) DESC
+      LIMIT
+        ${perLeg};
+    `)) as KnowledgeChunk[];
+  };
+
+  const [semanticHits, fulltextHits] = await Promise.all([
+    // the semantic leg degrades gracefully when the embedding provider is
+    // unavailable — the search then runs full-text only instead of failing
+    semanticLeg().catch((error) => {
+      log.error(`Semantic search leg unavailable: ${error}`);
+      return [] as KnowledgeChunk[];
+    }),
+    fulltextLeg(),
+  ]);
+
+  // Reciprocal Rank Fusion over both legs, keyed by chunk id.
+  const fused = new Map<string, { chunk: KnowledgeChunk; score: number }>();
+  const addLeg = (hits: KnowledgeChunk[]) => {
+    hits.forEach((chunk, rank) => {
+      const contribution = 1 / (RRF_K + rank + 1);
+      const existing = fused.get(chunk.id);
+      if (existing) {
+        existing.score += contribution;
+      } else {
+        fused.set(chunk.id, { chunk, score: contribution });
+      }
+    });
+  };
+  addLeg(semanticHits);
+  addLeg(fulltextHits);
+
+  const rows = [...fused.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, q.n)
+    .map((f) => f.chunk);
+  log.debug(
+    `Found ${rows.length} chunks by hybrid search (semantic: ${semanticHits.length}, fulltext: ${fulltextHits.length})`
+  );
   // log the knowledgeEntry.name of the chunks
   for (const chunk of rows) {
     log.debug(
