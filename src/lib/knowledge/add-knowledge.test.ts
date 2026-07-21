@@ -10,7 +10,7 @@ describe("Knowledge Text Flow", () => {
     await initTests();
   });
 
-  it("should create knowledge text and extract knowledge with filters", async () => {
+  it("should create knowledge text and extract knowledge", async () => {
     // 1. Add plain text to knowledge_text table
     const testText =
       "This is a test document for knowledge extraction testing.";
@@ -21,23 +21,17 @@ describe("Knowledge Text Flow", () => {
     });
     expect(knowledgeText.id).toBeDefined();
 
-    // 2. Extract knowledge with filters
+    // 2. Extract knowledge
     const result = await extractKnowledgeFromExistingDbEntry({
       tenantId: TEST_ORGANISATION_1.id,
       sourceType: "text",
       sourceId: knowledgeText.id,
-      filters: {
-        "test-case": "test-1",
-      },
     });
     expect(result.ok).toBe(true);
     expect(result.id).toBeDefined();
 
-    // 3. Retrieve knowledge by filters
+    // 3. Retrieve knowledge entries
     const foundKnowledge = await getKnowledgeEntries({
-      filterNames: {
-        "test-case": ["test-1"],
-      },
       userId: TEST_ORGANISATION_1.id,
       tenantId: TEST_ORGANISATION_1.id,
     });

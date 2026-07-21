@@ -5,7 +5,6 @@ export interface SyncItem {
   lastChange?: string;
   lastHash?: string;
   meta?: Record<string, any>;
-  filters?: Record<string, string>;
 }
 
 export interface SyncItemStatus {

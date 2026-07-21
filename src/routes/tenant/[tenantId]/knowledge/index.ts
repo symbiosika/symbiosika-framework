@@ -51,7 +51,6 @@ const generateKnowledgeValidation = v.object({
   sourceId: v.optional(v.string()),
   sourceFileBucket: v.optional(v.string()),
   sourceUrl: v.optional(v.string()),
-  filters: v.optional(v.record(v.string(), v.string())),
   teamId: v.optional(v.string()),
   userId: v.optional(v.string()),
   userOwned: v.optional(v.boolean()),
@@ -108,7 +107,6 @@ const similaritySearchValidation = v.object({
   filterTeamIds: v.optional(v.array(v.string())),
   filterUserOwned: v.optional(v.boolean()),
   filterWorkspaceIds: v.optional(v.array(v.string())),
-  filter: v.optional(v.record(v.string(), v.array(v.string()))),
   filterName: v.optional(v.array(v.string())),
   fullDocument: v.optional(v.boolean()),
 });
@@ -117,7 +115,6 @@ const addFromTextValidation = v.object({
   tenantId: v.string(),
   text: v.string(),
   title: v.string(),
-  filters: v.optional(v.record(v.string(), v.string())),
   teamId: v.optional(v.string()),
   userId: v.optional(v.string()),
   workspaceId: v.optional(v.string()),
@@ -136,7 +133,6 @@ const addFromTextValidation = v.object({
 const addFromUrlValidation = v.object({
   tenantId: v.string(),
   url: v.string(),
-  filters: v.optional(v.record(v.string(), v.string())),
   teamId: v.optional(v.string()),
   userId: v.optional(v.string()),
   workspaceId: v.optional(v.string()),
@@ -148,7 +144,6 @@ const addFromUrlValidation = v.object({
 
 const uploadAndLearnValidation = v.object({
   tenantId: v.string(),
-  filters: v.optional(v.record(v.string(), v.string())),
   teamId: v.optional(v.string()),
   userId: v.optional(v.string()),
   workspaceId: v.optional(v.string()),
@@ -182,7 +177,6 @@ const syncKnowledgeValidation = v.object({
   text: v.string(),
   lastChange: v.optional(v.string()),
   lastHash: v.optional(v.string()),
-  filters: v.optional(v.record(v.string(), v.string())),
   meta: v.optional(v.record(v.string(), v.any())),
   teamId: v.optional(v.string()),
   userId: v.optional(v.string()),
@@ -477,7 +471,6 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
             searchText: body.searchText,
             n: body.n,
             filterKnowledgeEntryIds: body.filterKnowledgeEntryIds,
-            filter: body.filter,
             filterName: body.filterName,
             userId,
           });
@@ -491,7 +484,6 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
           addBeforeN: body.addBeforeN,
           addAfterN: body.addAfterN,
           filterKnowledgeEntryIds: body.filterKnowledgeEntryIds,
-          filter: body.filter,
           filterName: body.filterName,
         });
         return c.json(r);
@@ -579,7 +571,6 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
               workspaceId: v.optional(v.string()),
               knowledgeGroupId: v.optional(v.string()),
               userOwned: v.optional(v.string()),
-              filters: v.optional(v.string()),
             }),
           },
           "application/json": {
@@ -615,7 +606,6 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
       let workspaceId;
       let knowledgeGroupId;
       let userOwned;
-      let filters;
       let generateSummary;
       let summaryCustomPrompt;
       let summaryModel;
@@ -647,15 +637,6 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
         notifyOnCompletion =
           form.get("notifyOnCompletion")?.toString() === "true";
 
-        try {
-          filters = form.get("filters")
-            ? JSON.parse(form.get("filters")?.toString() || "{}")
-            : undefined;
-        } catch (e) {
-          throw new HTTPException(400, {
-            message: "Error parsing filters from form-data.",
-          });
-        }
         file = form.get("file") as File;
         data = {
           userId,
@@ -664,7 +645,6 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
           workspaceId,
           knowledgeGroupId,
           userOwned,
-          filters,
           extractImages,
           generateSummary,
           summaryCustomPrompt,
@@ -767,7 +747,6 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
             params: {
               text: data.text,
               title: data.title,
-              filters: data.filters,
               teamId: data.teamId,
               workspaceId: data.workspaceId,
               knowledgeGroupId: data.knowledgeGroupId,
@@ -842,7 +821,6 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
             notifyOnCompletion: data.notifyOnCompletion,
             params: {
               url: data.url,
-              filters: data.filters,
               teamId: data.teamId,
               workspaceId: data.workspaceId,
               knowledgeGroupId: data.knowledgeGroupId,

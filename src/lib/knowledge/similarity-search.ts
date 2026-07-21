@@ -4,10 +4,7 @@ import { getDb } from "../db/db-connection";
 import log from "../log";
 import { getFullSourceDocumentsForKnowledgeEntry } from "./get-knowledge";
 import { and, eq, inArray } from "drizzle-orm";
-import {
-  type KnowledgeChunkMeta,
-  knowledgeFilters,
-} from "../db/schema/knowledge";
+import { type KnowledgeChunkMeta } from "../db/schema/knowledge";
 import { generateEmbedding } from "./embedding";
 
 type KnowledgeChunk = {
@@ -42,8 +39,6 @@ export async function getNearestEmbeddings(q: {
   addAfterN?: number;
   filterKnowledgeEntryIds?: string[];
   filterKnowledgeGroupIds?: string[];
-  filterKnowledgeFilterIds?: string[];
-  filter?: Record<string, string[]>;
   filterName?: string[];
   workspaceId?: string;
 }): Promise<
@@ -239,7 +234,6 @@ export async function getFullSourceDocumentsForSimilaritySearch(q: {
   n?: number;
   filterKnowledgeEntryIds?: string[];
   filterKnowledgeGroupIds?: string[];
-  filter?: Record<string, string[]>;
   filterName?: string[];
   userId: string;
 }) {

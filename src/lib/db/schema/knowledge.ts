@@ -727,45 +727,6 @@ export const knowledgeChunksSchema = createSelectSchema(knowledgeChunks);
 export const knowledgeChunksInsertSchema = createInsertSchema(knowledgeChunks);
 export const knowledgeChunksUpdateSchema = createUpdateSchema(knowledgeChunks);
 
-// Table for knowledge filters definition
-// This table is used to define the filters for knowledge entries
-
-export const knowledgeFilters = pgBaseTable(
-  "knowledge_filters",
-  {
-    id: uuid("id")
-      .primaryKey()
-      .default(sql`gen_random_uuid()`),
-    tenantId: uuid("tenant_id")
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
-    category: varchar("category", { length: 50 }).notNull(), // z.B. 'department', 'topic', 'level'
-    name: varchar("name", { length: 255 }).notNull(),
-    createdAt: timestamp("created_at", { mode: "string" })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { mode: "string" })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("knowledge_filters_name_type_unique").on(
-      table.name,
-      table.category
-    ),
-    index("knowledge_filters_category_name_idx").on(table.category, table.name),
-  ]
-);
-
-export type KnowledgeFiltersSelect = typeof knowledgeFilters.$inferSelect;
-export type KnowledgeFiltersInsert = typeof knowledgeFilters.$inferInsert;
-
-export const knowledgeFiltersSchema = createSelectSchema(knowledgeFilters);
-export const knowledgeFiltersInsertSchema =
-  createInsertSchema(knowledgeFilters);
-export const knowledgeFiltersUpdateSchema =
-  createUpdateSchema(knowledgeFilters);
-
 export const knowledgeEntryRelations = relations(
   knowledgeEntry,
   ({ many, one }) => ({
