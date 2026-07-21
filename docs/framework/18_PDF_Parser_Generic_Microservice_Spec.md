@@ -59,13 +59,19 @@ curl https://parser.example.com/v1/capabilities -H "X-API-Key: sk-abc123..."
       "modality": "pdf",
       "mime_types": ["application/pdf"],
       "extensions": [".pdf"],
-      "features": { "extract_images": true, "extract_fields": true, "async": true }
+      "features": {
+        "extract_images": true,
+        "extract_fields": true,
+        "async": true,
+        "parse_images_in_doc": true,
+        "ocr": true
+      }
     },
     {
       "modality": "image",
       "mime_types": ["image/png", "image/jpeg", "image/webp"],
       "extensions": [".png", ".jpg", ".jpeg", ".webp"],
-      "features": { "extract_fields": true }
+      "features": { "extract_fields": true, "ocr": true }
     },
     {
       "modality": "audio",
@@ -84,11 +90,37 @@ curl https://parser.example.com/v1/capabilities -H "X-API-Key: sk-abc123..."
 | `modalities[].modality`| string    | ✅       | Canonical class: `pdf`, `image`, `audio`, `video`, `text`, or `office`. |
 | `modalities[].mime_types` | string[] | ✅    | Accepted MIME types for this modality. Used as the primary routing key. |
 | `modalities[].extensions` | string[] | ✅    | Accepted file extensions (lowercase, leading dot). Fallback when MIME is unknown. |
-| `modalities[].features` | object   | ❌       | Optional per-modality flags: `extract_images`, `extract_fields`, `async` (all default `false`). Tells the framework which request options are meaningful for this type. |
+| `modalities[].features` | object   | ❌       | Optional per-modality feature flags (see §2.1.1). An open, boolean-valued map. Tells the framework which request options / extra services are meaningful for this type. Any flag not present defaults to `false`. |
 
 The response MUST be stable and cheap (no file processing). The framework may
 cache it. `/v1/parse` MUST reject a file whose type is not in any advertised
 modality with `415` `{ "error": "unsupported_modality" }`.
+
+### 2.1.1 Feature flags — advertising extra services
+
+`features` is an **open map of boolean flags**. A service uses it to advertise
+which optional request options and **extra services** it supports for a given
+modality. The framework reads these flags to decide which request fields (§3)
+are worth sending: it only sends an option for a modality that advertises the
+matching flag as `true`. A flag that is absent means `false` (not supported).
+
+You MAY declare your own flags. The framework simply ignores flags it does not
+understand, so adding a new one is always backward-compatible. The following
+flag names are **well-known** — use these exact keys when your service offers
+the corresponding capability, so the framework can wire them automatically:
+
+| Flag                  | Enables request option | Meaning |
+|-----------------------|------------------------|---------|
+| `extract_images`      | `extract_images` (§3)  | Can emit embedded images as base64 in the result. |
+| `extract_fields`      | `extract` (§3)         | Can perform structured field extraction (the `extract` targets). |
+| `async`               | job endpoints (§6)     | Supports the asynchronous create/poll/fetch flow for this modality. |
+| `parse_images_in_doc` | `parse_images_in_doc` (§3) | Extra service: analyses images **embedded in the document** (OCR / captioning / description) and folds the recognised content into the page `text`, instead of only emitting the raw image. |
+| `ocr`                 | `ocr` (§3)             | Extra service: runs OCR on scanned / image-only pages to recover machine-readable text. |
+| `detect_tables`       | `detect_tables` (§3)   | Extra service: detects tables and renders them as Markdown tables in the page `text`. |
+
+Convention for new flags: `snake_case`, boolean-valued, named after the
+capability (not the implementation). If a flag also gates a request option, give
+the request form field the **same name** as the flag (see §3).
 
 ---
 
@@ -122,9 +154,18 @@ Content-Disposition: form-data; name="extract"
 
 | Field            | Type              | Required | Default | Description |
 |------------------|-------------------|----------|---------|-------------|
-| `file`           | file (PDF)        | ✅       | –       | The document to parse |
-| `extract_images` | `"true"`/`"false"`| ❌       | `false` | Emit extracted images as base64 |
-| `extract`        | JSON string       | ❌       | `[]`    | Structured extraction targets (see §3.1) |
+| `file`                | file (PDF)        | ✅       | –       | The document to parse |
+| `extract_images`      | `"true"`/`"false"`| ❌       | `false` | Emit extracted images as base64 |
+| `extract`             | JSON string       | ❌       | `[]`    | Structured extraction targets (see §3.1) |
+| `parse_images_in_doc` | `"true"`/`"false"`| ❌       | `false` | Extra service: analyse images embedded in the document and fold the recognised content into the page `text` (only if the modality advertises `parse_images_in_doc`). |
+| `ocr`                 | `"true"`/`"false"`| ❌       | `false` | Extra service: run OCR on scanned / image-only pages (only if the modality advertises `ocr`). |
+| `detect_tables`       | `"true"`/`"false"`| ❌       | `false` | Extra service: detect tables and render them as Markdown (only if the modality advertises `detect_tables`). |
+
+Each extra-service form field is a boolean opt-in that mirrors a feature flag
+from §2.1.1 (same name). The framework only sends a field when the target
+modality advertises the matching flag as `true`. A service MAY ignore a field it
+does not support; it MUST NOT fail the request because of an unknown or
+unsupported option field.
 
 ### 3.1 The `extract` field — structured extraction targets
 
@@ -363,13 +404,15 @@ def require_key(x_api_key: str):
     if x_api_key != API_KEY:
         raise HTTPException(401, "invalid_api_key")
 
-def build_result(data: bytes, extract_images: bool, extract: str) -> dict:
+def build_result(data: bytes, extract_images: bool, extract: str,
+                 parse_images_in_doc: bool = False) -> dict:
     try:
         targets = json.loads(extract)
     except json.JSONDecodeError:
         raise HTTPException(400, "invalid_extract")
 
-    pages = your_parser(data, extract_images)        # -> [{page, text, images?}, ...]
+    # extra services are opt-in and only meaningful if advertised in capabilities
+    pages = your_parser(data, extract_images, parse_images_in_doc)  # -> [{page, text, images?}, ...]
     metadata = your_extractor(pages, targets)        # -> {key: {value, found, ...}}
     warnings = [f"required field '{t['key']}' not found"
                 for t in targets
@@ -382,10 +425,11 @@ CAPABILITIES = {
     "modalities": [
         {"modality": "pdf", "mime_types": ["application/pdf"],
          "extensions": [".pdf"],
-         "features": {"extract_images": True, "extract_fields": True, "async": True}},
+         "features": {"extract_images": True, "extract_fields": True, "async": True,
+                      "parse_images_in_doc": True, "ocr": True}},
         {"modality": "image", "mime_types": ["image/png", "image/jpeg"],
          "extensions": [".png", ".jpg", ".jpeg"],
-         "features": {"extract_fields": True}},
+         "features": {"extract_fields": True, "ocr": True}},
     ],
 }
 ACCEPTED_MIME = {m for c in CAPABILITIES["modalities"] for m in c["mime_types"]}
@@ -405,12 +449,14 @@ async def parse(
     file: UploadFile,
     extract_images: bool = Form(False),
     extract: str = Form("[]"),
+    parse_images_in_doc: bool = Form(False),
     x_api_key: str = Header(None),
 ):
     require_key(x_api_key)
     if file.content_type not in ACCEPTED_MIME:
         raise HTTPException(415, "unsupported_modality")
-    return build_result(await file.read(), extract_images, extract)
+    return build_result(await file.read(), extract_images, extract,
+                        parse_images_in_doc)
 
 # --- asynchronous (optional) ---
 @app.post("/v1/jobs", status_code=202)
