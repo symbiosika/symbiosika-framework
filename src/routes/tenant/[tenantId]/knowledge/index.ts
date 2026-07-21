@@ -35,6 +35,7 @@ import { knowledgeEntrySchema } from "../../../../lib/db/db-schema";
 import { isTenantAdmin, isTenantMember } from "../..";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 import { getAllPostProcessors } from "../../../../lib/knowledge/parsing/post-processors";
+import { enqueueReEmbedding } from "../../../../lib/knowledge/re-embed";
 
 const FileSourceType = {
   DB: "db",
@@ -900,6 +901,45 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
       } catch (e) {
         throw new HTTPException(400, { message: e + "" });
       }
+    }
+  );
+
+  /**
+   * Trigger re-embedding after an embedding model/provider change — enqueue
+   * one background job per knowledge entry whose chunks are not on the
+   * currently configured embedding model. Admin only. Safe to call repeatedly
+   * (already queued/running entries are skipped).
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/re-embed",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Enqueue re-embed jobs for entries not on the configured embedding model",
+      responses: {
+        200: {
+          description: "Enqueue result",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({
+                  enqueued: v.number(),
+                  outdatedEntries: v.number(),
+                })
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantAdmin,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      return c.json(await enqueueReEmbedding(tenantId));
     }
   );
 }

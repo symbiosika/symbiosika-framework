@@ -99,6 +99,8 @@ export async function getNearestEmbeddings(q: {
   const perLeg = Math.max(q.n * 2, 20);
 
   // Semantic leg: query embedding vs. stored chunk embeddings (HNSW, cosine).
+  // Restricted to chunks of the same model as the query embedding — vectors
+  // of different models share no vector space, comparing them is meaningless.
   const semanticLeg = async (): Promise<KnowledgeChunk[]> => {
     const embed = await generateEmbedding(q.searchText, {
       tenantId: q.tenantId,
@@ -110,6 +112,7 @@ export async function getNearestEmbeddings(q: {
       JOIN
         ${knowledgeEntry} ON ${knowledgeChunks.knowledgeEntryId} = ${knowledgeEntry.id}
       ${whereClause}
+        AND ${knowledgeChunks.embeddingModel} = ${embed.model}
       ORDER BY
         ${
           embed.dimensions === 1536

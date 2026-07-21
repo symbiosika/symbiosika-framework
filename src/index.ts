@@ -70,6 +70,7 @@ import {
   summaryJobRegister,
   sweepStaleSummaries,
 } from "./lib/knowledge/summaries";
+import { reEmbedJobRegister } from "./lib/knowledge/re-embed";
 import { isAiEnabled } from "./lib/ai";
 // Cron
 import scheduler from "./lib/cron";
@@ -457,6 +458,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
       const builtInJobHandlers = [
         knowledgeIngestJobRegister,
         summaryJobRegister,
+        reEmbedJobRegister,
       ];
       const allJobHandlers = [
         ...builtInJobHandlers,
@@ -581,6 +583,17 @@ export {
   sweepStaleSummaries,
   enqueueSummaryBackfill,
 } from "./lib/knowledge/summaries";
+
+/**
+ * Export re-embedding controls (embedding model/provider changes).
+ */
+export {
+  RE_EMBED_JOB_TYPE,
+  findKnowledgeEntriesNeedingReEmbed,
+  reEmbedKnowledgeEntry,
+  enqueueReEmbedding,
+} from "./lib/knowledge/re-embed";
+export { getConfiguredEmbeddingModelId } from "./lib/knowledge/embedding";
 export {
   getKnowledgeTenantConfig,
   setKnowledgeTenantConfig,
