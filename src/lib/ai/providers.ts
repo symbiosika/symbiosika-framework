@@ -38,6 +38,18 @@ const openRouterHeaders = (): Record<string, string> => {
   return headers;
 };
 
+/**
+ * Whether OpenRouter chat models are asked for schema-enforced structured
+ * outputs (`response_format: json_schema`). Without this the AI SDK cannot
+ * transmit the schema of a `generateObject` call at all (the request is
+ * downgraded to plain JSON mode and the model never sees the expected shape,
+ * which then fails validation with `AI_NoObjectGeneratedError`). OpenRouter
+ * routes such requests only to backends that support structured outputs.
+ * Set OPENROUTER_STRUCTURED_OUTPUTS=false for models that reject json_schema.
+ */
+const openRouterStructuredOutputs = (): boolean =>
+  process.env.OPENROUTER_STRUCTURED_OUTPUTS !== "false";
+
 /** Build a fresh OpenRouter provider from the current environment. */
 const openRouterProvider = () =>
   createOpenAICompatible({
@@ -45,6 +57,7 @@ const openRouterProvider = () =>
     baseURL: OPENROUTER_BASE_URL,
     apiKey: process.env.OPENROUTER_API_KEY ?? "",
     headers: openRouterHeaders(),
+    supportsStructuredOutputs: openRouterStructuredOutputs(),
   });
 
 // --- Configuration checks ---------------------------------------------------

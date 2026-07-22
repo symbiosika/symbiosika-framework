@@ -23,9 +23,11 @@
 import {
   generateText as aiGenerateText,
   generateObject,
+  NoObjectGeneratedError,
   type LanguageModel,
 } from "ai";
 import { valibotSchema } from "@ai-sdk/valibot";
+import * as v from "valibot";
 import type { GenericSchema } from "valibot";
 import log from "../log";
 import {
@@ -116,8 +118,41 @@ export const generateText = async (params: {
 };
 
 /**
+ * Last-resort recovery when `generateObject` rejects a response: models that
+ * lack schema-enforced outputs often return the right JSON wrapped in a code
+ * fence or with stray text around it. Extract the JSON and validate it against
+ * the same schema — never returns anything the schema did not accept.
+ */
+export const salvageStructuredText = <T>(
+  schema: GenericSchema<T>,
+  text: string | undefined
+): T | null => {
+  if (!text) return null;
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+  const candidates = [text, fenced].filter(
+    (c): c is string => typeof c === "string"
+  );
+  // Also try the outermost {...} span for output with surrounding prose.
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end > start) candidates.push(text.slice(start, end + 1));
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = v.parse(schema, JSON.parse(candidate.trim()));
+      return parsed;
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
+};
+
+/**
  * Generate a structured object from the model using a valibot schema. The AI
  * SDK forces the model to produce output matching the schema and validates it.
+ * If the model's response is rejected but contains recognizable JSON (e.g. a
+ * fenced code block), it is salvaged and re-validated before giving up.
  */
 export const generateStructured = async <T>(params: {
   schema: GenericSchema<T>;
@@ -127,13 +162,26 @@ export const generateStructured = async <T>(params: {
   model?: string;
 }): Promise<T> => {
   const model = requireModel(params.model);
-  const { object } = await generateObject({
-    model,
-    schema: valibotSchema(params.schema),
-    system: params.system,
-    prompt: params.prompt,
-  });
-  return object as T;
+  try {
+    const { object } = await generateObject({
+      model,
+      schema: valibotSchema(params.schema),
+      system: params.system,
+      prompt: params.prompt,
+    });
+    return object as T;
+  } catch (error) {
+    if (NoObjectGeneratedError.isInstance(error)) {
+      const salvaged = salvageStructuredText(params.schema, error.text);
+      if (salvaged !== null) {
+        log.debug(
+          "generateStructured: salvaged schema-valid JSON from a rejected model response"
+        );
+        return salvaged;
+      }
+    }
+    throw error;
+  }
 };
 
 /** Log the resolved AI configuration once at startup (no secrets). */
