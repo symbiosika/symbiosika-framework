@@ -117,7 +117,7 @@ export async function getNearestEmbeddings(q: {
      */
     knowledgeTextId: string | null;
     /**
-     * Wiki path of the source page, root first, titles joined by " / " (the
+     * Wiki path of the source page, root first, titles joined by "/" (the
      * last segment is the page itself) — so a consumer can see WHERE the chunk
      * comes from. null when the entry is not a wiki page.
      */

@@ -173,7 +173,7 @@ Content-Type: application/json
 For knowledge that originates from **wiki pages** (`knowledgeText`, organized in
 a tree via `parentId`), retrieval responses include the page's **path** — the
 slash-separated breadcrumb of ancestor titles, e.g.
-`"Handbook / HR / Vacation Policy"`. This tells an AI agent *where* a chunk
+`"Handbook/HR/Vacation Policy"`. This tells an AI agent *where* a chunk
 lives, not just its bare title, which is valuable context for reasoning and
 citation.
 

@@ -20,7 +20,7 @@ import { knowledgeText } from "../db/schema/knowledge";
 export type KnowledgeTextPathSegment = { id: string; title: string };
 
 export type KnowledgeTextPath = {
-  /** ancestor + self titles, root first, joined by the separator (default " / ") */
+  /** ancestor + self titles, root first, joined by the separator (default "/") */
   path: string;
   /** the same segments as ids, root first */
   pathIds: string[];
@@ -28,7 +28,7 @@ export type KnowledgeTextPath = {
   pathSegments: KnowledgeTextPathSegment[];
 };
 
-const DEFAULT_SEPARATOR = " / ";
+const DEFAULT_SEPARATOR = "/";
 
 /**
  * Resolve the wiki path for each of the given page ids in one pass.
@@ -40,7 +40,7 @@ const DEFAULT_SEPARATOR = " / ";
  * @param options.includeSelf  include the page itself as the last segment
  *                              (default true); false yields only the ancestors
  *                              ("the folders it lives in").
- * @param options.separator    string used to join titles (default " / ").
+ * @param options.separator    string used to join titles (default "/").
  */
 export const resolveKnowledgeTextPaths = async (
   ids: string[],

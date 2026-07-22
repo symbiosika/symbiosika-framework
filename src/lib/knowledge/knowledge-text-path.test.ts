@@ -56,7 +56,7 @@ describe("resolveKnowledgeTextPaths", () => {
   test("builds the full slash path root-first, including the page itself", async () => {
     const path = await resolveKnowledgeTextPath(vacationId, TENANT);
     expect(path).not.toBeNull();
-    expect(path!.path).toBe("Handbook / HR / Vacation Policy");
+    expect(path!.path).toBe("Handbook/HR/Vacation Policy");
     expect(path!.pathIds).toEqual([rootId, hrId, vacationId]);
     expect(path!.pathSegments.map((s) => s.title)).toEqual([
       "Handbook",
@@ -75,7 +75,7 @@ describe("resolveKnowledgeTextPaths", () => {
     const path = await resolveKnowledgeTextPath(vacationId, TENANT, {
       includeSelf: false,
     });
-    expect(path!.path).toBe("Handbook / HR");
+    expect(path!.path).toBe("Handbook/HR");
     expect(path!.pathIds).toEqual([rootId, hrId]);
   });
 
@@ -99,8 +99,8 @@ describe("resolveKnowledgeTextPaths", () => {
       [vacationId, hrId, standaloneId],
       TENANT
     );
-    expect(map.get(vacationId)!.path).toBe("Handbook / HR / Vacation Policy");
-    expect(map.get(hrId)!.path).toBe("Handbook / HR");
+    expect(map.get(vacationId)!.path).toBe("Handbook/HR/Vacation Policy");
+    expect(map.get(hrId)!.path).toBe("Handbook/HR");
     expect(map.get(standaloneId)!.path).toBe("Standalone");
   });
 
@@ -159,7 +159,7 @@ describe("getPageChunkContext surfaces the wiki path", () => {
 
   test("returns the breadcrumb path of the page", async () => {
     const result = await getPageChunkContext(childId, ctx, { order: 0 });
-    expect(result.path).toBe("Docs / Nested Page");
+    expect(result.path).toBe("Docs/Nested Page");
     expect(result.pathIds.length).toBe(2);
     expect(result.chunks.length).toBeGreaterThan(0);
   });
@@ -231,7 +231,7 @@ describe("getNearestEmbeddings surfaces the source wiki path", () => {
         filterKnowledgeEntryIds: [entryId],
       });
       expect(results.length).toBe(1);
-      expect(results[0]!.path).toBe("Knowledge / Bees");
+      expect(results[0]!.path).toBe("Knowledge/Bees");
       expect(results[0]!.knowledgeTextId).not.toBeNull();
       expect(results[0]!.pathIds.length).toBe(2);
     } finally {

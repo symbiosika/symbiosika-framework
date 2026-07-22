@@ -35,7 +35,7 @@ export type PageChunkContext = {
   pageId: string;
   title: string;
   /**
-   * Wiki path of the page, root first, titles joined by " / " (the last
+   * Wiki path of the page, root first, titles joined by "/" (the last
    * segment is the page itself). Empty string for a top-level page. Tells an
    * agent where the surrounding chunks live in the tree.
    */

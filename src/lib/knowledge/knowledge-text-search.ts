@@ -53,8 +53,8 @@ export type KnowledgeTextSearchResult = {
   id: string;
   title: string;
   /**
-   * Wiki path of the page, root first, its titles joined by " / " (e.g.
-   * "Handbook / HR / Vacation Policy") — the last segment is the page itself.
+   * Wiki path of the page, root first, its titles joined by "/" (e.g.
+   * "Handbook/HR/Vacation Policy") — the last segment is the page itself.
    * Lets an agent see WHERE a hit lives in the tree, not just its bare title.
    * Empty string for a top-level page.
    */
