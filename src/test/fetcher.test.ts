@@ -1,4 +1,3 @@
-import type { HeadersInit } from "bun";
 import type { SymbiosikaFrameworkHonoApp } from "../types";
 
 export const testFetcher = {
@@ -12,7 +11,7 @@ export const testFetcher = {
     textResponse: string;
     headers: Headers;
   }> => {
-    const headers: HeadersInit = {};
+    const headers: Record<string, string> = {};
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -47,7 +46,7 @@ export const testFetcher = {
     textResponse: string;
     headers: Headers;
   }> => {
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     if (token) {
@@ -84,7 +83,7 @@ export const testFetcher = {
     textResponse: string;
     headers: Headers;
   }> => {
-    const headers: HeadersInit = {};
+    const headers: Record<string, string> = {};
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -115,7 +114,7 @@ export const testFetcher = {
     token: string | undefined,
     body: any
   ): Promise<Response> => {
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     if (token) {
@@ -140,7 +139,7 @@ export const testFetcher = {
     textResponse: string;
     headers: Headers;
   }> => {
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     if (token) {
@@ -177,7 +176,7 @@ export const testFetcher = {
     textResponse: string;
     headers: Headers;
   }> => {
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     if (token) {
@@ -213,7 +212,7 @@ export const testFetcher = {
     textResponse: string;
     headers: Headers;
   }> => {
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     if (token) {

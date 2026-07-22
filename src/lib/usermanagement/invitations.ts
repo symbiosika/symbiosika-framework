@@ -431,6 +431,10 @@ export const createTenantInvitation = async (
     })
     .returning();
 
+  if (!result) {
+    throw new Error("Failed to create invitation");
+  }
+
   // send mail
   if (sendMail) {
     // check if user exists

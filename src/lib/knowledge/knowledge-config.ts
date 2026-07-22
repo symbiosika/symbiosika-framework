@@ -113,7 +113,7 @@ export const getKnowledgeTenantConfig = async (
       tenantId,
       KNOWLEDGE_CONFIG_KEY
     );
-    stored = (row.data ?? {}) as Partial<KnowledgeTenantConfig>;
+    stored = (row?.data ?? {}) as Partial<KnowledgeTenantConfig>;
   } catch {
     // no config stored yet → defaults
   }

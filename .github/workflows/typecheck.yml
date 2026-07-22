@@ -1,0 +1,55 @@
+name: Typecheck
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR) so CI
+# does not pile up outdated runs.
+concurrency:
+  group: typecheck-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Type-check the framework under its OWN tsconfig. Catches config-independent
+  # type errors in source (and in test files pulled into the source graph).
+  framework:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Typecheck (framework tsconfig)
+        run: bun run typecheck
+
+  # Type-check the framework SOURCE under the STRICTER settings a consuming
+  # backend applies (noUncheckedIndexedAccess on, lib without DOM). This catches
+  # the null-safety / lib-portability class of error that compiles fine here but
+  # breaks a downstream build. See tsconfig.strict-check.json.
+  strict-consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Typecheck (strict consumer-mirroring config)
+        run: bun run typecheck:strict

@@ -48,7 +48,7 @@ export const getConfiguredEmbeddingModelId = (): string | null => {
 export const generateEmbedding = async (
   text: string,
   options: { tenantId?: string; userId?: string }
-) => {
+): Promise<{ embedding: number[]; model: string; dimensions: number }> => {
   const provider = getEmbeddingProvider();
 
   if (!isEmbeddingProviderConfigured(provider)) {
