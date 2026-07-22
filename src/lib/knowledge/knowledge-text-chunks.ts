@@ -11,6 +11,7 @@ import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "../db/db-connection";
 import { knowledgeChunks } from "../db/schema/knowledge";
 import { getKnowledgeTextById } from "./knowledge-texts";
+import { resolveKnowledgeTextPath } from "./knowledge-text-path";
 
 type Context = {
   tenantId: string;
@@ -33,6 +34,14 @@ export type PageChunkContextItem = {
 export type PageChunkContext = {
   pageId: string;
   title: string;
+  /**
+   * Wiki path of the page, root first, titles joined by " / " (the last
+   * segment is the page itself). Empty string for a top-level page. Tells an
+   * agent where the surrounding chunks live in the tree.
+   */
+  path: string;
+  /** the ids of the path segments, root first (parallel to `path`) */
+  pathIds: string[];
   /** total chunk count of the page (bounds for the agent; 0 = not embedded) */
   totalChunks: number;
   chunks: PageChunkContextItem[];
@@ -49,7 +58,13 @@ export const getPageChunkContext = async (
 ): Promise<PageChunkContext> => {
   // permission check + resolve the linked knowledge_entry (throws if invisible)
   const page = await getKnowledgeTextById(pageId, context);
-  const base = { pageId: page.id, title: page.title };
+  const pagePath = await resolveKnowledgeTextPath(page.id, context.tenantId);
+  const base = {
+    pageId: page.id,
+    title: page.title,
+    path: pagePath?.path ?? "",
+    pathIds: pagePath?.pathIds ?? [],
+  };
 
   if (!page.knowledgeEntryId) {
     // page without embeddings: no chunks exist

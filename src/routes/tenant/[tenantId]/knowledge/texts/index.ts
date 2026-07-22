@@ -515,7 +515,7 @@ export default function defineRoutesForKnowledgeTexts(
       responses: {
         200: {
           description:
-            "Ranked results with id, title, score, snippet and matchedBy legs",
+            "Ranked results with id, title, wiki path (breadcrumb), score, snippet and matchedBy legs",
         },
       },
     }),
