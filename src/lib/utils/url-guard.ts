@@ -31,6 +31,63 @@ export class SsrfBlockedError extends Error {
 const allowPrivateTargets = () =>
   process.env.SSRF_ALLOW_PRIVATE_TARGETS === "true";
 
+/**
+ * Targeted allowlist for otherwise-blocked (private/internal) targets.
+ *
+ * Unlike the blunt SSRF_ALLOW_PRIVATE_TARGETS switch (which disables ALL
+ * internal-address protection for every server-side fetch), this lets an
+ * operator permit specific known-good internal targets — e.g. a self-hosted
+ * n8n on the private network — while every other host stays protected.
+ *
+ * SSRF_ALLOWED_HOSTS is a comma-separated list of entries, each one of:
+ *   - a hostname, e.g. `n8n.cereda-systems.de` (exact, case-insensitive) —
+ *     the operator explicitly trusts this host, so it is allowed regardless of
+ *     the (possibly private) address it resolves to,
+ *   - an IP literal, e.g. `192.168.0.79`,
+ *   - an IPv4 CIDR, e.g. `192.168.0.0/24`.
+ */
+interface SsrfAllowlist {
+  hostnames: Set<string>;
+  ips: Set<string>;
+  cidrs: { base: number; bits: number }[];
+}
+
+const parseAllowlist = (): SsrfAllowlist => {
+  const raw = process.env.SSRF_ALLOWED_HOSTS;
+  const allow: SsrfAllowlist = { hostnames: new Set(), ips: new Set(), cidrs: [] };
+  if (!raw) return allow;
+  for (const rawEntry of raw.split(",")) {
+    const entry = rawEntry.trim().toLowerCase();
+    if (!entry) continue;
+    if (entry.includes("/")) {
+      // IPv4 CIDR (e.g. 192.168.0.0/24)
+      const [base, bitsStr] = entry.split("/");
+      const baseInt = ipv4ToInt(base ?? "");
+      const bits = Number(bitsStr);
+      if (baseInt !== null && Number.isInteger(bits) && bits >= 0 && bits <= 32) {
+        allow.cidrs.push({ base: baseInt, bits });
+      }
+    } else if (/^[0-9.]+$/.test(entry) || entry.includes(":")) {
+      allow.ips.add(entry);
+    } else {
+      allow.hostnames.add(entry);
+    }
+  }
+  return allow;
+};
+
+/** True when a literal IP is explicitly allowlisted (exact IP or IPv4 CIDR). */
+const isAllowlistedAddress = (ip: string, allow: SsrfAllowlist): boolean => {
+  const addr = ip.toLowerCase();
+  if (allow.ips.has(addr)) return true;
+  const v = ipv4ToInt(addr);
+  if (v === null) return false; // CIDR allowlist is IPv4-only
+  return allow.cidrs.some(({ base, bits }) => {
+    const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+    return (v & mask) === (base & mask);
+  });
+};
+
 const ipv4ToInt = (ip: string): number | null => {
   const parts = ip.split(".");
   if (parts.length !== 4) return null;
@@ -108,6 +165,14 @@ export const assertPublicHttpUrl = async (rawUrl: string): Promise<URL> => {
   }
 
   const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+
+  // Targeted allowlist: an explicitly trusted hostname is allowed regardless
+  // of the (possibly private) address it resolves to.
+  const allow = parseAllowlist();
+  if (allow.hostnames.has(host)) {
+    return url;
+  }
+
   if (host === "localhost" || host.endsWith(".localhost")) {
     throw new SsrfBlockedError("Blocked host: localhost");
   }
@@ -116,7 +181,7 @@ export const assertPublicHttpUrl = async (rawUrl: string): Promise<URL> => {
   // all addresses and ensure none are internal.
   const looksLikeIp = /^[0-9.]+$/.test(host) || host.includes(":");
   if (looksLikeIp) {
-    if (isBlockedAddress(host)) {
+    if (isBlockedAddress(host) && !isAllowlistedAddress(host, allow)) {
       throw new SsrfBlockedError(`Blocked address: ${host}`);
     }
     return url;
@@ -132,7 +197,7 @@ export const assertPublicHttpUrl = async (rawUrl: string): Promise<URL> => {
     throw new SsrfBlockedError(`Host did not resolve: ${host}`);
   }
   for (const { address } of resolved) {
-    if (isBlockedAddress(address)) {
+    if (isBlockedAddress(address) && !isAllowlistedAddress(address, allow)) {
       throw new SsrfBlockedError(
         `Host ${host} resolves to a blocked address (${address})`
       );

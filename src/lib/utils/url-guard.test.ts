@@ -104,3 +104,59 @@ describe("assertPublicHttpUrl", () => {
     }
   });
 });
+
+describe("assertPublicHttpUrl with SSRF_ALLOWED_HOSTS", () => {
+  let saved: string | undefined;
+  beforeAll(() => {
+    saved = process.env.SSRF_ALLOWED_HOSTS;
+  });
+  afterAll(() => {
+    if (saved !== undefined) process.env.SSRF_ALLOWED_HOSTS = saved;
+    else delete process.env.SSRF_ALLOWED_HOSTS;
+  });
+
+  it("allows an explicitly allowlisted literal private IP", async () => {
+    process.env.SSRF_ALLOWED_HOSTS = "192.168.0.79";
+    try {
+      const url = await assertPublicHttpUrl("http://192.168.0.79/webhook");
+      expect(url.hostname).toBe("192.168.0.79");
+    } finally {
+      delete process.env.SSRF_ALLOWED_HOSTS;
+    }
+  });
+
+  it("allows a private IP inside an allowlisted CIDR but blocks outside it", async () => {
+    process.env.SSRF_ALLOWED_HOSTS = "192.168.0.0/24";
+    try {
+      const url = await assertPublicHttpUrl("http://192.168.0.79/hook");
+      expect(url.hostname).toBe("192.168.0.79");
+      // outside the /24 → still blocked
+      await expect(
+        assertPublicHttpUrl("http://192.168.1.5/hook")
+      ).rejects.toThrow(SsrfBlockedError);
+    } finally {
+      delete process.env.SSRF_ALLOWED_HOSTS;
+    }
+  });
+
+  it("allows an allowlisted hostname (bypassing the localhost block)", async () => {
+    process.env.SSRF_ALLOWED_HOSTS = "localhost";
+    try {
+      const url = await assertPublicHttpUrl("http://localhost:3000/hook");
+      expect(url.hostname).toBe("localhost");
+    } finally {
+      delete process.env.SSRF_ALLOWED_HOSTS;
+    }
+  });
+
+  it("does not allow private IPs that are not in the allowlist", async () => {
+    process.env.SSRF_ALLOWED_HOSTS = "192.168.0.79";
+    try {
+      await expect(
+        assertPublicHttpUrl("http://10.0.0.5/hook")
+      ).rejects.toThrow(SsrfBlockedError);
+    } finally {
+      delete process.env.SSRF_ALLOWED_HOSTS;
+    }
+  });
+});
