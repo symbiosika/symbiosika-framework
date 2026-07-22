@@ -25,7 +25,6 @@
  */
 
 import { and, eq, isNull, lte, sql, inArray } from "drizzle-orm";
-import * as v from "valibot";
 import { getDb } from "../db/db-connection";
 import { knowledgeText } from "../db/schema/knowledge";
 import type { KnowledgeTextSelect } from "../db/schema/knowledge";
@@ -33,7 +32,7 @@ import { jobs } from "../db/schema/jobs";
 import { createJob } from "../jobs";
 import type { JobHandlerRegister } from "../jobs";
 import { computeSourceHash } from "./source-hash";
-import { generateStructured, isAiEnabled } from "../ai";
+import { generateText, isAiEnabled } from "../ai";
 import { getAppSpecificData } from "../specific-data";
 import { getKnowledgeTenantConfig } from "./knowledge-config";
 import log from "../log";
@@ -127,24 +126,20 @@ export const buildSummaryInput = (title: string, text: string): string => {
   return parts.join("\n").slice(0, INPUT_BUDGET);
 };
 
-const SUMMARY_SCHEMA = v.object({
-  summary: v.pipe(
-    v.string(),
-    v.description(
-      "A 1-2 sentence, factual description of what this knowledge page is about, " +
-        "so a reader can tell it apart from similar pages. No preamble."
-    )
-  ),
-});
-
 const SUMMARY_SYSTEM_PROMPT =
   "You write terse catalog descriptions for knowledge base pages. Given a page, respond " +
   "with a single 1-2 sentence summary of what the page is about and what a " +
   "reader would find on it. Be concrete and specific; name the topic. Do not " +
-  "start with 'This page' or 'This document'. Write in the page's language.";
+  "start with 'This page' or 'This document'. Write in the page's language. " +
+  "Respond with the summary text only — no preamble, no quotes, no markdown.";
+
+/** Token cap for the generated summary (1-2 sentences, keeps cost bounded). */
+const SUMMARY_MAX_OUTPUT_TOKENS = 200;
 
 /**
- * Generate a fresh summary string for a page via the configured LLM.
+ * Generate a fresh summary string for a page via the configured LLM. Plain
+ * text generation — the result is a single free-text sentence, so no JSON /
+ * structured output is needed (which not every model supports reliably).
  * Assumes `isAiEnabled()` was already checked by the caller.
  */
 export const generatePageSummary = async (page: {
@@ -152,11 +147,12 @@ export const generatePageSummary = async (page: {
   text: string;
 }): Promise<string> => {
   const input = buildSummaryInput(page.title, page.text);
-  const { summary } = await generateStructured({
-    schema: SUMMARY_SCHEMA,
+  const summary = await generateText({
     system: SUMMARY_SYSTEM_PROMPT,
     prompt: input,
     model: summaryModelId(),
+    maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
+    temperature: 0.2,
   });
   return summary.trim();
 };
