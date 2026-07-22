@@ -168,6 +168,48 @@ export const addTeamMember = async (
   return result[0];
 };
 
+/**
+ * Get all teams of a tenant that new tenant users should join by default
+ */
+export const getDefaultTeamsForTenant = async (
+  tenantId: string
+): Promise<TeamsSelect[]> => {
+  return await getDb()
+    .select()
+    .from(teams)
+    .where(
+      and(eq(teams.tenantId, tenantId), eq(teams.addNewUsersByDefault, true))
+    );
+};
+
+/**
+ * Add a user to all teams of a tenant that are flagged with
+ * `addNewUsersByDefault`. Called whenever a user newly joins a tenant.
+ *
+ * Idempotent: an already existing membership is left untouched, so the user's
+ * current role in a team is never downgraded.
+ */
+export const addUserToDefaultTeams = async (
+  userId: string,
+  tenantId: string
+): Promise<void> => {
+  const defaultTeams = await getDefaultTeamsForTenant(tenantId);
+  if (defaultTeams.length === 0) {
+    return;
+  }
+
+  await getDb()
+    .insert(teamMembers)
+    .values(
+      defaultTeams.map((team) => ({
+        teamId: team.id,
+        userId,
+        role: "member" as const,
+      }))
+    )
+    .onConflictDoNothing();
+};
+
 export const checkTeamMemberRole = async (
   teamId: string,
   userId: string,

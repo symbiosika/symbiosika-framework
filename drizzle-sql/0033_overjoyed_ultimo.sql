@@ -1,0 +1,1 @@
+ALTER TABLE "base_teams" ADD COLUMN "add_new_users_by_default" boolean DEFAULT false NOT NULL;

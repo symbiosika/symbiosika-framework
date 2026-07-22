@@ -15,6 +15,7 @@ import {
 } from "../db/schema/users";
 import { getDb } from "../db/db-connection";
 import { getUserByEmail, getUserById, setUsersLastTenant } from "./user";
+import { addUserToDefaultTeams } from "./teams";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { smtpService } from "../email";
 import log from "../log";
@@ -136,6 +137,9 @@ export const acceptTenantInvitation = async (
       })
       .where(eq(users.id, userId));
   });
+
+  // Auto-join all teams that are flagged to add new tenant users by default.
+  await addUserToDefaultTeams(userId, invitation.tenantId);
 
   await setUsersLastTenant(userId, invitation.tenantId);
 };
@@ -272,6 +276,8 @@ export const acceptInvitationByToken = async (
         .set({ emailVerified: true, lastTenantId: invitation.tenantId })
         .where(eq(users.id, user.id));
     });
+    // Auto-join all teams that are flagged to add new tenant users by default.
+    await addUserToDefaultTeams(user.id, invitation.tenantId);
     await setUsersLastTenant(user.id, invitation.tenantId);
   }
 
@@ -338,6 +344,9 @@ export const acceptAllPendingInvitationsForTenantMember = async (
         .onConflictDoNothing();
     }
   });
+
+  // Auto-join all teams that are flagged to add new tenant users by default.
+  await addUserToDefaultTeams(userId, tenantId);
 
   await setUsersLastTenant(userId, tenantId);
 };

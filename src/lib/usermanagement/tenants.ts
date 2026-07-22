@@ -17,6 +17,7 @@ import {
   tenantMembers,
 } from "../db/schema/users";
 import { setUsersLastTenant } from "./user";
+import { addUserToDefaultTeams } from "./teams";
 
 /**
  * Create an tenant
@@ -266,6 +267,10 @@ export const addTenantMember = async (
         role,
       },
     });
+
+  // Auto-join all teams that are flagged to add new tenant users by default.
+  await addUserToDefaultTeams(userId, tenantId);
+
   return result[0];
 };
 

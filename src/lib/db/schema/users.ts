@@ -422,6 +422,11 @@ export const teams = pgBaseTable(
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     meta: jsonb("meta"),
+    // When true, every user that newly joins the tenant is automatically
+    // added to this team as a "member".
+    addNewUsersByDefault: boolean("add_new_users_by_default")
+      .notNull()
+      .default(false),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),
