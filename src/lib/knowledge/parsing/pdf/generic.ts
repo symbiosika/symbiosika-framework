@@ -47,6 +47,11 @@ const buildForm = (file: File, options?: PdfParserOptions): FormData => {
   const form = new FormData();
   form.append("file", file, file.name || "document.pdf");
   form.append("extract_images", String(options?.extractImages ?? false));
+  // Extra-service opt-ins (spec §3). Only sent when explicitly enabled; a
+  // service that does not support a flag MUST ignore it rather than fail.
+  if (options?.parseImagesInDoc) form.append("parse_images_in_doc", "true");
+  if (options?.ocr) form.append("ocr", "true");
+  if (options?.detectTables) form.append("detect_tables", "true");
   if (options?.extract?.length) {
     form.append("extract", JSON.stringify(options.extract));
   }
@@ -202,6 +207,9 @@ export const getGenericParserCapabilities =
           extractImages: m.features?.extract_images ?? false,
           extractFields: m.features?.extract_fields ?? false,
           async: m.features?.async ?? false,
+          parseImagesInDoc: m.features?.parse_images_in_doc ?? false,
+          ocr: m.features?.ocr ?? false,
+          detectTables: m.features?.detect_tables ?? false,
         },
       })),
     };

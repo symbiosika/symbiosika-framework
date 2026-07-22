@@ -31,6 +31,10 @@ const {
   resetGenericParserCapabilitiesCache,
 } = await import("./generic");
 
+// Registry dispatcher — exercised here so the capability tests reuse the same
+// fake service + env this file already stands up.
+const { getConfiguredParserCapabilities } = await import("./index");
+
 // --- A mini fake parsing service implementing the wire contract ------------
 
 const API_KEY = "test-key";
@@ -40,6 +44,9 @@ let lastParseForm: {
   filename?: string;
   extractImages: string | null;
   extract: string | null;
+  parseImagesInDoc: string | null;
+  ocr: string | null;
+  detectTables: string | null;
 } | null = null;
 let capabilitiesHits = 0;
 let failNextParse = false;
@@ -51,7 +58,14 @@ const CAPABILITIES_BODY = {
       modality: "pdf",
       mime_types: ["application/pdf"],
       extensions: [".pdf"],
-      features: { extract_images: true, extract_fields: true, async: true },
+      features: {
+        extract_images: true,
+        extract_fields: true,
+        async: true,
+        parse_images_in_doc: true,
+        ocr: true,
+        detect_tables: true,
+      },
     },
     {
       modality: "image",
@@ -105,6 +119,9 @@ beforeAll(() => {
           filename: (form.get("file") as File | null)?.name,
           extractImages: form.get("extract_images") as string | null,
           extract: form.get("extract") as string | null,
+          parseImagesInDoc: form.get("parse_images_in_doc") as string | null,
+          ocr: form.get("ocr") as string | null,
+          detectTables: form.get("detect_tables") as string | null,
         };
         if (failNextParse) {
           return Response.json({ error: "cannot_parse" }, { status: 422 });
@@ -151,6 +168,7 @@ afterEach(() => {
   resetGenericParserCapabilitiesCache();
   failNextParse = false;
   delete process.env.PDF_PARSER_SERVICE_MODE;
+  delete process.env.PDF_PARSER_SERVICE;
 });
 
 const pdfFile = () =>
@@ -205,6 +223,24 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     expect(lastParseForm?.extract).toBeNull();
   });
 
+  test("omits extra-service flags unless they are enabled", async () => {
+    await parsePdfFileAsMarkdownGeneric(pdfFile(), { tenantId: "tenant-1" });
+    expect(lastParseForm?.parseImagesInDoc).toBeNull();
+    expect(lastParseForm?.ocr).toBeNull();
+    expect(lastParseForm?.detectTables).toBeNull();
+  });
+
+  test("forwards enabled extra-service flags as multipart fields", async () => {
+    await parsePdfFileAsMarkdownGeneric(
+      pdfFile(),
+      { tenantId: "tenant-1" },
+      { ocr: true, parseImagesInDoc: true, detectTables: true }
+    );
+    expect(lastParseForm?.ocr).toBe("true");
+    expect(lastParseForm?.parseImagesInDoc).toBe("true");
+    expect(lastParseForm?.detectTables).toBe("true");
+  });
+
   test("throws on a non-2xx response", async () => {
     failNextParse = true;
     await expect(
@@ -228,8 +264,13 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     expect(caps.service).toBe("generic-v1");
     expect(caps.modalities[0]!.mimeTypes).toEqual(["application/pdf"]);
     expect(caps.modalities[0]!.features?.extractImages).toBe(true);
+    // Extra-service flags are mapped from snake_case to camelCase.
+    expect(caps.modalities[0]!.features?.ocr).toBe(true);
+    expect(caps.modalities[0]!.features?.parseImagesInDoc).toBe(true);
+    expect(caps.modalities[0]!.features?.detectTables).toBe(true);
     // Missing features default to false after normalization.
     expect(caps.modalities[1]!.features?.async).toBe(false);
+    expect(caps.modalities[1]!.features?.ocr).toBe(false);
 
     // Second call is served from cache — service hit only once.
     await getGenericParserCapabilities();
@@ -241,5 +282,25 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     // Extension match is case-insensitive.
     expect(await genericParserSupports(undefined, ".PNG")).toBe(true);
     expect(await genericParserSupports("audio/mpeg", ".mp3")).toBe(false);
+  });
+
+  test("getConfiguredParserCapabilities returns generic caps when configured", async () => {
+    process.env.PDF_PARSER_SERVICE = "generic";
+    const caps = await getConfiguredParserCapabilities();
+    expect(caps.service).toBe("generic-v1");
+    expect(caps.modalities[0]!.features?.ocr).toBe(true);
+    expect(caps.modalities[0]!.features?.detectTables).toBe(true);
+  });
+
+  test("getConfiguredParserCapabilities advertises nothing for a non-generic parser", async () => {
+    process.env.PDF_PARSER_SERVICE = "mistral";
+    const caps = await getConfiguredParserCapabilities();
+    expect(caps.service).toBe("mistral");
+    expect(caps.modalities).toEqual([]);
+  });
+
+  test("getConfiguredParserCapabilities advertises nothing for the default parser", async () => {
+    const caps = await getConfiguredParserCapabilities();
+    expect(caps.modalities).toEqual([]);
   });
 });

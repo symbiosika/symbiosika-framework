@@ -58,6 +58,12 @@ export const parseFile = async (
      * catalog attributes are used automatically.
      */
     extract?: ExtractionTarget[];
+    /** Extra service: analyse images embedded in the document. */
+    parseImagesInDoc?: boolean;
+    /** Extra service: OCR on scanned / image-only pages. */
+    ocr?: boolean;
+    /** Extra service: detect tables and render them as Markdown. */
+    detectTables?: boolean;
   }
 ): Promise<{
   text: string;
@@ -94,6 +100,9 @@ export const parseFile = async (
       model: options?.model,
       extractImages: options?.extractImages,
       extract,
+      parseImagesInDoc: options?.parseImagesInDoc,
+      ocr: options?.ocr,
+      detectTables: options?.detectTables,
     });
 
     // Create a combined text from all pages if available
