@@ -239,6 +239,13 @@
       "when": 1784745927939,
       "tag": "0033_overjoyed_ultimo",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1784753062564,
+      "tag": "0034_silent_daredevil",
+      "breakpoints": true
     }
   ]
 }

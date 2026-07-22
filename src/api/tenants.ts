@@ -13,5 +13,8 @@ export {
   addTenantMember,
   getTenantMembers,
   getTenantMemberRole,
+  getTenantMemberKnowledgeAccess,
+  checkTenantKnowledgeWriteAccess,
+  updateTenantMemberKnowledgeAccess,
 } from "../lib/usermanagement/tenants";
 export { setUsersLastTenant } from "../lib/usermanagement/user";

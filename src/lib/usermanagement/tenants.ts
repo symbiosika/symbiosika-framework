@@ -15,6 +15,7 @@ import {
   type TenantsInsert,
   users,
   tenantMembers,
+  type KnowledgeAccessLevel,
 } from "../db/schema/users";
 import { setUsersLastTenant } from "./user";
 import { addUserToDefaultTeams } from "./teams";
@@ -251,7 +252,8 @@ export const getPermissionsByTenant = async (tenantId: string) => {
 export const addTenantMember = async (
   tenantId: string,
   userId: string,
-  role?: "owner" | "admin" | "member"
+  role?: "owner" | "admin" | "member",
+  knowledgeAccess?: KnowledgeAccessLevel
 ) => {
   const result = await getDb()
     .insert(tenantMembers)
@@ -259,12 +261,16 @@ export const addTenantMember = async (
       tenantId,
       userId,
       role,
+      knowledgeAccess,
     })
     .returning()
     .onConflictDoUpdate({
       target: [tenantMembers.tenantId, tenantMembers.userId],
       set: {
         role,
+        // only overwrite the access level when one was explicitly provided,
+        // so re-adding an existing member does not silently reset it
+        ...(knowledgeAccess ? { knowledgeAccess } : {}),
       },
     });
 
@@ -318,6 +324,7 @@ export const getTenantMembers = async (userId: string, tenantId: string) => {
       id: tenantMembers.userId,
       userEmail: users.email,
       role: tenantMembers.role,
+      knowledgeAccess: tenantMembers.knowledgeAccess,
       joinedAt: tenantMembers.joinedAt,
     })
     .from(tenantMembers)
@@ -375,4 +382,62 @@ export const checkTenantMemberRole = async (
   if (!role.includes(result[0].role)) {
     throw new Error("User has not the required role");
   }
+};
+
+/**
+ * Get a user's knowledge access level in a tenant, or null if the user is not
+ * a member of the tenant.
+ */
+export const getTenantMemberKnowledgeAccess = async (
+  tenantId: string,
+  userId: string
+): Promise<KnowledgeAccessLevel | null> => {
+  const result = await getDb()
+    .select({ knowledgeAccess: tenantMembers.knowledgeAccess })
+    .from(tenantMembers)
+    .where(
+      and(
+        eq(tenantMembers.tenantId, tenantId),
+        eq(tenantMembers.userId, userId)
+      )
+    );
+  return result[0]?.knowledgeAccess ?? null;
+};
+
+/**
+ * Ensure a user may WRITE the tenant-wide knowledge: they must be a member and
+ * their knowledge access level must be "write". Throws otherwise.
+ */
+export const checkTenantKnowledgeWriteAccess = async (
+  tenantId: string,
+  userId: string
+): Promise<void> => {
+  const access = await getTenantMemberKnowledgeAccess(tenantId, userId);
+  if (access !== "write") {
+    throw new Error("User has no write access to the tenant knowledge");
+  }
+};
+
+/**
+ * Update the knowledge access level ("read" | "write") of a tenant member.
+ */
+export const updateTenantMemberKnowledgeAccess = async (
+  tenantId: string,
+  userId: string,
+  knowledgeAccess: KnowledgeAccessLevel
+) => {
+  const result = await getDb()
+    .update(tenantMembers)
+    .set({ knowledgeAccess })
+    .where(
+      and(
+        eq(tenantMembers.tenantId, tenantId),
+        eq(tenantMembers.userId, userId)
+      )
+    )
+    .returning();
+  if (!result[0]) {
+    throw new Error("Failed to update tenant member knowledge access");
+  }
+  return result[0];
 };
