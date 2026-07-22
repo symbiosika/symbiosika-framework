@@ -28,6 +28,7 @@ import { sql, and, inArray, type SQL } from "drizzle-orm";
 import { getDb } from "../db/db-connection";
 import { knowledgeText, knowledgeChunks } from "../db/schema/knowledge";
 import { buildKnowledgeTextVisibilityConditions } from "./knowledge-texts";
+import { resolveKnowledgeTextPaths } from "./knowledge-text-path";
 import { generateEmbedding } from "./embedding";
 import { attributesContainCondition, type FacetFilters } from "./facets";
 import log from "../log";
@@ -51,6 +52,15 @@ export interface SearchFilters extends FacetFilters {
 export type KnowledgeTextSearchResult = {
   id: string;
   title: string;
+  /**
+   * Wiki path of the page, root first, its titles joined by "/" (e.g.
+   * "Handbook/HR/Vacation Policy") — the last segment is the page itself.
+   * Lets an agent see WHERE a hit lives in the tree, not just its bare title.
+   * Empty string for a top-level page.
+   */
+  path: string;
+  /** the ids of the path segments, root first (parallel to `path`) */
+  pathIds: string[];
   /** fused RRF score (higher = better), after trust weighting */
   score: number;
   /** short excerpt around the best match */
@@ -373,11 +383,17 @@ export const searchKnowledgeTexts = async (
     .where(inArray(knowledgeText.id, fusedIds));
   const metaById = new Map(meta.map((m) => [m.id, m]));
 
+  // resolve the wiki path (breadcrumb) of every hit in one pass
+  const pathById = await resolveKnowledgeTextPaths(fusedIds, context.tenantId);
+
   const enriched: KnowledgeTextSearchResult[] = [...fused.values()].map((f) => {
     const m = metaById.get(f.id);
     const status = m?.status ?? null;
+    const p = pathById.get(f.id);
     return {
       ...f,
+      path: p?.path ?? "",
+      pathIds: p?.pathIds ?? [],
       // trust-aware ranking: verified boosted, outdated demoted
       score: f.score * statusWeight(status),
       summary: m?.summary ?? null,

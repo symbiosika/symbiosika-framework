@@ -4,8 +4,70 @@ import { getDb } from "../db/db-connection";
 import log from "../log";
 import { getFullSourceDocumentsForKnowledgeEntry } from "./get-knowledge";
 import { and, eq, inArray } from "drizzle-orm";
-import { type KnowledgeChunkMeta } from "../db/schema/knowledge";
+import { knowledgeText, type KnowledgeChunkMeta } from "../db/schema/knowledge";
 import { generateEmbedding } from "./embedding";
+import { resolveKnowledgeTextPaths } from "./knowledge-text-path";
+
+type ChunkWithPath<T extends { knowledgeEntryId: string }> = T & {
+  knowledgeTextId: string | null;
+  path: string | null;
+  pathIds: string[];
+};
+
+/**
+ * Attach the source wiki path to each chunk. A chunk's entry is a wiki page
+ * when a knowledgeText row links back to it via knowledgeEntryId; that page's
+ * breadcrumb becomes the chunk's path. Plain RAG documents (no linked page)
+ * get null. Resolved in two batched queries regardless of the chunk count.
+ */
+const attachWikiPaths = async <T extends { knowledgeEntryId: string }>(
+  chunks: T[],
+  tenantId: string
+): Promise<ChunkWithPath<T>[]> => {
+  const entryIds = [...new Set(chunks.map((c) => c.knowledgeEntryId))];
+  if (entryIds.length === 0) {
+    return chunks.map((c) => ({
+      ...c,
+      knowledgeTextId: null,
+      path: null,
+      pathIds: [],
+    }));
+  }
+
+  // entry -> wiki page (only mirrored pages link back via knowledgeEntryId)
+  const pages = await getDb()
+    .select({
+      id: knowledgeText.id,
+      knowledgeEntryId: knowledgeText.knowledgeEntryId,
+    })
+    .from(knowledgeText)
+    .where(
+      and(
+        eq(knowledgeText.tenantId, tenantId),
+        inArray(knowledgeText.knowledgeEntryId, entryIds)
+      )
+    );
+  const pageIdByEntryId = new Map<string, string>();
+  for (const p of pages) {
+    if (p.knowledgeEntryId) pageIdByEntryId.set(p.knowledgeEntryId, p.id);
+  }
+
+  const pathByPageId = await resolveKnowledgeTextPaths(
+    [...pageIdByEntryId.values()],
+    tenantId
+  );
+
+  return chunks.map((c) => {
+    const pageId = pageIdByEntryId.get(c.knowledgeEntryId) ?? null;
+    const p = pageId ? pathByPageId.get(pageId) : undefined;
+    return {
+      ...c,
+      knowledgeTextId: pageId,
+      path: p?.path ?? null,
+      pathIds: p?.pathIds ?? [],
+    };
+  });
+};
 
 type KnowledgeChunk = {
   id: string;
@@ -49,6 +111,19 @@ export async function getNearestEmbeddings(q: {
     knowledgeEntryName: string;
     meta: KnowledgeChunkMeta;
     order: number;
+    /**
+     * id of the wiki page this chunk originates from, or null when the entry
+     * is a plain RAG document (not mirrored from a wiki page).
+     */
+    knowledgeTextId: string | null;
+    /**
+     * Wiki path of the source page, root first, titles joined by "/" (the
+     * last segment is the page itself) — so a consumer can see WHERE the chunk
+     * comes from. null when the entry is not a wiki page.
+     */
+    path: string | null;
+    /** the ids of the path segments, root first (parallel to `path`) */
+    pathIds: string[];
   }[]
 > {
   // set some default values
@@ -181,7 +256,7 @@ export async function getNearestEmbeddings(q: {
 
   // return if no addBeforeN and addAfterN
   if (q.addBeforeN < 1 && q.addAfterN < 1) {
-    return rows;
+    return attachWikiPaths(rows, q.tenantId);
   }
 
   // Else. Also add before and after N
@@ -221,7 +296,7 @@ export async function getNearestEmbeddings(q: {
     );
     resultRows.push(...entries);
   }
-  return resultRows;
+  return attachWikiPaths(resultRows, q.tenantId);
 }
 
 /**

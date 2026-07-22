@@ -168,6 +168,29 @@ Content-Type: application/json
 }
 ```
 
+### Source path (wiki breadcrumb) in retrieval results
+
+For knowledge that originates from **wiki pages** (`knowledgeText`, organized in
+a tree via `parentId`), retrieval responses include the page's **path** — the
+slash-separated breadcrumb of ancestor titles, e.g.
+`"Handbook/HR/Vacation Policy"`. This tells an AI agent *where* a chunk
+lives, not just its bare title, which is valuable context for reasoning and
+citation.
+
+The path is present on:
+
+- **Wiki page search** (`GET .../knowledge/texts/search`): each hit carries
+  `path` (string) and `pathIds` (segment ids, root first).
+- **Chunk context** (`GET .../knowledge/texts/:id/chunk-context`): the response
+  carries the page's `path` / `pathIds`.
+- **RAG similarity search** (`POST .../knowledge/similarity-search`): each chunk
+  carries `knowledgeTextId`, `path` and `pathIds` when the underlying entry was
+  mirrored from a wiki page; these are `null` / `[]` for plain (non-wiki) RAG
+  documents.
+
+The path is derived on the fly from the page's `parentId` chain — there is no
+stored path column, so moving a page in the tree updates its path automatically.
+
 ### 2. Using Prompt Templates
 
 Prompt templates can be configured to always include knowledge from specific groups or with certain filters. This allows you to create specialized chat behaviors (e.g., always answer with knowledge from the "Support FAQ" group).
