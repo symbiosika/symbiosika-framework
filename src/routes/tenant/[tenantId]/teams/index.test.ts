@@ -170,11 +170,14 @@ describe("Teams API Endpoints", () => {
       {
         userId: TEST_ORG2_USER_1.id,
         role: "member",
+        // add the member as read-only for the team's knowledge
+        knowledgeAccess: "read",
       }
     );
     // console.log(response.textResponse);
     expect(response.status).toBe(200);
     expect(response.jsonResponse?.userId).toBe(TEST_ORG2_USER_1.id);
+    expect(response.jsonResponse?.knowledgeAccess).toBe("read");
 
     // ------------------------------------------------------------
     // change the role of a member
@@ -189,6 +192,23 @@ describe("Teams API Endpoints", () => {
       }
     );
     expect(response.status).toBe(200);
+    expect(response.jsonResponse?.role).toBe("admin");
+
+    // ------------------------------------------------------------
+    // change the knowledge access level of a member
+    // ------------------------------------------------------------
+    console.log("Step 8b: Change the knowledge access level of a member");
+    response = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/teams/${addedTeamId}/members/${TEST_ORG2_USER_1.id}`,
+      adminToken,
+      {
+        knowledgeAccess: "write",
+      }
+    );
+    expect(response.status).toBe(200);
+    expect(response.jsonResponse?.knowledgeAccess).toBe("write");
+    // role must stay unchanged when only knowledgeAccess is provided
     expect(response.jsonResponse?.role).toBe("admin");
 
     // ------------------------------------------------------------

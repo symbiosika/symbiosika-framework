@@ -19,6 +19,7 @@ import {
   getUserTenants,
   getTenantMemberRole,
   updateTenantMemberRole,
+  updateTenantMemberKnowledgeAccess,
 } from "../../lib/usermanagement/tenants";
 import { RESPONSES } from "../../lib/responses";
 import { describeRoute } from "hono-openapi";
@@ -213,6 +214,10 @@ export default function defineTenantRoutes(
                       v.literal("member"),
                       v.literal("owner"),
                     ]),
+                    knowledgeAccess: v.union([
+                      v.literal("read"),
+                      v.literal("write"),
+                    ]),
                     joinedAt: v.string(),
                   })
                 )
@@ -383,15 +388,25 @@ export default function defineTenantRoutes(
         role: v.optional(
           v.union([v.literal("owner"), v.literal("admin"), v.literal("member")])
         ),
+        // read/write access to the tenant-wide knowledge; defaults to "write"
+        knowledgeAccess: v.optional(
+          v.union([v.literal("read"), v.literal("write")])
+        ),
       })
     ),
     isTenantAdmin, // check if user is admin or owner of the tenant
     async (c) => {
       try {
         const { tenantId } = c.req.valid("param");
-        const { userId, role = "member" } = c.req.valid("json");
+        const { userId, role = "member", knowledgeAccess } =
+          c.req.valid("json");
 
-        const member = await addTenantMember(tenantId, userId, role);
+        const member = await addTenantMember(
+          tenantId,
+          userId,
+          role,
+          knowledgeAccess
+        );
         return c.json(member);
       } catch (err) {
         throw new HTTPException(500, {
@@ -409,7 +424,8 @@ export default function defineTenantRoutes(
     authAndSetUsersInfo,
     checkUserPermission,
     describeRoute({
-      summary: "Change the role of a member",
+      summary:
+        "Change the role and/or knowledge access level of a tenant member",
       responses: {
         200: {
           description: "Successful response",
@@ -425,11 +441,17 @@ export default function defineTenantRoutes(
     validator(
       "json",
       v.object({
-        role: v.union([
-          v.literal("owner"),
-          v.literal("admin"),
-          v.literal("member"),
-        ]),
+        role: v.optional(
+          v.union([
+            v.literal("owner"),
+            v.literal("admin"),
+            v.literal("member"),
+          ])
+        ),
+        // read/write access to the tenant-wide knowledge ("read" | "write")
+        knowledgeAccess: v.optional(
+          v.union([v.literal("read"), v.literal("write")])
+        ),
       })
     ),
     validator(
@@ -440,12 +462,30 @@ export default function defineTenantRoutes(
     async (c) => {
       try {
         const { tenantId, memberId } = c.req.valid("param");
-        const { role } = c.req.valid("json");
-        const member = await updateTenantMemberRole(tenantId, memberId, role);
+        const { role, knowledgeAccess } = c.req.valid("json");
+
+        if (role === undefined && knowledgeAccess === undefined) {
+          throw new HTTPException(400, {
+            message: "Provide 'role' and/or 'knowledgeAccess' to update",
+          });
+        }
+
+        let member;
+        if (role !== undefined) {
+          member = await updateTenantMemberRole(tenantId, memberId, role);
+        }
+        if (knowledgeAccess !== undefined) {
+          member = await updateTenantMemberKnowledgeAccess(
+            tenantId,
+            memberId,
+            knowledgeAccess
+          );
+        }
         return c.json(member);
       } catch (err) {
+        if (err instanceof HTTPException) throw err;
         throw new HTTPException(500, {
-          message: "Error changing member role: " + err,
+          message: "Error changing member: " + err,
         });
       }
     }

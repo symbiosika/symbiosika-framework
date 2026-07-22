@@ -21,8 +21,8 @@ import {
 } from "../db/schema/knowledge";
 import { RESPONSES } from "../responses";
 import { teamMembers } from "../db/schema/users";
-import { checkTenantMemberRole } from "../usermanagement/tenants";
-import { checkTeamMemberRole } from "../usermanagement/teams";
+import { checkTenantKnowledgeWriteAccess } from "../usermanagement/tenants";
+import { checkTeamKnowledgeWriteAccess } from "../usermanagement/teams";
 import { syncKnowledgeTextEmbeddingSafe } from "./knowledge-text-embedding";
 import {
   syncKnowledgeTextLinks,
@@ -103,12 +103,20 @@ export const sanitizeKnowledgeTextData = <
 };
 
 /**
- * Central write-permission rule for knowledgeText pages:
+ * Central write-permission rule for knowledgeText pages (and everything
+ * attached to them — blocks, history, files, links):
  *
- *   - the assigned user (owner) may always read and write
- *   - team pages: every team member may read and write
- *   - tenant-wide pages: every tenant member may read and write
+ *   - the assigned user (owner) may always read and write their own page
+ *   - team pages: a team member with "write" knowledge access may write;
+ *     read-only members and non-members may not
+ *   - tenant-wide pages: a tenant member with "write" knowledge access may
+ *     write; read-only members and non-members may not
  *   - private pages of another user are off limits
+ *
+ * The read/write access level is stored per user per scope on
+ * teamMembers.knowledgeAccess / tenantMembers.knowledgeAccess and defaults
+ * to "write", so unless it has been explicitly set to "read" every member
+ * keeps full access.
  *
  * Mirrors the read rule in buildKnowledgeTextVisibilityConditions (team
  * membership takes precedence over the tenant-wide flag). Contexts without
@@ -127,18 +135,11 @@ export const checkKnowledgeTextWritePermission = async (
   if (!context.userId) return;
   if (page.userId && page.userId === context.userId) return; // owner
   if (page.teamId) {
-    await checkTeamMemberRole(page.teamId, context.userId, [
-      "member",
-      "admin",
-    ]);
+    await checkTeamKnowledgeWriteAccess(page.teamId, context.userId);
     return;
   }
   if (page.tenantWide) {
-    await checkTenantMemberRole(page.tenantId, context.userId, [
-      "member",
-      "admin",
-      "owner",
-    ]);
+    await checkTenantKnowledgeWriteAccess(page.tenantId, context.userId);
     return;
   }
   throw new Error("Knowledge text not found or access denied");
@@ -173,16 +174,13 @@ export const createKnowledgeText = async (
     data = { ...data, summaryStale: true };
   }
 
-  // creating a page inside a team / tenant-wide requires access to that
-  // container (ownership alone is not enough here)
+  // creating a page inside a team / tenant-wide requires WRITE access to that
+  // container (ownership alone is not enough here); read-only members may not
+  // create knowledge in the scope
   if (data.userId && data.teamId) {
-    await checkTeamMemberRole(data.teamId, data.userId, ["member", "admin"]);
+    await checkTeamKnowledgeWriteAccess(data.teamId, data.userId);
   } else if (data.userId && data.tenantWide) {
-    await checkTenantMemberRole(data.tenantId, data.userId, [
-      "member",
-      "admin",
-      "owner",
-    ]);
+    await checkTenantKnowledgeWriteAccess(data.tenantId, data.userId);
   }
 
   const e = await getDb()
@@ -504,20 +502,13 @@ export const updateKnowledgeText = async (
   await validateFacetsForWrite(context.tenantId, data);
 
   // moving a page into a team or making it tenant-wide additionally
-  // requires access to the TARGET container
+  // requires WRITE access to the TARGET container
   if (context.userId) {
     if (data.teamId && data.teamId !== currentEntry.teamId) {
-      await checkTeamMemberRole(data.teamId, context.userId, [
-        "member",
-        "admin",
-      ]);
+      await checkTeamKnowledgeWriteAccess(data.teamId, context.userId);
     }
     if (data.tenantWide === true && !currentEntry.tenantWide) {
-      await checkTenantMemberRole(context.tenantId, context.userId, [
-        "member",
-        "admin",
-        "owner",
-      ]);
+      await checkTenantKnowledgeWriteAccess(context.tenantId, context.userId);
     }
   }
 
