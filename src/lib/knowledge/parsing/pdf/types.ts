@@ -37,7 +37,37 @@ export type PdfParserOptions = {
   extractImages?: boolean;
   /** Structured extraction targets passed through to the service. */
   extract?: ExtractionTarget[];
+  /**
+   * Extra service: analyse images embedded in the document (OCR / captioning /
+   * description) and fold the recognised content into the page `text`. Only
+   * forwarded when the target modality advertises `parse_images_in_doc`.
+   * See `docs/framework/18_..._Microservice_Spec.md` §2.1.1 / §3.
+   */
+  parseImagesInDoc?: boolean;
+  /** Extra service: run OCR on scanned / image-only pages. */
+  ocr?: boolean;
+  /** Extra service: detect tables and render them as Markdown in the text. */
+  detectTables?: boolean;
 };
+
+/**
+ * Well-known per-modality "extra service" flags a service advertises via
+ * `features` (see `ServiceModality`) and a caller opts into via
+ * `PdfParserOptions`. Each maps a `camelCase` framework key to the `snake_case`
+ * wire name used both in the capabilities `features` map and as the request
+ * form field (spec §2.1.1 / §3). This is the single source of truth that keeps
+ * capability parsing, request building and any UI in sync.
+ */
+export const PARSER_PASSTHROUGH_FLAGS = [
+  { key: "extractImages", wire: "extract_images" },
+  { key: "parseImagesInDoc", wire: "parse_images_in_doc" },
+  { key: "ocr", wire: "ocr" },
+  { key: "detectTables", wire: "detect_tables" },
+] as const;
+
+/** A `PdfParserOptions` key that corresponds to a boolean pass-through flag. */
+export type ParserPassthroughFlag =
+  (typeof PARSER_PASSTHROUGH_FLAGS)[number]["key"];
 
 export interface PageContent {
   page: number;
@@ -70,6 +100,12 @@ export type ServiceModality = {
     extractImages?: boolean;
     extractFields?: boolean;
     async?: boolean;
+    /** Extra service: analyse images embedded in the document. */
+    parseImagesInDoc?: boolean;
+    /** Extra service: OCR on scanned / image-only pages. */
+    ocr?: boolean;
+    /** Extra service: detect tables and render them as Markdown. */
+    detectTables?: boolean;
   };
 };
 

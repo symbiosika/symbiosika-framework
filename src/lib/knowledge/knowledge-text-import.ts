@@ -57,6 +57,16 @@ export type ImportKnowledgeTextOptions = {
    * title overrides the derived one.
    */
   usePostProcessors?: string[];
+  /**
+   * Parser pass-through options for file imports that go through the parsing
+   * pipeline (PDF, …). Each extra service is only honoured when the configured
+   * parsing service advertises the matching capability (see
+   * `getConfiguredParserCapabilities`); an unsupported flag is simply ignored.
+   */
+  extractImages?: boolean;
+  parseImagesInDoc?: boolean;
+  ocr?: boolean;
+  detectTables?: boolean;
 };
 
 export type ImportKnowledgeTextResult = {
@@ -108,10 +118,19 @@ export const splitMarkdownIntoSections = (markdown: string): string[] => {
   return sections;
 };
 
+/** Parser pass-through options honoured by file imports going through `parseFile`. */
+type FileParserOptions = {
+  extractImages?: boolean;
+  parseImagesInDoc?: boolean;
+  ocr?: boolean;
+  detectTables?: boolean;
+};
+
 /** Convert an uploaded file to markdown text (plus any parser-extracted metadata) */
 const fileToMarkdown = async (
   file: File,
-  context: { tenantId: string; userId?: string; teamId?: string; workspaceId?: string }
+  context: { tenantId: string; userId?: string; teamId?: string; workspaceId?: string },
+  parserOptions?: FileParserOptions
 ): Promise<{ text: string; metadata?: Record<string, ExtractedValue> }> => {
   const name = file.name ?? "";
   const mime = (file.type ?? "").trim().toLowerCase();
@@ -126,7 +145,7 @@ const fileToMarkdown = async (
     return { text: getTurndown().turndown(await file.text()).trim() };
   }
   // PDF, plain text, … via the existing parsing pipeline
-  const parsed = await parseFile(file, context);
+  const parsed = await parseFile(file, context, parserOptions);
   return { text: parsed.text, metadata: parsed.metadata };
 };
 
@@ -259,12 +278,21 @@ export const importKnowledgeTextFromFile = async (
   file: File,
   options: ImportKnowledgeTextOptions
 ): Promise<ImportKnowledgeTextResult> => {
-  const { text, metadata } = await fileToMarkdown(file, {
-    tenantId: options.tenantId,
-    userId: options.userId,
-    teamId: options.teamId,
-    workspaceId: options.workspaceId,
-  });
+  const { text, metadata } = await fileToMarkdown(
+    file,
+    {
+      tenantId: options.tenantId,
+      userId: options.userId,
+      teamId: options.teamId,
+      workspaceId: options.workspaceId,
+    },
+    {
+      extractImages: options.extractImages,
+      parseImagesInDoc: options.parseImagesInDoc,
+      ocr: options.ocr,
+      detectTables: options.detectTables,
+    }
+  );
   if (text.trim().length === 0) {
     throw new Error("The file contains no extractable text");
   }

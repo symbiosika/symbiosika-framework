@@ -53,6 +53,7 @@ import {
   createKnowledgeIngestJob,
   storeIngestFileInDb,
 } from "../../../../../lib/knowledge/ingestion-jobs";
+import { getConfiguredParserCapabilities } from "../../../../../lib/knowledge/parsing/pdf";
 import {
   upsertKnowledgeTextFromSource,
   deleteOrphanedKnowledgeTexts,
@@ -252,6 +253,37 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
+   * Report the capabilities of the currently configured PDF/parsing service:
+   * the modalities it accepts and the per-modality feature flags (extra
+   * services like OCR / table detection). The import UI uses this to render a
+   * checkbox for each pass-through option the service actually offers. Returns
+   * an empty `modalities` list when the configured parser advertises none
+   * (e.g. any non-`generic` parser).
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/parser/capabilities",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Capabilities (modalities + feature flags) of the configured parsing service",
+      responses: {
+        200: {
+          description: "The configured parser's advertised capabilities",
+        },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantMember,
+    async (c) => {
+      const capabilities = await getConfiguredParserCapabilities();
+      return c.json(capabilities);
+    }
+  );
+
+  /**
    * Import an uploaded file (markdown, html, txt, PDF, …) as a wiki page.
    * NOTE: registered before GET/POST /texts/:id-style routes on purpose —
    * hono matches in registration order.
@@ -276,6 +308,12 @@ export default function defineRoutesForKnowledgeTexts(
               embeddingEnabled: v.optional(v.string()),
               splitIntoBlocks: v.optional(v.string()),
               usePostProcessors: v.optional(v.string()),
+              // Parser pass-through options — only meaningful for the modalities
+              // the configured service advertises (see GET .../parser/capabilities).
+              extractImages: v.optional(v.string()),
+              parseImagesInDoc: v.optional(v.string()),
+              ocr: v.optional(v.string()),
+              detectTables: v.optional(v.string()),
             }),
           },
         },
@@ -332,6 +370,12 @@ export default function defineRoutesForKnowledgeTexts(
                 .split(",")
                 .map((s) => s.trim())
                 .filter((s) => s.length > 0),
+              // Parser pass-through options (opt-in; default off).
+              extractImages: form.get("extractImages")?.toString() === "true",
+              parseImagesInDoc:
+                form.get("parseImagesInDoc")?.toString() === "true",
+              ocr: form.get("ocr")?.toString() === "true",
+              detectTables: form.get("detectTables")?.toString() === "true",
             },
           },
           tenantId,

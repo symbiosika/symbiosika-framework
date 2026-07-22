@@ -106,6 +106,12 @@ export type PdfParserOptions = {
   extractImages?: boolean;
   /** Structured extraction targets passed through to the service. */
   extract?: ExtractionTarget[];
+  /** Extra service: analyse images embedded in the document (§2.1.1). */
+  parseImagesInDoc?: boolean;
+  /** Extra service: OCR on scanned / image-only pages. */
+  ocr?: boolean;
+  /** Extra service: detect tables and render them as Markdown. */
+  detectTables?: boolean;
 };
 
 export interface PdfParserResult {
@@ -272,6 +278,10 @@ export type ServiceModality = {
     extractImages?: boolean;
     extractFields?: boolean;
     async?: boolean;
+    /** Extra services (§2.1.1), advertised per modality. */
+    parseImagesInDoc?: boolean;
+    ocr?: boolean;
+    detectTables?: boolean;
   };
 };
 
@@ -379,3 +389,28 @@ unchanged.
   the service only for advertised modalities (PDF/image/audio/video). Extending
   the parser registry beyond PDF to a general "file parser" dispatcher is a
   follow-up; the capability contract already supports it.
+
+---
+
+## 7. Exposing capabilities + pass-through options to a UI
+
+The extra-service flags (`parse_images_in_doc`, `ocr`, `detect_tables`) are
+opt-in per request. So a UI can offer only the options the configured service
+actually supports, the framework surfaces them end-to-end:
+
+- **`getConfiguredParserCapabilities()`** (`parsing/pdf/index.ts`) resolves the
+  capabilities of the *currently configured* parser: for `generic` it returns
+  the cached `GET /v1/capabilities` response; for any other parser it returns an
+  empty `modalities` list (nothing to offer). It never throws — a discovery
+  failure degrades to "no advertised capabilities".
+- **`GET /tenant/:tenantId/knowledge/parser/capabilities`** exposes that to the
+  client (scope `knowledge:read`).
+- **`POST /tenant/:tenantId/knowledge/texts/import`** now also accepts the
+  pass-through form fields `extractImages`, `parseImagesInDoc`, `ocr`,
+  `detectTables` (all `"true"`/absent). They travel through the ingest job into
+  `importKnowledgeTextFromFile` → `fileToMarkdown` → `parseFile` →
+  `parsePdfFileAsMardown`, where `generic.ts buildForm()` maps each to its
+  `snake_case` wire field. A service that does not support a flag ignores it.
+
+The single source of truth for the camelCase key ↔ snake_case wire mapping is
+`PARSER_PASSTHROUGH_FLAGS` in `parsing/pdf/types.ts`.
