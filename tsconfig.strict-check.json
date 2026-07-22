@@ -1,11 +1,14 @@
 {
   // Type-check-only config that mirrors the STRICTER settings a consuming
-  // backend applies to this framework's source (see quality pipeline):
+  // backend applies to this framework (see the consumer's quality pipeline):
   //   - noUncheckedIndexedAccess: on   (framework's own tsconfig leaves it off)
   //   - lib without "DOM"              (consumer runs on bun typings, no DOM)
-  // This surfaces null-safety and lib-portability issues in framework SOURCE
-  // before they break a downstream build. Test files are excluded (like the
-  // framework's own build and the consumer's typecheck).
+  //
+  // Test files are INCLUDED here on purpose: a consuming app that points its
+  // tsconfig "include" at framework/src type-checks the framework's *.test.ts
+  // too, so those files must also compile under these stricter settings. This
+  // catches the null-safety / lib-portability class of error that compiles
+  // fine under the framework's own tsconfig but breaks a downstream build.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "lib": ["ESNext"],
@@ -14,5 +17,5 @@
     "declaration": false
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": []
 }

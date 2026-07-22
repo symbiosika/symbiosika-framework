@@ -144,7 +144,7 @@ describe("getPageChunkContext surfaces the wiki path", () => {
       .insert(knowledgeChunks)
       .values(
         [0, 1].map((order) => ({
-          knowledgeEntryId: entry.id,
+          knowledgeEntryId: entry!.id,
           text: `chunk-${order}`,
           order,
           embeddingModel: "test",
@@ -154,7 +154,7 @@ describe("getPageChunkContext surfaces the wiki path", () => {
       );
 
     // link the page to the mirrored RAG entry
-    await updateKnowledgeText(childId, { knowledgeEntryId: entry.id }, ctx);
+    await updateKnowledgeText(childId, { knowledgeEntryId: entry!.id }, ctx);
   });
 
   test("returns the breadcrumb path of the page", async () => {
