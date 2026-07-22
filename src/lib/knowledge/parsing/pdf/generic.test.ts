@@ -7,7 +7,6 @@ import {
   afterEach,
   mock,
 } from "bun:test";
-import type { Server } from "bun";
 
 // Provide DB env defaults so importing the logger (which constructs a Postgres
 // client at module load) does not crash in an isolated run. postgres.js is
@@ -83,7 +82,7 @@ const RESULT_BODY = {
 const jobs = new Set<string>();
 let jobCounter = 0;
 
-let server: Server;
+let server: ReturnType<typeof Bun.serve>;
 
 beforeAll(() => {
   server = Bun.serve({
@@ -122,14 +121,14 @@ beforeAll(() => {
 
       const jobResultMatch = url.pathname.match(/^\/v1\/jobs\/([^/]+)\/result$/);
       if (jobResultMatch) {
-        return jobs.has(jobResultMatch[1])
+        return jobs.has(jobResultMatch[1]!)
           ? Response.json(RESULT_BODY)
           : Response.json({ error: "not_ready" }, { status: 409 });
       }
 
       const jobStatusMatch = url.pathname.match(/^\/v1\/jobs\/([^/]+)$/);
       if (jobStatusMatch) {
-        return jobs.has(jobStatusMatch[1])
+        return jobs.has(jobStatusMatch[1]!)
           ? Response.json({ job_id: jobStatusMatch[1], status: "completed" })
           : Response.json({ error: "unknown_job" }, { status: 404 });
       }
@@ -196,8 +195,8 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
       { page: 1, text: "Hersteller ![img-1](/storage/img-1)" },
       { page: 2, text: "Seite zwei" },
     ]);
-    expect(result.metadata?.hersteller.value).toBe("Siemens");
-    expect(result.metadata?.typ.found).toBe(false);
+    expect(result.metadata?.hersteller?.value).toBe("Siemens");
+    expect(result.metadata?.typ?.found).toBe(false);
   });
 
   test("omits the extract field when no targets are given", async () => {
@@ -227,10 +226,10 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
 
     const caps = await getGenericParserCapabilities();
     expect(caps.service).toBe("generic-v1");
-    expect(caps.modalities[0].mimeTypes).toEqual(["application/pdf"]);
-    expect(caps.modalities[0].features?.extractImages).toBe(true);
+    expect(caps.modalities[0]!.mimeTypes).toEqual(["application/pdf"]);
+    expect(caps.modalities[0]!.features?.extractImages).toBe(true);
     // Missing features default to false after normalization.
-    expect(caps.modalities[1].features?.async).toBe(false);
+    expect(caps.modalities[1]!.features?.async).toBe(false);
 
     // Second call is served from cache — service hit only once.
     await getGenericParserCapabilities();

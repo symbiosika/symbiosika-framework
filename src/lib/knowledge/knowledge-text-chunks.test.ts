@@ -32,7 +32,7 @@ describe("getPageChunkContext", () => {
       .insert(knowledgeChunks)
       .values(
         [0, 1, 2, 3, 4].map((order) => ({
-          knowledgeEntryId: entry.id,
+          knowledgeEntryId: entry!.id,
           text: `chunk-${order}`,
           order,
           embeddingModel: "test",
@@ -43,7 +43,7 @@ describe("getPageChunkContext", () => {
       );
 
     // link the page to the knowledge_entry
-    await updateKnowledgeText(pageId, { knowledgeEntryId: entry.id }, ctx);
+    await updateKnowledgeText(pageId, { knowledgeEntryId: entry!.id }, ctx);
   });
 
   test("returns the hit plus neighbours before/after in order", async () => {

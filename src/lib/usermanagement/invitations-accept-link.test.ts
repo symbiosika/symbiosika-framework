@@ -76,14 +76,14 @@ describe("Accept invitation via emailed link", () => {
         )
       );
     expect(members.length).toBe(1);
-    expect(members[0].role).toBe("admin");
+    expect(members[0]!.role).toBe("admin");
 
     // Invitation must be marked accepted.
     const [inv] = await getDb()
       .select()
       .from(tenantInvitations)
       .where(eq(tenantInvitations.id, invitation.id));
-    expect(inv.status).toBe("accepted");
+    expect(inv!.status).toBe("accepted");
   });
 
   test("clicking the link twice is idempotent (no error)", async () => {
@@ -143,7 +143,7 @@ describe("Accept invitation via emailed link", () => {
       .select()
       .from(tenantInvitations)
       .where(eq(tenantInvitations.id, invitation.id));
-    expect(inv.status).toBe("pending");
+    expect(inv!.status).toBe("pending");
   });
 
   test("token for a deleted invitation throws", async () => {

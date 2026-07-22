@@ -39,7 +39,7 @@ describe("computeSourceHash", () => {
     const buffer = view.buffer.slice(
       view.byteOffset,
       view.byteOffset + view.byteLength
-    );
+    ) as ArrayBuffer;
     expect(computeSourceHash(buffer)).toBe(computeSourceHash(view));
   });
 });

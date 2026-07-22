@@ -47,8 +47,8 @@ describe("attributeDefinitionsToExtractionTargets", () => {
     const [target] = attributeDefinitionsToExtractionTargets([
       { key: "count", type: "number", values: ["ignored"] },
     ]);
-    expect(target.type).toBe("number");
-    expect(target.options).toBeUndefined();
+    expect(target!.type).toBe("number");
+    expect(target!.options).toBeUndefined();
   });
 });
 
