@@ -1,0 +1,18 @@
+{
+  // Type-check-only config that mirrors the STRICTER settings a consuming
+  // backend applies to this framework's source (see quality pipeline):
+  //   - noUncheckedIndexedAccess: on   (framework's own tsconfig leaves it off)
+  //   - lib without "DOM"              (consumer runs on bun typings, no DOM)
+  // This surfaces null-safety and lib-portability issues in framework SOURCE
+  // before they break a downstream build. Test files are excluded (like the
+  // framework's own build and the consumer's typecheck).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "declaration": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

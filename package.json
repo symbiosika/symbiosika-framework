@@ -77,6 +77,8 @@
     "framework:generate": "drizzle-kit generate",
     "framework:studio": "drizzle-kit studio",
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "typecheck:strict": "tsc --noEmit -p tsconfig.strict-check.json",
     "clean": "rm -rf ./lib/",
     "release:patch": "tsc && npm version patch && git push --follow-tags && npm publish",
     "release:minor": "tsc && npm version minor && git push --follow-tags && npm publish",
