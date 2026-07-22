@@ -54,7 +54,7 @@ export const DEFAULT_SUMMARY_DEBOUNCE_MINUTES = 60;
 const getSummaryDebounceMinutes = async (): Promise<number> => {
   try {
     const row = await getAppSpecificData(SUMMARY_DEBOUNCE_CONFIG_KEY);
-    const minutes = (row.data as { minutes?: unknown })?.minutes;
+    const minutes = (row?.data as { minutes?: unknown })?.minutes;
     return typeof minutes === "number" && Number.isFinite(minutes)
       ? minutes
       : DEFAULT_SUMMARY_DEBOUNCE_MINUTES;

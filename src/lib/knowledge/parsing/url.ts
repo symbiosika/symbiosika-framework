@@ -161,7 +161,7 @@ const isTextual = (contentType: string): boolean => {
 /** Extract the charset from a content-type header (defaults handled by caller). */
 const charsetFrom = (contentType: string): string | null => {
   const m = /charset=([^;]+)/i.exec(contentType);
-  return m ? m[1].trim().replace(/^["']|["']$/g, "") : null;
+  return m?.[1] ? m[1].trim().replace(/^["']|["']$/g, "") : null;
 };
 
 /** Derive a filename (ending in .pdf) from content-disposition or the URL. */
@@ -208,9 +208,13 @@ export const urlToMarkdown = async (
       );
     }
     const name = filenameFrom(disposition, url);
-    const file = new File([bytes as BlobPart], name, {
-      type: "application/pdf",
-    });
+    const file = new File(
+      [bytes as ConstructorParameters<typeof File>[0][number]],
+      name,
+      {
+        type: "application/pdf",
+      }
+    );
     const parsed = await parsePdfFileAsMardown(file, opts.parseContext, {
       model: opts.pdfModel,
     });
@@ -235,9 +239,11 @@ export const urlToMarkdown = async (
     );
   }
 
-  const html = new TextDecoder(charsetFrom(contentType) ?? "utf-8").decode(
-    bytes
-  );
+  const html = new TextDecoder(
+    (charsetFrom(contentType) ?? "utf-8") as ConstructorParameters<
+      typeof TextDecoder
+    >[0]
+  ).decode(bytes);
 
   // Inject <base href> so Readability can resolve relative links/images.
   const htmlWithBase = injectBaseHref(html, url);

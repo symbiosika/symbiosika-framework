@@ -52,8 +52,8 @@ const parseHeadings = (
     if (inFence) return;
     const m = /^(#{1,6})\s+(.*\S)\s*$/.exec(line);
     if (!m) return;
-    const level = m[1].length;
-    const title = m[2].trim();
+    const level = m[1]!.length;
+    const title = m[2]!.trim();
     let anchor = slugify(title) || `section-${i + 1}`;
     const count = seen.get(anchor) ?? 0;
     seen.set(anchor, count + 1);
