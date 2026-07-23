@@ -9,7 +9,6 @@ import {
   createDatabaseClient,
   waitForDbConnection,
 } from "../../../../lib/db/db-connection";
-import { processDueJobsOnce, getJob } from "../../../../lib/jobs";
 
 let appKnowledge = new Hono<{ Variables: SFContextVariables }>();
 let appKnowledgeTexts = new Hono<{ Variables: SFContextVariables }>();
@@ -105,59 +104,6 @@ describe("Knowledge API Edge Cases", () => {
     expect(response.status).toBe(400);
   });
 
-  test("Extract knowledge with non-existent source ID", async () => {
-    const nonExistentId = "00000000-0000-0000-0000-000000000000";
-
-    const extractData = {
-      tenantId: TEST_ORGANISATION_1.id,
-      sourceType: "text",
-      sourceId: nonExistentId,
-    };
-
-    const response = await testFetcher.post(
-      appKnowledge,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/extract-knowledge`,
-      TEST_USER_1_TOKEN,
-      extractData
-    );
-
-    // Ingestion is now asynchronous: the endpoint accepts the request and
-    // returns a Job. The non-existent source surfaces as a failed job, not a
-    // synchronous 400.
-    expect(response.status).toBe(200);
-    expect(response.jsonResponse.id).toBeDefined();
-
-    await processDueJobsOnce();
-    const finished = await getJob(response.jsonResponse.id);
-    expect(finished.status).toBe("failed");
-  }, 30000);
-
-  test("Get non-existent knowledge entry", async () => {
-    const nonExistentId = "00000000-0000-0000-0000-000000000000";
-
-    const response = await testFetcher.get(
-      appKnowledge,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/entries/${nonExistentId}`,
-      TEST_USER_1_TOKEN
-    );
-
-    // Should return a 400 error
-    expect(response.status).toBe(400);
-  });
-
-  test("Delete non-existent knowledge entry", async () => {
-    const nonExistentId = "00000000-0000-0000-0000-000000000000";
-
-    const response = await testFetcher.delete(
-      appKnowledge,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/entries/${nonExistentId}`,
-      TEST_USER_1_TOKEN
-    );
-
-    // Should return a 400 error or a success with no effect
-    expect([200, 400]).toContain(response.status);
-  });
-
   test("Get non-existent knowledge text", async () => {
     const nonExistentId = "00000000-0000-0000-0000-000000000000";
 
@@ -242,22 +188,6 @@ describe("Knowledge API Edge Cases", () => {
     expect([200, 400]).toContain(response.status);
   }, 15000);
 
-  test("Upload and learn with empty form data", async () => {
-    const formData = new FormData();
-    // No file attached
-
-    const response = await testFetcher.postFormData(
-      appKnowledge,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/upload-and-extract`,
-      TEST_USER_1_TOKEN,
-      formData
-    );
-
-    // Empty form data should be rejected
-    // console.log("A", response.textResponse);
-    expect(response.status).toBe(400);
-  });
-
   // Clean up after edge case tests
   test("Clean up created knowledge text", async () => {
     const response = await testFetcher.delete(
@@ -269,8 +199,3 @@ describe("Knowledge API Edge Cases", () => {
     expect(response.status).toBe(200);
   });
 });
-
-// Import path module for file path operations
-import { join } from "path";
-import { readFileSync } from "fs";
-import { TEST_PDF_TEXT } from "../../../../test/files.test";

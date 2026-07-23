@@ -33,12 +33,6 @@ import {
   deleteFileFromDB,
 } from "../storage/db";
 import {
-  extractKnowledgeInOneStep,
-  extractKnowledgeFromExistingDbEntry,
-  extractKnowledgeFromUrl,
-  extractKnowledgeFromPlainText,
-} from "./add-knowledge";
-import {
   importKnowledgeTextFromFile,
   importKnowledgeTextFromUrl,
   type ImportKnowledgeTextOptions,
@@ -61,60 +55,6 @@ export type StoredIngestFile = {
   bucket: string;
   fileId: string;
   fileName: string;
-};
-
-/** Options forwarded to `extractKnowledgeInOneStep` for an uploaded file. */
-type RagUploadOptions = {
-  teamId?: string;
-  workspaceId?: string;
-  knowledgeGroupId?: string;
-  userOwned?: boolean;
-  meta?: { sourceUri: string; sourceId: string };
-  model?: string;
-  usePostProcessors?: string[];
-  generateSummary?: boolean;
-  summaryCustomPrompt?: string;
-  summaryModel?: string;
-  extractImages?: boolean;
-};
-
-/** Params for extracting knowledge from an already-stored source (db/local/url/text). */
-type RagExistingParams = {
-  sourceType: "db" | "local" | "url" | "text" | "external";
-  sourceId?: string;
-  sourceFileBucket?: string;
-  sourceUrl?: string;
-  metadata?: Record<string, string | number | boolean | undefined>;
-  teamId?: string;
-  workspaceId?: string;
-  knowledgeGroupId?: string;
-  userOwned?: boolean;
-  model?: string;
-  extractImages?: boolean;
-  generateSummary?: boolean;
-  summaryCustomPrompt?: string;
-  summaryModel?: string;
-  usePostProcessors?: string[];
-};
-
-type RagUrlParams = {
-  url: string;
-  teamId?: string;
-  workspaceId?: string;
-  knowledgeGroupId?: string;
-  userOwned?: boolean;
-  usePostProcessors?: string[];
-};
-
-type RagTextParams = {
-  text: string;
-  title: string;
-  teamId?: string;
-  workspaceId?: string;
-  knowledgeGroupId?: string;
-  userOwned?: boolean;
-  meta?: { sourceUri: string; sourceId: string };
-  usePostProcessors?: string[];
 };
 
 /** Options forwarded to `importKnowledgeTextFrom*` (minus tenantId/userId). */
@@ -142,24 +82,6 @@ type KnowledgeIngestJobBase = {
  */
 export type KnowledgeIngestJobMetadata = KnowledgeIngestJobBase &
   (
-    | {
-        kind: "rag-upload";
-        storage: StoredIngestFile;
-        deleteAfter: boolean;
-        options: RagUploadOptions;
-      }
-    | {
-        kind: "rag-existing";
-        params: RagExistingParams;
-      }
-    | {
-        kind: "rag-url";
-        params: RagUrlParams;
-      }
-    | {
-        kind: "rag-text";
-        params: RagTextParams;
-      }
     | {
         kind: "text-import-file";
         storage: StoredIngestFile;
@@ -211,45 +133,6 @@ export const processKnowledgeIngestJob = async (
   metadata: KnowledgeIngestJobMetadata
 ): Promise<unknown> => {
   switch (metadata.kind) {
-    case "rag-upload": {
-      const file = await getFileFromDb(
-        metadata.storage.fileId,
-        metadata.storage.bucket,
-        metadata.tenantId
-      );
-      try {
-        return await extractKnowledgeInOneStep(
-          { ...metadata.options, tenantId: metadata.tenantId, file },
-          true
-        );
-      } finally {
-        if (metadata.deleteAfter) {
-          await deleteStoredIngestFile(metadata.storage, metadata.tenantId);
-        }
-      }
-    }
-
-    case "rag-existing":
-      return await extractKnowledgeFromExistingDbEntry({
-        ...metadata.params,
-        tenantId: metadata.tenantId,
-        userId: metadata.userId,
-      });
-
-    case "rag-url":
-      return await extractKnowledgeFromUrl({
-        ...metadata.params,
-        tenantId: metadata.tenantId,
-        userId: metadata.userId,
-      });
-
-    case "rag-text":
-      return await extractKnowledgeFromPlainText({
-        ...metadata.params,
-        tenantId: metadata.tenantId,
-        userId: metadata.userId,
-      });
-
     case "text-import-file": {
       const file = await getFileFromDb(
         metadata.storage.fileId,

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll } from "bun:test";
 import { getNearestEmbeddings } from "./similarity-search";
-import { extractKnowledgeFromExistingDbEntry } from "./add-knowledge";
 import { createKnowledgeText } from "./knowledge-texts";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
 import { getDb } from "../db/db-connection";

@@ -3,8 +3,8 @@
  * drizzle-valibot insert/select schemas.
  *
  * Re-exports the framework schema barrel, so app code can pull `users`,
- * `tenants`, `tenantMembers`, `connections`, `files`, `knowledgeGroup`,
- * `knowledgeEntry`, etc. from a single stable path instead of reaching into
+ * `tenants`, `tenantMembers`, `connections`, `files`, `knowledgeEntry`,
+ * `knowledgeText`, etc. from a single stable path instead of reaching into
  * `lib/db/schema/*`.
  *
  * Part of the curated framework public API. See ./README.md.

@@ -469,113 +469,6 @@ export const knowledgeTextBlockInsertSchema =
 export const knowledgeTextBlockUpdateSchema =
   createUpdateSchema(knowledgeTextBlock);
 
-// Table for knowledge groups (grouping of knowledge entries)
-export const knowledgeGroup = pgBaseTable(
-  "knowledge_group",
-  {
-    id: uuid("id")
-      .primaryKey()
-      .default(sql`gen_random_uuid()`),
-    tenantId: uuid("tenant_id")
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
-    tenantWideAccess: boolean("tenant_wide_access").notNull().default(false),
-    userId: uuid("user_id")
-      .references(() => users.id, { onDelete: "cascade" })
-      .notNull(),
-    name: varchar("name", { length: 255 }).notNull(),
-    description: text("description"),
-    createdAt: timestamp("created_at", { mode: "string" })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { mode: "string" })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    unique("knowledge_group_name_org_idx").on(table.name, table.tenantId),
-    index("knowledge_group_tenant_id_idx").on(table.tenantId),
-    index("knowledge_group_user_id_idx").on(table.userId),
-  ]
-);
-
-export type KnowledgeGroupSelect = typeof knowledgeGroup.$inferSelect;
-export type KnowledgeGroupInsert = typeof knowledgeGroup.$inferInsert;
-
-export const knowledgeGroupSchema = createSelectSchema(knowledgeGroup);
-export const knowledgeGroupInsertSchema = createInsertSchema(knowledgeGroup);
-export const knowledgeGroupUpdateSchema = createUpdateSchema(knowledgeGroup);
-
-// Assignments of knowledge groups to teams
-export const knowledgeGroupTeamAssignments = pgBaseTable(
-  "knowledge_group_team_assignments",
-  {
-    id: uuid("id")
-      .primaryKey()
-      .default(sql`gen_random_uuid()`),
-    knowledgeGroupId: uuid("knowledge_group_id")
-      .notNull()
-      .references(() => knowledgeGroup.id, { onDelete: "cascade" }),
-    teamId: uuid("team_id")
-      .notNull()
-      .references(() => teams.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { mode: "string" })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { mode: "string" })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    unique("knowledge_group_team_assignment_unique").on(
-      table.knowledgeGroupId,
-      table.teamId
-    ),
-    index("knowledge_group_team_assignment_knowledge_group_id_idx").on(
-      table.knowledgeGroupId
-    ),
-    index("knowledge_group_team_assignment_team_id_idx").on(table.teamId),
-  ]
-);
-
-export type KnowledgeGroupTeamAssignmentSelect =
-  typeof knowledgeGroupTeamAssignments.$inferSelect;
-export type KnowledgeGroupTeamAssignmentInsert =
-  typeof knowledgeGroupTeamAssignments.$inferInsert;
-
-export const knowledgeGroupTeamAssignmentsSchema = createSelectSchema(
-  knowledgeGroupTeamAssignments
-);
-export const knowledgeGroupTeamAssignmentsInsertSchema = createInsertSchema(
-  knowledgeGroupTeamAssignments
-);
-export const knowledgeGroupTeamAssignmentsUpdateSchema = createUpdateSchema(
-  knowledgeGroupTeamAssignments
-);
-
-// Relations for knowledge groups
-export const knowledgeGroupRelations = relations(
-  knowledgeGroup,
-  ({ many }) => ({
-    teamAssignments: many(knowledgeGroupTeamAssignments),
-  })
-);
-
-// Relations for knowledge group team assignments
-export const knowledgeGroupTeamAssignmentsRelations = relations(
-  knowledgeGroupTeamAssignments,
-  ({ one }) => ({
-    knowledgeGroup: one(knowledgeGroup, {
-      fields: [knowledgeGroupTeamAssignments.knowledgeGroupId],
-      references: [knowledgeGroup.id],
-    }),
-    team: one(teams, {
-      fields: [knowledgeGroupTeamAssignments.teamId],
-      references: [teams.id],
-    }),
-  })
-);
-
 // Main table for all knowledge entries
 export const knowledgeEntry = pgBaseTable(
   "knowledge_entry",
@@ -595,11 +488,6 @@ export const knowledgeEntry = pgBaseTable(
     // optional assign a document only to my user
     // security feature to limit access to knowledge entries
     userOwned: boolean("user_owned").notNull().default(false),
-    // optional assign a document to a knowledge group
-    knowledgeGroupId: uuid("knowledge_group_id").references(
-      () => knowledgeGroup.id,
-      { onDelete: "cascade" }
-    ),
     parentId: uuid("parentId").references(
       (): AnyPgColumn => knowledgeEntry.id,
       {
@@ -764,10 +652,6 @@ export const knowledgeEntryRelations = relations(
     user: one(users, {
       fields: [knowledgeEntry.userId],
       references: [users.id],
-    }),
-    knowledgeGroup: one(knowledgeGroup, {
-      fields: [knowledgeEntry.knowledgeGroupId],
-      references: [knowledgeGroup.id],
     }),
   })
 );

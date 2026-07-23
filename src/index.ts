@@ -39,7 +39,6 @@ import { defineOAuth2Routes } from "./lib/oauth2";
 import { defineFilesRoutes } from "./routes/tenant/[tenantId]/files";
 
 import aiKnowledgeRoutes from "./routes/tenant/[tenantId]/knowledge";
-import aiKnowledgeGroupRoutes from "./routes/tenant/[tenantId]/knowledge/groups";
 import aiKnowledgeTextsRoutes from "./routes/tenant/[tenantId]/knowledge/texts";
 import aiKnowledgeChunksRoutes from "./routes/tenant/[tenantId]/knowledge/chunks";
 
@@ -338,7 +337,6 @@ export const defineServer = (config: ServerSpecificConfig) => {
        */
 
       aiKnowledgeRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
-      aiKnowledgeGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeTextsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       aiKnowledgeChunksRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
 

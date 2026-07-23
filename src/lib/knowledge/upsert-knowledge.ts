@@ -167,7 +167,6 @@ export type UpsertKnowledgeFromTextInput = {
   userId?: string;
   teamId?: string;
   workspaceId?: string;
-  knowledgeGroupId?: string;
   userOwned?: boolean;
   includesLocalImages?: boolean;
   /**
@@ -211,8 +210,8 @@ export type UpsertKnowledgeFromTextResult = {
  *
  *   - **Match found** → keep the same primary key, replace `name`, `meta`
  *     (merged), all chunks + their embeddings, and bump `updatedAt`.
- *     Existing `knowledgeGroupId` / `teamId` / `userId` / `userOwned`
- *     values are preserved unless explicitly overridden by the caller.
+ *     Existing `teamId` / `userId` / `userOwned` values are preserved unless
+ *     explicitly overridden by the caller.
  */
 export const upsertKnowledgeFromText = async (
   data: UpsertKnowledgeFromTextInput
@@ -313,9 +312,6 @@ export const upsertKnowledgeFromText = async (
   // untouched (a stale hash is harmless: skipping requires both sides present
   // AND equal, which a fresh non-hashing run never satisfies).
   if (effectiveHash !== undefined) updateSet.sourceHash = effectiveHash;
-  if (data.knowledgeGroupId !== undefined) {
-    updateSet.knowledgeGroupId = data.knowledgeGroupId;
-  }
   if (data.teamId !== undefined) updateSet.teamId = data.teamId;
   if (data.userId !== undefined) updateSet.userId = data.userId;
   if (data.userOwned !== undefined) updateSet.userOwned = data.userOwned;

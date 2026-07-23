@@ -14,7 +14,6 @@ import {
   createDatabaseClient,
   waitForDbConnection,
 } from "../../../../lib/db/db-connection";
-import { processDueJobsOnce, getJob } from "../../../../lib/jobs";
 
 let appKnowledge = new Hono<{ Variables: SFContextVariables }>();
 let appKnowledgeTexts = new Hono<{ Variables: SFContextVariables }>();
@@ -22,7 +21,6 @@ let appKnowledgeTexts = new Hono<{ Variables: SFContextVariables }>();
 let TEST_USER_1_TOKEN: string;
 let TEST_USER_2_TOKEN: string;
 let createdKnowledgeTextId: string;
-let createdKnowledgeEntryId: string;
 
 beforeAll(async () => {
   await createDatabaseClient();
@@ -50,56 +48,16 @@ beforeAll(async () => {
   );
 
   createdKnowledgeTextId = response.jsonResponse.id;
-
-  // Create a knowledge entry from the text
-  const parseData = {
-    sourceType: "text",
-    sourceId: createdKnowledgeTextId,
-    tenantId: TEST_ORGANISATION_1.id,
-  };
-
-  const parseResponse = await testFetcher.post(
-    appKnowledge,
-    `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/extract-knowledge`,
-    TEST_USER_1_TOKEN,
-    parseData
-  );
-
-  // Ingestion is asynchronous now: the endpoint returns a Job. Run it and read
-  // the created knowledge entry id from the job result.
-  await processDueJobsOnce();
-  const finishedJob = await getJob(parseResponse.jsonResponse.id);
-  createdKnowledgeEntryId = (finishedJob.result as any)?.id;
 });
 
 describe("Knowledge API Security Tests", () => {
   test("Endpoints should reject unauthorized requests", async () => {
     await rejectUnauthorized(appKnowledge, [
-      ["GET", `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/entries`],
-      [
-        "GET",
-        `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/entries/${createdKnowledgeEntryId}`,
-      ],
-      [
-        "DELETE",
-        `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/entries/${createdKnowledgeEntryId}`,
-      ],
-      [
-        "POST",
-        `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/extract-knowledge`,
-      ],
       [
         "POST",
         `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/similarity-search`,
       ],
-      [
-        "POST",
-        `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/from-text`,
-      ],
-      [
-        "POST",
-        `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/upload-and-extract`,
-      ],
+      ["POST", `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/re-embed`],
     ]);
   });
 
@@ -118,61 +76,6 @@ describe("Knowledge API Security Tests", () => {
     ]);
   });
 
-  test("User cannot access knowledge entries in another tenant", async () => {
-    // User 2 tries to access tenant 1's knowledge entries
-    const response = await testFetcher.get(
-      appKnowledge,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/entries`,
-      TEST_USER_2_TOKEN
-    );
-
-    // Should be rejected due to tenant permission check
-    expect(response.status).toBe(403);
-  });
-
-  test("User cannot access specific knowledge entry in another tenant", async () => {
-    // User 2 tries to access a specific knowledge entry in tenant 1
-    const response = await testFetcher.get(
-      appKnowledge,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/entries/${createdKnowledgeEntryId}`,
-      TEST_USER_2_TOKEN
-    );
-
-    // Should be rejected due to tenant permission check
-    expect(response.status).toBe(403);
-  });
-
-  test("User cannot delete knowledge entry in another tenant", async () => {
-    // User 2 tries to delete a knowledge entry in tenant 1
-    const response = await testFetcher.delete(
-      appKnowledge,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/entries/${createdKnowledgeEntryId}`,
-      TEST_USER_2_TOKEN
-    );
-
-    // Should be rejected due to tenant permission check
-    expect(response.status).toBe(403);
-  });
-
-  test("User cannot extract knowledge in another tenant", async () => {
-    const extractData = {
-      tenantId: TEST_ORGANISATION_1.id,
-      sourceType: "text",
-      sourceId: createdKnowledgeTextId,
-    };
-
-    // User 2 tries to extract knowledge in tenant 1
-    const response = await testFetcher.post(
-      appKnowledge,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/extract-knowledge`,
-      TEST_USER_2_TOKEN,
-      extractData
-    );
-
-    // Should be rejected due to tenant permission check
-    expect(response.status).toBe(403);
-  });
-
   test("User cannot perform similarity search in another tenant", async () => {
     const searchData = {
       tenantId: TEST_ORGANISATION_1.id,
@@ -185,25 +88,6 @@ describe("Knowledge API Security Tests", () => {
       `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/similarity-search`,
       TEST_USER_2_TOKEN,
       searchData
-    );
-
-    // Should be rejected due to tenant permission check
-    expect(response.status).toBe(403);
-  });
-
-  test("User cannot add knowledge from text in another tenant", async () => {
-    const textData = {
-      tenantId: TEST_ORGANISATION_1.id,
-      text: "This is a test knowledge text from an unauthorized user.",
-      title: "Unauthorized Knowledge Text",
-    };
-
-    // User 2 tries to add knowledge from text in tenant 1
-    const response = await testFetcher.post(
-      appKnowledge,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/from-text`,
-      TEST_USER_2_TOKEN,
-      textData
     );
 
     // Should be rejected due to tenant permission check
@@ -295,10 +179,10 @@ describe("Knowledge API Security Tests", () => {
   test("Invalid tenant ID should be rejected", async () => {
     const invalidOrgId = "invalid-org-id";
 
-    // Try to access knowledge entries with invalid tenant ID
+    // Try to access knowledge texts with invalid tenant ID
     const response = await testFetcher.get(
-      appKnowledge,
-      `/api/tenant/${invalidOrgId}/knowledge/entries`,
+      appKnowledgeTexts,
+      `/api/tenant/${invalidOrgId}/knowledge/texts`,
       TEST_USER_1_TOKEN
     );
 
@@ -307,10 +191,10 @@ describe("Knowledge API Security Tests", () => {
   });
 
   test("User can access their own tenant's endpoints", async () => {
-    // User 2 accesses their own tenant's knowledge entries
+    // User 2 accesses their own tenant's knowledge texts
     const response = await testFetcher.get(
-      appKnowledge,
-      `/api/tenant/${TEST_ORGANISATION_2.id}/knowledge/entries`,
+      appKnowledgeTexts,
+      `/api/tenant/${TEST_ORGANISATION_2.id}/knowledge/texts`,
       TEST_USER_2_TOKEN
     );
 
@@ -319,16 +203,6 @@ describe("Knowledge API Security Tests", () => {
   });
 
   // Clean up after security tests
-  test("Clean up created knowledge entry", async () => {
-    const response = await testFetcher.delete(
-      appKnowledge,
-      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/entries/${createdKnowledgeEntryId}`,
-      TEST_USER_1_TOKEN
-    );
-
-    expect(response.status).toBe(200);
-  });
-
   test("Clean up created knowledge text", async () => {
     const response = await testFetcher.delete(
       appKnowledgeTexts,
