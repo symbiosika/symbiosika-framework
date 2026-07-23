@@ -10,12 +10,13 @@ import {
   createKnowledgeIngestJob,
   storeIngestFileInDb,
   KNOWLEDGE_INGEST_JOB_TYPE,
+  KNOWLEDGE_INGEST_BUCKET,
 } from "./ingestion-jobs";
 
 /**
  * These tests exercise the document-ingestion job pipeline end-to-end without
  * the HTTP layer: create a `knowledge:ingest` job, drain the queue once, and
- * assert the job completed with a knowledge-entry result.
+ * assert the job completed with a wiki-page result.
  *
  * The built-in handler is registered inside `initTests`, and the queue is
  * drained deterministically via `processDueJobsOnce` (no background worker).
@@ -25,15 +26,20 @@ describe("Knowledge ingestion jobs", () => {
     await initTests();
   });
 
-  it("runs a rag-text ingest job to completion", async () => {
+  it("runs a text-import-file ingest job to completion", async () => {
+    const file = new File(["# Title\n\nSome imported content."], "ingest-job-test.md", {
+      type: "text/markdown",
+    });
+    const storage = await storeIngestFileInDb(file, TEST_ORGANISATION_1.id);
+    expect(storage.fileId).toBeDefined();
+
     const job = await createKnowledgeIngestJob(
       {
-        kind: "rag-text",
+        kind: "text-import-file",
         tenantId: TEST_ORGANISATION_1.id,
-        params: {
-          text: "Symbiosika ingestion job unit test content about widgets.",
-          title: "Ingest Job Text Test",
-        },
+        storage,
+        deleteAfter: true,
+        options: {},
       },
       TEST_ORGANISATION_1.id
     );
@@ -45,46 +51,22 @@ describe("Knowledge ingestion jobs", () => {
 
     const finished = await getJob(job.id);
     expect(finished.status).toBe("completed");
-    expect((finished.result as any)?.ok).toBe(true);
-    expect((finished.result as any)?.id).toBeDefined();
+    expect((finished.result as any)?.knowledgeText?.id).toBeDefined();
   }, 30000);
 
-  it("runs a rag-upload ingest job from a stored file and cleans it up", async () => {
-    const file = new File(
-      ["Uploaded plain text document for the ingestion job test."],
-      "ingest-upload-test.txt",
-      { type: "text/plain" }
-    );
-    const storage = await storeIngestFileInDb(file, TEST_ORGANISATION_1.id);
-    expect(storage.fileId).toBeDefined();
-
+  it("marks a job as failed when the source file does not exist", async () => {
     const job = await createKnowledgeIngestJob(
       {
-        kind: "rag-upload",
+        kind: "text-import-file",
         tenantId: TEST_ORGANISATION_1.id,
-        storage,
+        storage: {
+          storageType: "db",
+          bucket: KNOWLEDGE_INGEST_BUCKET,
+          fileId: "00000000-0000-0000-0000-000000000000",
+          fileName: "missing.md",
+        },
         deleteAfter: true,
         options: {},
-      },
-      TEST_ORGANISATION_1.id
-    );
-
-    await processDueJobsOnce();
-
-    const finished = await getJob(job.id);
-    expect(finished.status).toBe("completed");
-    expect((finished.result as any)?.id).toBeDefined();
-  }, 30000);
-
-  it("marks a job as failed when the source does not exist", async () => {
-    const job = await createKnowledgeIngestJob(
-      {
-        kind: "rag-existing",
-        tenantId: TEST_ORGANISATION_1.id,
-        params: {
-          sourceType: "text",
-          sourceId: "00000000-0000-0000-0000-000000000000",
-        },
       },
       TEST_ORGANISATION_1.id
     );
@@ -99,14 +81,18 @@ describe("Knowledge ingestion jobs", () => {
   it("notifies the user when notifyOnCompletion is set and the job fails", async () => {
     const job = await createKnowledgeIngestJob(
       {
-        kind: "rag-existing",
+        kind: "text-import-file",
         tenantId: TEST_ORGANISATION_1.id,
         userId: TEST_ORG1_USER_1.id,
         notifyOnCompletion: true,
-        params: {
-          sourceType: "text",
-          sourceId: "00000000-0000-0000-0000-000000000000",
+        storage: {
+          storageType: "db",
+          bucket: KNOWLEDGE_INGEST_BUCKET,
+          fileId: "00000000-0000-0000-0000-000000000000",
+          fileName: "missing.md",
         },
+        deleteAfter: true,
+        options: {},
       },
       TEST_ORGANISATION_1.id,
       TEST_ORG1_USER_1.id

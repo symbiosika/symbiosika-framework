@@ -9,7 +9,6 @@ export {
   getNearestEmbeddings,
   getFullSourceDocumentsForSimilaritySearch,
 } from "../lib/knowledge/similarity-search";
-export { createKnowledgeGroup } from "../lib/knowledge/knowledge-groups";
 export {
   resolveKnowledgeTextPath,
   resolveKnowledgeTextPaths,

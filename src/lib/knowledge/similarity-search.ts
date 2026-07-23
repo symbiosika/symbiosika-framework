@@ -100,7 +100,6 @@ export async function getNearestEmbeddings(q: {
   addBeforeN?: number;
   addAfterN?: number;
   filterKnowledgeEntryIds?: string[];
-  filterKnowledgeGroupIds?: string[];
   filterName?: string[];
   workspaceId?: string;
 }): Promise<
@@ -140,12 +139,6 @@ export async function getNearestEmbeddings(q: {
   const filters = [];
   if (q.filterKnowledgeEntryIds && q.filterKnowledgeEntryIds.length > 0) {
     filters.push(inArray(knowledgeEntry.id, q.filterKnowledgeEntryIds));
-  }
-
-  if (q.filterKnowledgeGroupIds && q.filterKnowledgeGroupIds.length > 0) {
-    filters.push(
-      inArray(knowledgeEntry.knowledgeGroupId, q.filterKnowledgeGroupIds)
-    );
   }
 
   if (q.filterName && q.filterName.length > 0) {
@@ -308,7 +301,6 @@ export async function getFullSourceDocumentsForSimilaritySearch(q: {
   searchText: string;
   n?: number;
   filterKnowledgeEntryIds?: string[];
-  filterKnowledgeGroupIds?: string[];
   filterName?: string[];
   userId: string;
 }) {

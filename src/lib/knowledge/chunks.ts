@@ -8,12 +8,7 @@ import {
   inArray,
 } from "drizzle-orm";
 import { getDb } from "../db/db-connection";
-import {
-  knowledgeChunks,
-  knowledgeEntry,
-  knowledgeGroup,
-  knowledgeGroupTeamAssignments,
-} from "../db/schema/knowledge";
+import { knowledgeChunks, knowledgeEntry } from "../db/schema/knowledge";
 import { getUserTeamIds } from "./permissions";
 
 /**
@@ -54,33 +49,6 @@ export const getKnowledgeChunkById = async (
               or(
                 isNull(knowledgeEntry.teamId),
                 inArray(knowledgeEntry.teamId, userTeams)
-              ),
-              // Knowledge group access - group has org-wide access
-              exists(
-                getDb()
-                  .select()
-                  .from(knowledgeGroup)
-                  .where(
-                    and(
-                      eq(knowledgeGroup.id, knowledgeEntry.knowledgeGroupId),
-                      eq(knowledgeGroup.tenantWideAccess, true)
-                    )
-                  )
-              ),
-              // Knowledge group access - user's team is assigned to the group
-              exists(
-                getDb()
-                  .select()
-                  .from(knowledgeGroupTeamAssignments)
-                  .where(
-                    and(
-                      eq(
-                        knowledgeGroupTeamAssignments.knowledgeGroupId,
-                        knowledgeEntry.knowledgeGroupId
-                      ),
-                      inArray(knowledgeGroupTeamAssignments.teamId, userTeams)
-                    )
-                  )
               )
             )
           )
