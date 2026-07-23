@@ -23,6 +23,11 @@ const jobHandlers: Record<string, JobHandler> = {};
 let jobQueueRunning = false;
 // Handle of the background polling interval, so it can be stopped again.
 let jobQueueInterval: ReturnType<typeof setInterval> | null = null;
+// Whether a poll cycle is currently draining the queue. `setInterval` does not
+// wait for its async callback to resolve, so without this guard a cycle that
+// runs longer than CHECK_CYCLE_MS (e.g. a mass import with PDF parsing +
+// embeddings) would overlap with the next tick and process jobs concurrently.
+let cycleInFlight = false;
 
 /**
  * Returns true once startJobQueue() has been called.
@@ -80,8 +85,38 @@ async function notifyUserOnJobFinish(
   }
 }
 
-async function processJob(job: Job) {
+/**
+ * Execute a single job. Atomically claims it first (pending -> running) so that
+ * two callers holding the same job row — e.g. two overlapping worker cycles, or
+ * two server instances — never both run the handler. Exported so tests can
+ * drive the claim deterministically (PGlite serialises connections, so the
+ * race has to be reproduced by calling this directly rather than via two
+ * concurrent {@link processDueJobsOnce} drains).
+ */
+export async function processJob(job: Job) {
   await log.debug(`Executing job: ${job.id} from type ${job.type}`);
+
+  // Atomically claim the job before doing any work: flip pending -> running
+  // only while it is *still* pending. Postgres serialises the concurrent
+  // UPDATEs, so exactly one caller gets a row back here; every other caller
+  // matches zero rows and bails out below. Without this claim, two overlapping
+  // worker cycles (or two server instances) both SELECT the same pending job
+  // and run it twice — which e.g. deletes a temporary upload file out from
+  // under the first run, so the losing run fails with "File not found" (see the
+  // knowledge-ingest jobs' `deleteAfter`). The plain `select` in
+  // processDueJobsOnce is intentionally left unlocked; this UPDATE is the
+  // single point that guarantees at-most-once execution.
+  const claimed = await getDb()
+    .update(jobs)
+    .set({ status: "running" })
+    .where(and(eq(jobs.id, job.id), eq(jobs.status, "pending")))
+    .returning();
+  if (claimed.length === 0) {
+    await log.debug(
+      `Job ${job.id} was already claimed by another worker cycle; skipping`
+    );
+    return;
+  }
 
   const executor = jobHandlers[job.type];
   if (!executor) {
@@ -101,12 +136,6 @@ async function processJob(job: Job) {
     }
     throw new Error(`No executor found for job type: ${job.type}`);
   }
-
-  // update the job status to running
-  await getDb()
-    .update(jobs)
-    .set({ status: "running" })
-    .where(eq(jobs.id, job.id));
 
   try {
     const result = await executor.execute(job.metadata, job);
@@ -173,6 +202,15 @@ export async function startJobQueue() {
   jobQueueRunning = true;
   jobQueueInterval = setInterval(async () => {
     // log.debug("Checking for pending jobs");
+    // Skip this tick while the previous cycle is still draining the queue, so
+    // two cycles never run concurrently within one process (see cycleInFlight).
+    // Per-job at-most-once execution is still guaranteed by the atomic claim in
+    // processJob; this guard just avoids pointless overlapping work and keeps a
+    // single instance's ordering intact.
+    if (cycleInFlight) {
+      return;
+    }
+    cycleInFlight = true;
     // A single failing job (e.g. one with no registered handler) must never
     // reject the interval callback: an unhandled rejection from this
     // background timer would otherwise surface as a failure in whatever
@@ -181,6 +219,8 @@ export async function startJobQueue() {
       await processDueJobsOnce();
     } catch (error) {
       log.error(`Job queue cycle failed: ${(error as Error).message}`);
+    } finally {
+      cycleInFlight = false;
     }
   }, CHECK_CYCLE_MS);
 }
@@ -197,6 +237,7 @@ export function stopJobQueue() {
     jobQueueInterval = null;
   }
   jobQueueRunning = false;
+  cycleInFlight = false;
 }
 
 export async function getJob(id: string) {
