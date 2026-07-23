@@ -10,7 +10,11 @@ import { smtpService } from "../email";
 import { generateUserSessionJwt } from ".";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { postRegisterActions } from "./actions";
-import { checkIfInvitationCodeIsNeededToRegister, getPendingInvitationsForEmail } from "../usermanagement/invitations";
+import {
+  checkIfInvitationCodeIsNeededToRegister,
+  getPendingInvitationsForEmail,
+  acceptAllPendingInvitationsForTenantMember,
+} from "../usermanagement/invitations";
 import { checkGeneralInvitationCode } from "./index";
 
 const EXPIRE_TIME = 15 * 60 * 1000; // 15 minutes
@@ -55,25 +59,27 @@ export const createMagicLinkToken = async (
 
   // If creating a new user, check invitation code requirements
   if (isNewUser && createUserIfMissing) {
+    // A pending tenant invitation for this email is, on its own, sufficient
+    // authorisation to register – it stands in for a general invitation code.
+    // The list is needed both for the code-requirement bypass below and to
+    // auto-accept the memberships once the account exists.
+    const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);
+
     // Check if invitation codes are required
     const invitationCodeNeeded = await checkIfInvitationCodeIsNeededToRegister();
-    
-    if (invitationCodeNeeded) {
-      // Check if user has pending invitations
-      const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);
-      
-      // If no pending invitations, require invitation code
-      if (invitedInTenantIds.length < 1) {
-        if (!invitationCode) {
-          throw new Error("Invitation code needed");
-        }
-        
-        // Validate the invitation code
-        try {
-          await checkGeneralInvitationCode(invitationCode);
-        } catch (error) {
-          throw new Error("Invitation code not found");
-        }
+
+    // Only demand a general invitation code when one is required AND the user
+    // has no pending invitation to fall back on.
+    if (invitationCodeNeeded && invitedInTenantIds.length < 1) {
+      if (!invitationCode) {
+        throw new Error("Invitation code needed");
+      }
+
+      // Validate the invitation code
+      try {
+        await checkGeneralInvitationCode(invitationCode);
+      } catch (error) {
+        throw new Error("Invitation code not found");
       }
     }
 
@@ -107,6 +113,20 @@ export const createMagicLinkToken = async (
       throw new Error("Failed to create user");
     }
     userResult = newUser;
+
+    // Auto-accept every pending tenant invitation for this email. This mirrors
+    // `LocalAuth.register` and is what makes the passwordless (magic-link)
+    // sign-up land an invitee straight in the organisation they were invited
+    // to. Without it the invitation stays "pending" and the freshly created
+    // user has no tenant membership (they'd end up in an empty default tenant).
+    if (invitedInTenantIds.length > 0) {
+      for (const tenantId of invitedInTenantIds) {
+        await acceptAllPendingInvitationsForTenantMember(
+          newUser[0].id,
+          tenantId
+        );
+      }
+    }
 
     // Execute post-register actions for newly created user. The register meta
     // (invitation code + custom data) is forwarded so custom hooks can react

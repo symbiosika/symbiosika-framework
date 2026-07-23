@@ -554,6 +554,13 @@ export type KnowledgeChunkMeta = {
   sourceUri?: string;
   textLength?: number;
   page?: number;
+  /**
+   * Id of the knowledge_text_block this chunk starts in (wiki pages in block
+   * mode only). Written by the block-provenance mapper during the embedding
+   * sync so search/RAG hits can deep-link to the exact block in the rendered
+   * document. Absent for non-block sources (PDF/URL/file imports).
+   */
+  blockId?: string;
 };
 
 export const knowledgeChunks = pgBaseTable(

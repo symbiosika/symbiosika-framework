@@ -453,6 +453,25 @@ export const teamMemberRoleEnum = pgEnum("team_member_role", [
   "member",
 ]);
 
+/**
+ * A member's access level to knowledge (knowledgeText pages and everything
+ * attached to them — blocks, history, files, links) inside a scope (team or
+ * tenant):
+ * - "write": full read/write access (the default)
+ * - "read":  read-only; the member can see the knowledge but not create,
+ *            change, move or delete it
+ *
+ * See checkKnowledgeTextWritePermission in lib/knowledge/knowledge-texts.ts.
+ */
+export const knowledgeAccessLevelEnum = pgEnum("knowledge_access_level", [
+  "read",
+  "write",
+]);
+
+/** Access level of a user to knowledge inside a scope ("read" | "write"). */
+export type KnowledgeAccessLevel =
+  (typeof knowledgeAccessLevelEnum.enumValues)[number];
+
 export const teamMembers = pgBaseTable(
   "team_members",
   {
@@ -463,6 +482,11 @@ export const teamMembers = pgBaseTable(
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
     role: teamMemberRoleEnum("role").notNull().default("member"),
+    // Read/write vs. read-only access to this team's knowledge. Defaults to
+    // full write access so existing behaviour is unchanged.
+    knowledgeAccess: knowledgeAccessLevelEnum("knowledge_access")
+      .notNull()
+      .default("write"),
     joinedAt: timestamp("joined_at", { mode: "string" }).notNull().defaultNow(),
   },
   (teamMembers) => [
@@ -641,6 +665,11 @@ export const tenantMembers = pgBaseTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     role: tenantMemberRoleEnum("role").notNull().default("member"),
+    // Read/write vs. read-only access to the tenant-wide knowledge. Defaults
+    // to full write access so existing behaviour is unchanged.
+    knowledgeAccess: knowledgeAccessLevelEnum("knowledge_access")
+      .notNull()
+      .default("write"),
     joinedAt: timestamp("joined_at", { mode: "string" }).notNull().defaultNow(),
   },
   (tenantMembers) => [

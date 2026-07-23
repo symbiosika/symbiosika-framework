@@ -15,6 +15,7 @@ import { getDb } from "../db/db-connection";
 import log from "../log";
 import type { FileSourceType } from "../storage";
 import { splitDocumentIntoChunks } from "./chunking";
+import { assignBlockProvenance, type BlockSpan } from "./block-provenance";
 import type { ChunkWithEmbedding } from "../types/chunks";
 import {
   knowledgeChunks,
@@ -85,6 +86,14 @@ export const extractKnowledgeFromText = async (data: {
   generateSummary?: boolean;
   summaryCustomPrompt?: string;
   summaryModel?: string;
+  /**
+   * Character spans of the source content blocks inside `text`, in order.
+   * When given, each chunk is tagged with the id of the block it starts in
+   * (`chunk.meta.blockId`) so retrieval hits can deep-link back to the exact
+   * block. Only meaningful for block-mode wiki pages; ignored for `pages`
+   * (PDF) input, which has its own page provenance.
+   */
+  blockSpans?: BlockSpan[];
 }) => {
   const title = data.title;
 
@@ -96,6 +105,13 @@ export const extractKnowledgeFromText = async (data: {
 
   // Split the content into chunks - now handles both text and pages
   const chunks = splitDocumentIntoChunks(data.pages || fullText);
+
+  // Tag chunks with their source block (wiki block-mode pages). Text-based
+  // only: `pages` input carries page provenance instead. No effect on chunk
+  // boundaries or text — purely additive metadata.
+  if (!data.pages && data.blockSpans && data.blockSpans.length > 0) {
+    assignBlockProvenance(chunks, fullText, data.blockSpans);
+  }
 
   // Generate embeddings for all chunks
   const allEmbeddings: ChunkWithEmbedding[] = await Promise.all(

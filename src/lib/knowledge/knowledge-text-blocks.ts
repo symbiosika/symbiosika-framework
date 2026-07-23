@@ -15,8 +15,6 @@
  */
 
 import { asc, eq, and, desc, inArray, sql } from "drizzle-orm";
-import TurndownService from "turndown";
-import { gfm } from "turndown-plugin-gfm";
 import { getDb } from "../db/db-connection";
 import {
   knowledgeText,
@@ -68,34 +66,17 @@ type Context = {
   source?: WebhookEventSource;
 };
 
-let turndown: TurndownService | null = null;
-const getTurndown = (): TurndownService => {
-  if (!turndown) {
-    turndown = new TurndownService({
-      headingStyle: "atx",
-      codeBlockStyle: "fenced",
-    });
-    turndown.use(gfm);
-  }
-  return turndown;
-};
-
-/**
- * Assemble the page's materialized `text` from its blocks. HTML blocks are
- * converted to markdown so the cache stays homogeneous for search/embedding.
- */
-export const materializeBlocksText = (
-  blocks: Pick<KnowledgeTextBlockInput, "type" | "content">[]
-): string => {
-  return blocks
-    .map((block) =>
-      block.type === "html"
-        ? getTurndown().turndown(block.content).trim()
-        : block.content.trim()
-    )
-    .filter((part) => part.length > 0)
-    .join("\n\n");
-};
+// Materialization of the `text` cache lives in a pure, DB-free module so it
+// can be unit-tested and reused by the embedding sync (which also needs the
+// per-block character spans). Imported for local use (syncKnowledgeTextBlocks
+// re-materializes the cache) and re-exported to keep the historical import
+// site (`materializeBlocksText` from this module) working.
+import { materializeBlocksText } from "./materialize-blocks";
+export {
+  materializeBlocksText,
+  materializeBlocksTextWithSpans,
+  type MaterializedBlockSpan,
+} from "./materialize-blocks";
 
 const toSnapshot = (
   block: KnowledgeTextBlockSelect

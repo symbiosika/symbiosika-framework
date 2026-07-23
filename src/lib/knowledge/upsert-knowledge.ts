@@ -41,6 +41,7 @@ import type { ChunkWithEmbedding } from "../types/chunks";
 import type { PageContent } from "./parsing/pdf/types";
 import type { FileSourceType } from "../storage";
 import { splitDocumentIntoChunks } from "./chunking";
+import { assignBlockProvenance, type BlockSpan } from "./block-provenance";
 import { generateEmbedding } from "./embedding";
 import { extractKnowledgeFromText } from "./add-knowledge";
 import { computeSourceHash, isSourceUnchanged } from "./source-hash";
@@ -98,9 +99,16 @@ export const findKnowledgeEntryBySourceIdentifier = async (
 const generateChunksAndEmbeddings = async (
   text: string,
   pages: PageContent[] | undefined,
-  context: { tenantId: string; userId?: string }
+  context: { tenantId: string; userId?: string },
+  blockSpans?: BlockSpan[]
 ): Promise<ChunkWithEmbedding[]> => {
   const chunks = splitDocumentIntoChunks(pages || text);
+
+  // Tag chunks with their source block (wiki block-mode pages) before
+  // embedding. Text-based only; no effect on chunk boundaries or text.
+  if (!pages && blockSpans && blockSpans.length > 0) {
+    assignBlockProvenance(chunks, text, blockSpans);
+  }
 
   return await Promise.all(
     chunks.map(async (chunk) => {
@@ -168,6 +176,13 @@ export type UpsertKnowledgeFromTextInput = {
    * configs in the same tenant cannot collide on the same URL.
    */
   matchScope?: MatchScope;
+  /**
+   * Character spans of the source content blocks inside `text`, in order.
+   * When given, each chunk is tagged with the id of the block it starts in
+   * (`chunk.meta.blockId`) so retrieval hits can deep-link back to the exact
+   * block. Flows to both the insert and the replace path. Text-based only.
+   */
+  blockSpans?: BlockSpan[];
 };
 
 export type UpsertKnowledgeFromTextResult = {
@@ -261,7 +276,8 @@ export const upsertKnowledgeFromText = async (
   const allEmbeddings = await generateChunksAndEmbeddings(
     fullText,
     data.pages,
-    { tenantId: data.tenantId, userId: data.userId }
+    { tenantId: data.tenantId, userId: data.userId },
+    data.blockSpans
   );
 
   const db = getDb();

@@ -17,6 +17,7 @@ import {
   addTeamMember,
   removeTeamMember,
   updateTeamMemberRole,
+  updateTeamMemberKnowledgeAccess,
   checkTeamMemberRole,
   getTeamsByUser,
   getTeamMembers,
@@ -307,6 +308,10 @@ export default function defineTeamRoutes(
                     userId: v.string(),
                     userEmail: v.string(),
                     role: v.union([v.literal("admin"), v.literal("member")]),
+                    knowledgeAccess: v.union([
+                      v.literal("read"),
+                      v.literal("write"),
+                    ]),
                   })
                 )
               ),
@@ -358,6 +363,10 @@ export default function defineTeamRoutes(
                   userId: v.string(),
                   teamId: v.string(),
                   role: v.union([v.literal("admin"), v.literal("member")]),
+                  knowledgeAccess: v.union([
+                    v.literal("read"),
+                    v.literal("write"),
+                  ]),
                   joinedAt: v.string(),
                 })
               ),
@@ -372,6 +381,10 @@ export default function defineTeamRoutes(
       v.object({
         userId: v.string(),
         role: v.union([v.literal("admin"), v.literal("member")]),
+        // read/write access to this team's knowledge; defaults to "write"
+        knowledgeAccess: v.optional(
+          v.union([v.literal("read"), v.literal("write")])
+        ),
       })
     ),
     validator(
@@ -381,13 +394,14 @@ export default function defineTeamRoutes(
     isTeamAdmin, // check if user is an admin of the team
     async (c) => {
       try {
-        const { userId, role } = await c.req.valid("json");
+        const { userId, role, knowledgeAccess } = await c.req.valid("json");
         const { tenantId, teamId } = c.req.valid("param");
         const member = await addTeamMember(
           teamId,
           tenantId,
           userId,
-          role
+          role,
+          knowledgeAccess
         );
         return c.json(member);
       } catch (err) {
@@ -408,7 +422,8 @@ export default function defineTeamRoutes(
     checkUserPermission,
     describeRoute({
       tags: ["teams"],
-      summary: "Change the role of a member",
+      summary:
+        "Change the role and/or knowledge access level of a team member",
       responses: {
         200: {
           description: "Successful response",
@@ -419,6 +434,10 @@ export default function defineTeamRoutes(
                   userId: v.string(),
                   teamId: v.string(),
                   role: v.union([v.literal("admin"), v.literal("member")]),
+                  knowledgeAccess: v.union([
+                    v.literal("read"),
+                    v.literal("write"),
+                  ]),
                   joinedAt: v.string(),
                 })
               ),
@@ -431,7 +450,11 @@ export default function defineTeamRoutes(
     validator(
       "json",
       v.object({
-        role: v.union([v.literal("admin"), v.literal("member")]),
+        role: v.optional(v.union([v.literal("admin"), v.literal("member")])),
+        // read/write access to this team's knowledge ("read" | "write")
+        knowledgeAccess: v.optional(
+          v.union([v.literal("read"), v.literal("write")])
+        ),
       })
     ),
     validator(
@@ -445,20 +468,36 @@ export default function defineTeamRoutes(
     isTeamAdmin, // check if user is an admin of the team
     async (c) => {
       try {
-        const userId = c.get("usersId");
-        const { role } = c.req.valid("json");
+        const { role, knowledgeAccess } = c.req.valid("json");
         const { tenantId, teamId, destinationUserId } =
           c.req.valid("param");
 
-        const member = await updateTeamMemberRole(
-          teamId,
-          destinationUserId,
-          role
-        );
+        if (role === undefined && knowledgeAccess === undefined) {
+          throw new HTTPException(400, {
+            message: "Provide 'role' and/or 'knowledgeAccess' to update",
+          });
+        }
+
+        let member;
+        if (role !== undefined) {
+          member = await updateTeamMemberRole(
+            teamId,
+            destinationUserId,
+            role
+          );
+        }
+        if (knowledgeAccess !== undefined) {
+          member = await updateTeamMemberKnowledgeAccess(
+            teamId,
+            destinationUserId,
+            knowledgeAccess
+          );
+        }
         return c.json(member);
       } catch (err) {
+        if (err instanceof HTTPException) throw err;
         throw new HTTPException(500, {
-          message: "Error updating team member role: " + err,
+          message: "Error updating team member: " + err,
         });
       }
     }

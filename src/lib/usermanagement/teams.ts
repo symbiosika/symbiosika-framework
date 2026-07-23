@@ -13,6 +13,7 @@ import {
   type TeamsInsert,
   users,
   type TeamMembersSelect,
+  type KnowledgeAccessLevel,
 } from "../db/schema/users";
 import { getUserTenants } from "./tenants";
 
@@ -95,7 +96,13 @@ export const getTeamMembers = async (
   orgId: string,
   teamId: string
 ): Promise<
-  { teamId: string; userId: string; userEmail: string; role: string }[]
+  {
+    teamId: string;
+    userId: string;
+    userEmail: string;
+    role: string;
+    knowledgeAccess: KnowledgeAccessLevel;
+  }[]
 > => {
   return await getDb()
     .select({
@@ -103,6 +110,7 @@ export const getTeamMembers = async (
       userId: teamMembers.userId,
       userEmail: users.email,
       role: teamMembers.role,
+      knowledgeAccess: teamMembers.knowledgeAccess,
     })
     .from(teamMembers)
     .innerJoin(users, eq(teamMembers.userId, users.id))
@@ -145,7 +153,8 @@ export const addTeamMember = async (
   teamId: string,
   tenantId: string,
   userId: string,
-  role?: "admin" | "member"
+  role?: "admin" | "member",
+  knowledgeAccess?: KnowledgeAccessLevel
 ): Promise<TeamMembersSelect> => {
   // check if the user is part of the tenant
   const tenants = await getUserTenants(userId);
@@ -160,6 +169,7 @@ export const addTeamMember = async (
       teamId,
       userId,
       role,
+      knowledgeAccess,
     })
     .returning();
   if (!result[0]) {
@@ -229,6 +239,59 @@ export const checkTeamMemberRole = async (
   } else {
     throw new Error("User has not the required role");
   }
+};
+
+/**
+ * Get a user's knowledge access level in a team, or null if the user is not
+ * a member of the team.
+ */
+export const getTeamMemberKnowledgeAccess = async (
+  teamId: string,
+  userId: string
+): Promise<KnowledgeAccessLevel | null> => {
+  const member = await getDb()
+    .select({ knowledgeAccess: teamMembers.knowledgeAccess })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
+  return member[0]?.knowledgeAccess ?? null;
+};
+
+/**
+ * Ensure a user may WRITE the knowledge of a team: they must be a member and
+ * their knowledge access level must be "write". Throws otherwise.
+ */
+export const checkTeamKnowledgeWriteAccess = async (
+  teamId: string,
+  userId: string
+): Promise<void> => {
+  const access = await getTeamMemberKnowledgeAccess(teamId, userId);
+  if (access !== "write") {
+    throw new Error("User has no write access to this team's knowledge");
+  }
+};
+
+/**
+ * Update the knowledge access level ("read" | "write") of a team member.
+ */
+export const updateTeamMemberKnowledgeAccess = async (
+  teamId: string,
+  destinationUserId: string,
+  knowledgeAccess: KnowledgeAccessLevel
+): Promise<TeamMembersSelect> => {
+  const result = await getDb()
+    .update(teamMembers)
+    .set({ knowledgeAccess })
+    .where(
+      and(
+        eq(teamMembers.teamId, teamId),
+        eq(teamMembers.userId, destinationUserId)
+      )
+    )
+    .returning();
+  if (!result[0]) {
+    throw new Error("Failed to update team member knowledge access");
+  }
+  return result[0];
 };
 
 /**

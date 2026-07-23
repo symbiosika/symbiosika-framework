@@ -361,7 +361,12 @@ Defined in `users.ts`.
 | userId | user_id | uuid |
 | teamId | team_id | uuid |
 | role | role | teamMemberRoleEnum |
+| knowledgeAccess | knowledge_access | knowledgeAccessLevelEnum (default `write`) |
 | joinedAt | joined_at | timestamp |
+
+`knowledgeAccess` controls whether the member may write (create/update/move/
+delete) this team's knowledge texts and everything attached to them, or only
+read them. Defaults to `write`.
 
 ## tenant_invitations
 Defined in `users.ts`.
@@ -384,7 +389,12 @@ Defined in `users.ts`.
 | userId | user_id | uuid |
 | tenantId | tenant_id | uuid |
 | role | role | tenantMemberRoleEnum |
+| knowledgeAccess | knowledge_access | knowledgeAccessLevelEnum (default `write`) |
 | joinedAt | joined_at | timestamp |
+
+`knowledgeAccess` controls whether the member may write (create/update/move/
+delete) the tenant-wide knowledge texts and everything attached to them, or
+only read them. Defaults to `write`.
 
 ## invitation_codes
 Defined in `users.ts`.
