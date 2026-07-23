@@ -87,6 +87,12 @@ export type KnowledgeTextSearchResult = {
   chunkOrder: number | null;
   /** source page number (e.g. the PDF page the chunk came from), when known */
   sourcePage: number | null;
+  /**
+   * Id of the content block the matched chunk starts in (block-mode wiki
+   * pages only), so the UI can deep-link straight to the block. Null for
+   * fulltext-only hits and chunks without block provenance.
+   */
+  blockId: string | null;
 };
 
 const RRF_K = 60;
@@ -105,6 +111,7 @@ type RankedHit = {
   // only set by the semantic leg:
   chunkOrder?: number;
   sourcePage?: number | null;
+  blockId?: string | null;
 };
 
 /** Combine extra (facet/scope) conditions into a single SQL fragment. */
@@ -202,6 +209,7 @@ const semanticSearch = async (
       ${knowledgeChunks.text} AS "snippet",
       ${knowledgeChunks.order} AS "chunkOrder",
       (${knowledgeChunks.meta} ->> 'page')::int AS "sourcePage",
+      (${knowledgeChunks.meta} ->> 'blockId') AS "blockId",
       ${embeddingColumn} <=> ${queryVector} AS "distance"
     FROM ${knowledgeChunks}
     JOIN ${knowledgeText}
@@ -335,6 +343,7 @@ export const searchKnowledgeTexts = async (
     matchedBy: ("fulltext" | "semantic")[];
     chunkOrder?: number;
     sourcePage?: number | null;
+    blockId?: string | null;
   };
   const fused = new Map<string, Fused>();
   const addLeg = (hits: RankedHit[], leg: "fulltext" | "semantic") => {
@@ -349,6 +358,7 @@ export const searchKnowledgeTexts = async (
         if (hit.chunkOrder != null) {
           existing.chunkOrder = hit.chunkOrder;
           existing.sourcePage = hit.sourcePage ?? null;
+          existing.blockId = hit.blockId ?? null;
         }
       } else {
         fused.set(hit.id, {
@@ -359,6 +369,7 @@ export const searchKnowledgeTexts = async (
           matchedBy: [leg],
           chunkOrder: hit.chunkOrder,
           sourcePage: hit.sourcePage ?? null,
+          blockId: hit.blockId ?? null,
         });
       }
     });
@@ -403,6 +414,7 @@ export const searchKnowledgeTexts = async (
       supersedesId: m?.supersedesId ?? null,
       chunkOrder: f.chunkOrder ?? null,
       sourcePage: f.sourcePage ?? null,
+      blockId: f.blockId ?? null,
     };
   });
 

@@ -27,6 +27,8 @@ export type PageChunkContextItem = {
   text: string;
   /** source page number (PDF), when known */
   sourcePage: number | null;
+  /** id of the content block this chunk starts in (block-mode pages), if known */
+  blockId: string | null;
   /** true for the chunk addressed by `order` (the hit), false for neighbours */
   matched: boolean;
 };
@@ -109,6 +111,7 @@ export const getPageChunkContext = async (
       header: r.header,
       text: r.text,
       sourcePage: r.meta?.page ?? null,
+      blockId: r.meta?.blockId ?? null,
       matched: r.order === center,
     })),
   };

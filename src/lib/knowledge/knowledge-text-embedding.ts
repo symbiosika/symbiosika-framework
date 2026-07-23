@@ -13,15 +13,18 @@
  */
 
 import { createHash } from "node:crypto";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { getDb } from "../db/db-connection";
 import {
   knowledgeText,
+  knowledgeTextBlock,
   knowledgeEntry,
   type KnowledgeTextSelect,
   type KnowledgeTextMeta,
 } from "../db/schema/knowledge";
 import { upsertKnowledgeFromText } from "./upsert-knowledge";
+import { materializeBlocksTextWithSpans } from "./materialize-blocks";
+import type { BlockSpan } from "./block-provenance";
 import log from "../log";
 
 /** Stable upsert key linking a wiki page to its knowledge entry */
@@ -30,6 +33,34 @@ export const knowledgeTextSourceIdentifier = (knowledgeTextId: string) =>
 
 const contentHash = (title: string, text: string) =>
   createHash("sha256").update(`${title}\n${text}`).digest("hex");
+
+/**
+ * Character spans of a block-mode page's blocks within its materialized
+ * `text`, used to tag chunks with their source block. Returns `undefined`
+ * for text-mode pages, pages without blocks, or when the freshly materialized
+ * text does not match the stored cache (so provenance is never mis-mapped).
+ */
+const resolveBlockSpans = async (
+  page: KnowledgeTextSelect
+): Promise<BlockSpan[] | undefined> => {
+  if (page.contentMode !== "blocks") return undefined;
+
+  const blocks = await getDb()
+    .select({
+      id: knowledgeTextBlock.id,
+      type: knowledgeTextBlock.type,
+      content: knowledgeTextBlock.content,
+    })
+    .from(knowledgeTextBlock)
+    .where(eq(knowledgeTextBlock.knowledgeTextId, page.id))
+    .orderBy(asc(knowledgeTextBlock.position));
+
+  if (blocks.length === 0) return undefined;
+
+  const { text, spans } = materializeBlocksTextWithSpans(blocks);
+  if (spans.length === 0 || text !== page.text) return undefined;
+  return spans;
+};
 
 export type KnowledgeTextEmbeddingSyncResult = {
   /** true if an embedding upsert was performed */
@@ -124,6 +155,13 @@ export const syncKnowledgeTextEmbedding = async (
     };
   }
 
+  // Block provenance: for block-mode pages, map each chunk back to the block
+  // it starts in so retrieval hits can deep-link to the exact spot. The spans
+  // are only trustworthy when they describe the SAME text that gets chunked
+  // (`page.text`); the materialized text is compared defensively, so a legacy
+  // page whose cache drifted simply skips provenance instead of mis-mapping.
+  const blockSpans = await resolveBlockSpans(page);
+
   const result = await upsertKnowledgeFromText({
     tenantId: page.tenantId,
     sourceIdentifier: knowledgeTextSourceIdentifier(page.id),
@@ -133,6 +171,7 @@ export const syncKnowledgeTextEmbedding = async (
     sourceId: page.id,
     userId: page.userId ?? undefined,
     teamId: page.teamId ?? undefined,
+    blockSpans,
   });
 
   await getDb()
