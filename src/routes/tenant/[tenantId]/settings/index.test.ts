@@ -123,7 +123,7 @@ describe("Tenant Settings Routes", () => {
       headers: { Cookie: `jwt=${memberJwt}` },
     });
     expect(res.status).toBe(200);
-    const rows: any[] = await res.json();
+    const rows = (await res.json()) as any[];
     const keys = rows.map((r) => r.key);
     expect(keys).toContain(TEST_KEY);
     expect(keys).toContain(OTHER_KEY);
