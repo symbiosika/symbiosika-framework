@@ -16,7 +16,7 @@
     "drizzle-kit": "^0.31.5",
     "prettier": "^3.3.3",
     "ts-morph": "^22.0.0",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "@hono/standard-validator": "^0.1.5",
