@@ -6,13 +6,14 @@ import {
   TEST_ORG3_USER_1,
 } from "../../test/init.test";
 import { getDb } from "../db/db-connection";
-import { tenantInvitations, tenantMembers } from "../db/schema/users";
+import { tenantInvitations, tenantMembers, users } from "../db/schema/users";
 import {
   createInvitationToken,
   verifyInvitationToken,
   createTenantInvitation,
   acceptInvitationByToken,
 } from "./invitations";
+import { createMagicLinkToken } from "../auth/magic-link";
 
 /**
  * Tests for the "one click = accepted" invitation link flow
@@ -151,5 +152,70 @@ describe("Accept invitation via emailed link", () => {
       "00000000-0000-0000-0000-000000000999"
     );
     await expect(acceptInvitationByToken(token)).rejects.toThrow();
+  });
+
+  // Regression: an invited but not-yet-registered user who signs in through the
+  // passwordless magic-link flow (createUserIfMissing=true) must end up as a
+  // confirmed member of the tenant they were invited to. Previously the
+  // magic-link path created the account but left the invitation "pending", so
+  // the invitee landed in the app without the invited membership.
+  test("magic-link sign-up of an invited new user accepts the pending invitation", async () => {
+    const email = "magic-invitee@symbiosika.com";
+
+    // Clean any leftovers from earlier runs.
+    await getDb().delete(users).where(eq(users.email, email));
+    await getDb()
+      .delete(tenantInvitations)
+      .where(eq(tenantInvitations.email, email));
+
+    const invitation = await createTenantInvitation(
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        email,
+        role: "admin",
+        status: "pending",
+      },
+      false
+    );
+
+    // No general invitation code is passed – the pending tenant invitation must
+    // be enough to both authorise the sign-up and grant the membership.
+    await createMagicLinkToken(email, "login", /* createUserIfMissing */ true);
+
+    // The account now exists …
+    const [user] = await getDb()
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email));
+    expect(user).toBeDefined();
+
+    // … the invitation is marked accepted …
+    const [inv] = await getDb()
+      .select()
+      .from(tenantInvitations)
+      .where(eq(tenantInvitations.id, invitation.id));
+    expect(inv!.status).toBe("accepted");
+
+    // … and the membership exists with the invited role.
+    const members = await getDb()
+      .select()
+      .from(tenantMembers)
+      .where(
+        and(
+          eq(tenantMembers.tenantId, TEST_ORGANISATION_1.id),
+          eq(tenantMembers.userId, user!.id)
+        )
+      );
+    expect(members.length).toBe(1);
+    expect(members[0]!.role).toBe("admin");
+
+    // Cleanup so the suite stays isolated.
+    await getDb()
+      .delete(tenantMembers)
+      .where(eq(tenantMembers.userId, user!.id));
+    await getDb().delete(users).where(eq(users.email, email));
+    await getDb()
+      .delete(tenantInvitations)
+      .where(eq(tenantInvitations.email, email));
   });
 });
