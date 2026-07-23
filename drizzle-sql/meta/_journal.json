@@ -253,6 +253,13 @@
       "when": 1784789812219,
       "tag": "0035_previous_nomad",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1784823323994,
+      "tag": "0036_tired_patriot",
+      "breakpoints": true
     }
   ]
 }

@@ -49,6 +49,7 @@ import definePermissionGroupRoutes from "./routes/tenant/[tenantId]/permission-g
 import defineInvitationRoutes from "./routes/tenant/[tenantId]/invitations";
 // import { defineCollectionRoutes } from "./routes/collections";
 import defineManageSecretsRoutes from "./routes/tenant/[tenantId]/secrets";
+import defineTenantSettingsRoutes from "./routes/tenant/[tenantId]/settings";
 
 import definePingRoute from "./routes/ping";
 import defineHealthRoute from "./routes/health";
@@ -296,6 +297,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
        * Adds tenant routes
        */
       defineTenantRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
+      defineTenantSettingsRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineTeamRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       definePermissionGroupRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
       defineInvitationRoutes(app, _GLOBAL_SERVER_CONFIG.basePath);
