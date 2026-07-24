@@ -136,7 +136,7 @@ describe("Knowledge Text Edit (string replacement)", () => {
     expect(blocks[1]?.content).toBe("Body with a correction inside.");
   });
 
-  it("rejects an oldString that spans block boundaries", async () => {
+  it("rejects a non-empty replacement that spans block boundaries", async () => {
     const page = await createPage("");
     await syncKnowledgeTextBlocks(
       page.id,
@@ -155,6 +155,128 @@ describe("Knowledge Text Edit (string replacement)", () => {
         ctx
       )
     ).rejects.toThrow("spans multiple blocks");
+  });
+
+  it("drops a block that an edit empties instead of leaving a placeholder", async () => {
+    const page = await createPage("");
+    const saved = await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "markdown", content: "Keep me" },
+        { type: "markdown", content: "Remove me entirely" },
+        { type: "markdown", content: "Keep me too" },
+      ],
+      ctx
+    );
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: "Remove me entirely", newString: "" },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks.map((b) => b.content)).toEqual(["Keep me", "Keep me too"]);
+    // surviving blocks kept their ids
+    expect(blocks[0]?.id).toBe(saved.blocks[0]!.id);
+    expect(blocks[1]?.id).toBe(saved.blocks[2]!.id);
+    // no empty placeholder left behind in the materialized text
+    expect(result.content).toBe("Keep me\n\nKeep me too");
+  });
+
+  it("removes multiple whole blocks at once when the deletion spans them", async () => {
+    const page = await createPage("");
+    const saved = await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "markdown", content: "Intro paragraph" },
+        { type: "markdown", content: "Section to drop A" },
+        { type: "markdown", content: "Section to drop B" },
+        { type: "markdown", content: "Closing paragraph" },
+      ],
+      ctx
+    );
+
+    // oldString is copied verbatim from read_page_content: the two middle
+    // blocks joined by the block separator, plus the leading separator.
+    const result = await editKnowledgeTextContent(
+      page.id,
+      {
+        oldString: "\n\nSection to drop A\n\nSection to drop B",
+        newString: "",
+      },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks.map((b) => b.content)).toEqual([
+      "Intro paragraph",
+      "Closing paragraph",
+    ]);
+    expect(blocks[0]?.id).toBe(saved.blocks[0]!.id);
+    expect(blocks[1]?.id).toBe(saved.blocks[3]!.id);
+    expect(result.content).toBe("Intro paragraph\n\nClosing paragraph");
+  });
+
+  it("trims boundary blocks partially covered by a spanning deletion", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "markdown", content: "keep start remove tail" },
+        { type: "markdown", content: "remove head keep end" },
+      ],
+      ctx
+    );
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: "remove tail\n\nremove head", newString: "" },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+
+    // both boundary blocks survive (they still have content) and the
+    // materialized text is clean — the removed middle is gone
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks.length).toBe(2);
+    expect(result.content).toBe("keep start\n\nkeep end");
+  });
+
+  it("rejects a spanning deletion that is not unique without replaceAll", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "markdown", content: "alpha" },
+        { type: "markdown", content: "beta" },
+        { type: "markdown", content: "alpha" },
+        { type: "markdown", content: "beta" },
+      ],
+      ctx
+    );
+
+    // "alpha\n\nbeta" spans the 1↔2 and 3↔4 gaps: two occurrences
+    await expect(
+      editKnowledgeTextContent(
+        page.id,
+        { oldString: "alpha\n\nbeta", newString: "" },
+        ctx
+      )
+    ).rejects.toThrow("not unique");
+
+    // replaceAll removes every spanning occurrence, leaving no blocks
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: "alpha\n\nbeta", newString: "", replaceAll: true },
+      ctx
+    );
+    expect(result.replacements).toBe(2);
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks.length).toBe(0);
+    expect(result.content).toBe("");
   });
 
   it("counts occurrences across blocks for uniqueness", async () => {
