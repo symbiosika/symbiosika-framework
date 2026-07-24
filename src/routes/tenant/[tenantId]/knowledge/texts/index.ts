@@ -883,6 +883,7 @@ export default function defineRoutesForKnowledgeTexts(
             v.object({
               key: v.pipe(v.string(), v.minLength(1)),
               label: v.optional(v.string()),
+              description: v.optional(v.string()),
               values: v.optional(v.array(v.string())),
             })
           )
