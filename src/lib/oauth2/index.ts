@@ -324,12 +324,33 @@ export function defineOAuth2Routes(app: App, API_BASE_PATH: string) {
     if (requested.some((s) => !isScopeAllowed(s, client)))
       return c.json({ error: "invalid_scope" }, 400);
 
-    // Tenant.
+    // Tenant. Resolve the same way the authorize step does. A token MUST carry
+    // a tenant binding: never mint a tenant-less token for a user who has
+    // memberships, otherwise the resource server cannot map the token to an
+    // organisation (it then fails with "User is not a member of this tenant"
+    // or silently falls back to a configured default). If the organisation is
+    // still ambiguous here, send the user back through /oauth/authorize, which
+    // presents the organisation picker.
     const memberships = await tenantMembershipsOf(userId);
     const wanted = params.get("tenant_id");
     let tenantId: string | null = null;
     if (wanted && memberships.some((m) => m.id === wanted)) tenantId = wanted;
     else if (memberships.length === 1) tenantId = memberships[0]!.id;
+
+    if (!tenantId) {
+      if (memberships.length === 0) {
+        const redirect = appendParams(redirectUri, {
+          error: "access_denied",
+          state,
+        });
+        return wantsJson(c) ? c.json({ redirect }, 400) : c.redirect(redirect);
+      }
+      // Ambiguous organisation (multiple memberships, none selected): restart
+      // authorize so the tenant picker resolves it before a token is issued.
+      if (wantsJson(c))
+        return c.json({ step: "tenant", tenants: memberships });
+      return c.redirect(`/oauth/authorize?${authorizeQuery}`);
+    }
 
     await saveConsent(userId, client.clientId, requested);
 
