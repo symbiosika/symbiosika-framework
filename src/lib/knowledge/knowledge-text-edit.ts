@@ -11,7 +11,10 @@
  *
  * Edits on block pages are applied inside the affected block(s), then run
  * through the normal block sync, so text cache, history, page links and the
- * embedding mirror all stay consistent.
+ * embedding mirror all stay consistent. A replacement that empties a block
+ * drops it instead of leaving an empty placeholder block behind, and a
+ * deletion (empty `newString`) whose `oldString` spans several blocks removes
+ * the covered blocks in one go — the clean "remove multiple blocks at once".
  */
 
 import {
@@ -21,7 +24,10 @@ import {
 import {
   getKnowledgeTextBlocks,
   syncKnowledgeTextBlocks,
+  type KnowledgeTextBlockInput,
 } from "./knowledge-text-blocks";
+import { materializeBlocksTextWithSpans } from "./materialize-blocks";
+import type { KnowledgeTextBlockSelect } from "../db/schema/knowledge";
 
 type Context = {
   tenantId: string;
@@ -94,6 +100,91 @@ const replaceAllOccurrences = (
   replacement: string
 ): string => haystack.split(needle).join(replacement);
 
+/** Message used when a cross-block match can't be resolved to a clean edit. */
+const SPANS_BLOCKS_MESSAGE =
+  "oldString spans multiple blocks. Edit the blocks individually " +
+  "(PUT .../blocks) or use a shorter string within one block";
+
+type WorkingBlock = {
+  id: string;
+  type: "markdown" | "html";
+  content: string;
+  meta: Record<string, unknown>;
+};
+
+const toWorkingBlock = (block: KnowledgeTextBlockSelect): WorkingBlock => ({
+  id: block.id,
+  type: block.type,
+  content: block.content,
+  meta: (block.meta ?? {}) as Record<string, unknown>,
+});
+
+/**
+ * Delete every (or the first) occurrence of `oldString` from the materialized
+ * text of a block page, mapping the removal back onto the underlying blocks:
+ * blocks the match fully covers are emptied (and later dropped), boundary
+ * blocks keep the part outside the match. Only markdown blocks can be edited
+ * this way — an html block's stored content differs from its materialized
+ * markdown, so offsets can't be mapped back; touching one throws
+ * `SPANS_BLOCKS_MESSAGE`.
+ *
+ * Returns the surviving block inputs (emptied blocks removed) and the number
+ * of matches deleted.
+ */
+const deleteSpanningText = (
+  blocks: KnowledgeTextBlockSelect[],
+  oldString: string,
+  replaceAll: boolean
+): { inputs: KnowledgeTextBlockInput[]; replacements: number } => {
+  // Progressively edit a mutable copy so replaceAll can remove several matches,
+  // re-materializing between each removal. Nothing is persisted until the
+  // caller runs the returned inputs through syncKnowledgeTextBlocks, so a throw
+  // mid-way leaves the stored page untouched.
+  const working = blocks.map(toWorkingBlock);
+  const touched = new Set<string>();
+
+  let replacements = 0;
+  while (true) {
+    const { text, spans } = materializeBlocksTextWithSpans(working);
+    const matchStart = text.indexOf(oldString);
+    if (matchStart === -1) break;
+    const matchEnd = matchStart + oldString.length;
+
+    const byId = new Map(working.map((b) => [b.id, b]));
+    let mutated = false;
+    for (const span of spans) {
+      const overlapStart = Math.max(matchStart, span.start);
+      const overlapEnd = Math.min(matchEnd, span.end);
+      if (overlapStart >= overlapEnd) continue; // this block isn't covered
+
+      const block = byId.get(span.blockId)!;
+      if (block.type !== "markdown") throw new Error(SPANS_BLOCKS_MESSAGE);
+
+      const rendered = text.slice(span.start, span.end);
+      block.content =
+        rendered.slice(0, overlapStart - span.start) +
+        rendered.slice(overlapEnd - span.start);
+      touched.add(block.id);
+      mutated = true;
+    }
+
+    // The match sat entirely in the separators between blocks (e.g. oldString
+    // is only blank lines): nothing to remove and looping would never end.
+    if (!mutated) break;
+
+    replacements++;
+    if (!replaceAll) break;
+  }
+
+  if (replacements === 0) throw new Error(SPANS_BLOCKS_MESSAGE);
+
+  const inputs: KnowledgeTextBlockInput[] = working
+    .filter((b) => b.content.trim().length > 0 || !touched.has(b.id))
+    .map((b) => ({ id: b.id, type: b.type, content: b.content, meta: b.meta }));
+
+  return { inputs, replacements };
+};
+
 export type EditKnowledgeTextResult = {
   id: string;
   replacements: number;
@@ -107,8 +198,11 @@ export type EditKnowledgeTextResult = {
  * - `oldString` must occur in the page; with `replaceAll: false` (default)
  *   it must occur exactly once, otherwise the edit is rejected with a
  *   descriptive error (agents then send a longer, unique string)
- * - on block pages the replacement happens inside the affected blocks; an
- *   `oldString` spanning two blocks is rejected with a clear error
+ * - on block pages the replacement happens inside the affected blocks; a block
+ *   left empty by the edit is dropped rather than kept as an empty placeholder
+ * - a deletion (`newString: ""`) whose `oldString` spans several blocks removes
+ *   the fully covered blocks at once; a non-empty replacement across a block
+ *   boundary is still rejected, as there's no unambiguous block for the result
  */
 export const editKnowledgeTextContent = async (
   id: string,
@@ -150,14 +244,34 @@ export const editKnowledgeTextContent = async (
   const totalOccurrences = occurrencesPerBlock.reduce((a, b) => a + b, 0);
 
   if (totalOccurrences === 0) {
-    // distinguish "not present at all" from "spans block boundaries"
-    if (countOccurrences(page.text, oldString) > 0) {
+    // Not found inside any single block. It may still exist in the materialized
+    // text, straddling the gap between adjacent blocks. Deleting such a span is
+    // supported — it's the clean way to remove one or more whole blocks at once
+    // — but replacing it is not, because there's no unambiguous block to put
+    // the replacement text into.
+    const spanning = countOccurrences(
+      materializeBlocksTextWithSpans(blocks.map(toWorkingBlock)).text,
+      oldString
+    );
+    if (spanning === 0) {
+      throw new Error("oldString not found in the document");
+    }
+    if (newString.length > 0) {
+      throw new Error(SPANS_BLOCKS_MESSAGE);
+    }
+    if (spanning > 1 && !replaceAll) {
       throw new Error(
-        "oldString spans multiple blocks. Edit the blocks individually " +
-          "(PUT .../blocks) or use a shorter string within one block"
+        `oldString is not unique (${spanning} occurrences). ` +
+          "Provide more surrounding context or set replaceAll: true"
       );
     }
-    throw new Error("oldString not found in the document");
+    const { inputs, replacements } = deleteSpanningText(
+      blocks,
+      oldString,
+      replaceAll
+    );
+    const result = await syncKnowledgeTextBlocks(id, inputs, context);
+    return { id, replacements, content: result.knowledgeText.text };
   }
   if (totalOccurrences > 1 && !replaceAll) {
     throw new Error(
@@ -166,19 +280,25 @@ export const editKnowledgeTextContent = async (
     );
   }
 
-  const result = await syncKnowledgeTextBlocks(
-    id,
-    blocks.map((block, i) => ({
-      id: block.id,
-      type: block.type,
-      content:
-        occurrencesPerBlock[i]! > 0
-          ? replaceAllOccurrences(block.content, oldString, newString)
-          : block.content,
-      meta: (block.meta ?? {}) as Record<string, unknown>,
-    })),
-    context
+  // Apply the replacement inside each affected block. When a replacement leaves
+  // a block empty (e.g. deleting its whole content), drop the block rather than
+  // keep it as an empty placeholder — otherwise the editor renders a stray
+  // blank block. Blocks the edit didn't touch are passed through untouched,
+  // including any that were already empty.
+  const nextBlocks = blocks.map((block, i) => ({
+    id: block.id,
+    type: block.type,
+    content:
+      occurrencesPerBlock[i]! > 0
+        ? replaceAllOccurrences(block.content, oldString, newString)
+        : block.content,
+    meta: (block.meta ?? {}) as Record<string, unknown>,
+  }));
+  const keptBlocks = nextBlocks.filter(
+    (block, i) => occurrencesPerBlock[i] === 0 || block.content.trim().length > 0
   );
+
+  const result = await syncKnowledgeTextBlocks(id, keptBlocks, context);
 
   return {
     id,
