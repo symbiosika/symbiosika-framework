@@ -8,6 +8,10 @@ import {
   getPagesBatch,
   appendToKnowledgeText,
 } from "./knowledge-text-agent";
+import {
+  syncKnowledgeTextBlocks,
+  getKnowledgeTextBlocks,
+} from "./knowledge-text-blocks";
 
 const TENANT = TEST_ORGANISATION_1.id;
 const ctx = { tenantId: TENANT };
@@ -96,6 +100,37 @@ describe("context-economy endpoints", () => {
     expect(fetched.text).toBe("first\n\nsecond");
     // append marks the summary stale (normal edit path)
     expect(fetched.summaryStale).toBe(true);
+  });
+
+  test("appendToKnowledgeText writes through blocks on a block page", async () => {
+    // a block page keeps its real content in blocks; the `text` column is only
+    // a cache re-materialized from the blocks. Appending must add a block, not
+    // just poke the cache (which is silently discarded on the next render).
+    const page = await createKnowledgeText({
+      tenantId: TENANT,
+      title: "Block append target",
+      text: "",
+    });
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [{ type: "html", content: "<p>Existing intro.</p>" }],
+      ctx
+    );
+
+    const res = await appendToKnowledgeText(page.id, "## Appended section", ctx);
+    expect(res.appendedChars).toBe("## Appended section".length);
+
+    // the appended content landed in a real, new markdown block
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks.length).toBe(2);
+    expect(blocks[1]?.type).toBe("markdown");
+    expect(blocks[1]?.content).toBe("## Appended section");
+
+    // and the materialized cache reflects it (blocks joined by a blank line)
+    const fetched = await getKnowledgeTextById(page.id, ctx);
+    expect(fetched.contentMode).toBe("blocks");
+    expect(fetched.text).toBe("Existing intro.\n\n## Appended section");
+    expect(res.totalChars).toBe(fetched.text.length);
   });
 
   test("subtree respects maxDepth and flags omitted children", async () => {

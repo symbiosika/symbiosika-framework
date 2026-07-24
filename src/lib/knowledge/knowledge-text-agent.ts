@@ -20,6 +20,10 @@ import {
   getKnowledgeTextById,
   updateKnowledgeText,
 } from "./knowledge-texts";
+import {
+  getKnowledgeTextBlocks,
+  syncKnowledgeTextBlocks,
+} from "./knowledge-text-blocks";
 import { attributesContainCondition, type FacetFilters } from "./facets";
 
 type Context = {
@@ -188,9 +192,20 @@ export interface AppendResult {
 
 /**
  * append text to a page without the caller doing a read-modify-write and
- * without returning the (potentially large) full content. Goes through
- * updateKnowledgeText so history, permissions, page link/file bookkeeping and
- * summary-stale marking all behave exactly like a normal edit.
+ * without returning the (potentially large) full content.
+ *
+ * The write path depends on the page's content mode, because the two modes
+ * store their content differently:
+ *
+ *   - text pages keep the content in the `text` column, so we read-modify-write
+ *     it through updateKnowledgeText (history, links/files, summary-stale).
+ *   - block pages store the content as ordered blocks; the `text` column is
+ *     only a cache re-materialized from the blocks on every save. Writing that
+ *     cache directly is silently discarded on the next block render, so for a
+ *     block page we append a new markdown block through syncKnowledgeTextBlocks
+ *     (which re-materializes the cache and runs the same bookkeeping). The
+ *     blocks are joined by a blank line, so the default "\n\n" separator is
+ *     honoured naturally; a custom `separator` only applies to text pages.
  */
 export const appendToKnowledgeText = async (
   id: string,
@@ -199,6 +214,29 @@ export const appendToKnowledgeText = async (
   options: { separator?: string } = {}
 ): Promise<AppendResult> => {
   const current = await getKnowledgeTextById(id, context);
+
+  if (current.contentMode === "blocks") {
+    const existing = await getKnowledgeTextBlocks(id, context);
+    const result = await syncKnowledgeTextBlocks(
+      id,
+      [
+        ...existing.map((block) => ({
+          id: block.id,
+          type: block.type,
+          content: block.content,
+          meta: (block.meta ?? {}) as Record<string, unknown>,
+        })),
+        { type: "markdown" as const, content: appendText },
+      ],
+      context
+    );
+    return {
+      id,
+      appendedChars: appendText.length,
+      totalChars: result.knowledgeText.text.length,
+    };
+  }
+
   const separator = options.separator ?? "\n\n";
   const base = current.text ?? "";
   const newText = base.length > 0 ? `${base}${separator}${appendText}` : appendText;
