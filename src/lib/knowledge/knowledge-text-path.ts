@@ -132,7 +132,12 @@ export const resolveKnowledgeTextPaths = async (
 export const resolveKnowledgeTextPath = async (
   id: string,
   tenantId: string,
-  options: { includeSelf?: boolean; separator?: string } = {}
+  options: {
+    includeSelf?: boolean;
+    separator?: string;
+    /** Anonymous read: trim at the first internal ancestor. */
+    publicOnly?: boolean;
+  } = {}
 ): Promise<KnowledgeTextPath | null> => {
   const map = await resolveKnowledgeTextPaths([id], tenantId, options);
   return map.get(id) ?? null;
