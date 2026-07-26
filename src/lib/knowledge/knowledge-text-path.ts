@@ -45,10 +45,23 @@ const DEFAULT_SEPARATOR = "/";
 export const resolveKnowledgeTextPaths = async (
   ids: string[],
   tenantId: string,
-  options: { includeSelf?: boolean; separator?: string } = {}
+  options: {
+    includeSelf?: boolean;
+    separator?: string;
+    /**
+     * Anonymous read: stop the upward walk at the first ancestor that is not
+     * published, so a breadcrumb never carries the title of an internal page.
+     *
+     * This matters for a page published explicitly (publicMode "public")
+     * below an internal parent: the page itself is public, its ancestors are
+     * not, and an untrimmed breadcrumb would leak their titles.
+     */
+    publicOnly?: boolean;
+  } = {}
 ): Promise<Map<string, KnowledgeTextPath>> => {
   const includeSelf = options.includeSelf ?? true;
   const separator = options.separator ?? DEFAULT_SEPARATOR;
+  const publicOnly = options.publicOnly ?? false;
 
   const uniqueIds = [...new Set(ids)].filter(Boolean);
   if (uniqueIds.length === 0) return new Map();
@@ -58,7 +71,12 @@ export const resolveKnowledgeTextPaths = async (
   // a few small queries rather than a scan of the whole tenant tree.
   const nodes = new Map<
     string,
-    { id: string; parentId: string | null; title: string }
+    {
+      id: string;
+      parentId: string | null;
+      title: string;
+      publicEffective: boolean;
+    }
   >();
   let frontier = uniqueIds;
   while (frontier.length > 0) {
@@ -69,6 +87,7 @@ export const resolveKnowledgeTextPaths = async (
         id: knowledgeText.id,
         parentId: knowledgeText.parentId,
         title: knowledgeText.title,
+        publicEffective: knowledgeText.publicEffective,
       })
       .from(knowledgeText)
       .where(
@@ -89,6 +108,8 @@ export const resolveKnowledgeTextPaths = async (
     const seen = new Set<string>();
     let current = nodes.get(startId);
     while (current && !seen.has(current.id)) {
+      // Trim the breadcrumb at the first internal ancestor on public reads.
+      if (publicOnly && !current.publicEffective) break;
       seen.add(current.id);
       segments.push({ id: current.id, title: current.title });
       current = current.parentId ? nodes.get(current.parentId) : undefined;

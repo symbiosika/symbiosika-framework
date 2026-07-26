@@ -61,6 +61,21 @@ export const knowledgeSummaryModeEnum = pgEnum("knowledge_summary_mode", [
   "off",
 ]);
 
+// Explicit publishing intent of a wiki page, as set by a human. NULL (the
+// default) means "inherit from the parent page" — which is why this is a
+// three-valued concept and not a boolean:
+// - "public":   publish this page and, by inheritance, its whole subtree
+// - "excluded": keep this page (and its subtree) internal even when an
+//               ancestor is published — the escape hatch for a single
+//               internal page below an otherwise public branch
+//
+// This column records INTENT only. The value actually used for filtering is
+// the derived `publicEffective` flag below; see lib/knowledge/knowledge-text-public.ts.
+export const knowledgePublicModeEnum = pgEnum("knowledge_public_mode", [
+  "public",
+  "excluded",
+]);
+
 // Table to store input texts
 export const knowledgeText = pgBaseTable(
   "knowledge_text",
@@ -164,6 +179,23 @@ export const knowledgeText = pgBaseTable(
     isAgentInstructions: boolean("is_agent_instructions")
       .notNull()
       .default(false),
+    // --- public publishing (anonymous, unauthenticated read access) ---
+    // Explicit intent set by a human; NULL means "inherit from the parent".
+    // See knowledgePublicModeEnum above.
+    publicMode: knowledgePublicModeEnum("public_mode"),
+    // DERIVED from publicMode along the parentId chain — never set this by
+    // hand. Maintained on every write that can change publishing (create,
+    // move, publish/unpublish) by lib/knowledge/knowledge-text-public.ts, and
+    // rebuildable from scratch with recomputePublicEffectiveForTenant().
+    //
+    // It exists as a stored, indexed column on purpose: the read-side
+    // visibility filter is pure SQL and sits in hot paths (including the
+    // vector-search leg next to the HNSW index), so resolving inheritance
+    // per query with a recursive CTE would be paid on every read.
+    //
+    // Defaults to false, so nothing becomes public by accident — a fresh
+    // migration leaves the whole knowledge base internal.
+    publicEffective: boolean("public_effective").notNull().default(false),
     // opt-in: mirror this page into the RAG pipeline (knowledge_entry +
     // knowledge_chunks) so it shows up in similarity search
     embeddingEnabled: boolean("embedding_enabled").notNull().default(false),
@@ -200,6 +232,12 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_team_id_idx").on(knowledgeText.teamId),
     index("knowledge_text_user_id_idx").on(knowledgeText.userId),
     index("knowledge_text_parent_id_idx").on(knowledgeText.parentId),
+    // every public read filters on (tenant, publicEffective); the composite
+    // index keeps the public views cheap even on a large mostly-internal wiki
+    index("knowledge_text_public_effective_idx").on(
+      knowledgeText.tenantId,
+      knowledgeText.publicEffective
+    ),
     // full-text search over title + content ('simple' config: language-
     // agnostic, works for mixed German/English wikis).
     //
@@ -488,6 +526,14 @@ export const knowledgeEntry = pgBaseTable(
     // optional assign a document only to my user
     // security feature to limit access to knowledge entries
     userOwned: boolean("user_owned").notNull().default(false),
+    // Mirror of knowledgeText.publicEffective for entries that were created by
+    // the wiki embedding sync. Lets similarity search (the RAG path a public
+    // chatbot uses) filter on published content in the same query as the
+    // vector distance, instead of post-filtering a ranked result set.
+    //
+    // Plain RAG documents that were uploaded directly (not mirrored from a
+    // wiki page) keep the default false and are therefore never public.
+    publicEffective: boolean("public_effective").notNull().default(false),
     parentId: uuid("parentId").references(
       (): AnyPgColumn => knowledgeEntry.id,
       {
@@ -528,6 +574,11 @@ export const knowledgeEntry = pgBaseTable(
     index("knowledgeentry_tenant_id_idx").on(knowledgeEntry.tenantId),
     index("knowledge_entry_team_id_idx").on(knowledgeEntry.teamId),
     index("knowledge_entry_user_id_idx").on(knowledgeEntry.userId),
+    // public similarity search filters on (tenant, publicEffective)
+    index("knowledge_entry_public_effective_idx").on(
+      knowledgeEntry.tenantId,
+      knowledgeEntry.publicEffective
+    ),
     // Partial index: only rows that opted into source hashing are indexed, so
     // lookups by hash (unchanged-source detection, duplicate analysis) stay
     // fast while the feature-off default carries no index overhead.

@@ -22,7 +22,8 @@ type ChunkWithPath<T extends { knowledgeEntryId: string }> = T & {
  */
 const attachWikiPaths = async <T extends { knowledgeEntryId: string }>(
   chunks: T[],
-  tenantId: string
+  tenantId: string,
+  publicOnly = false
 ): Promise<ChunkWithPath<T>[]> => {
   const entryIds = [...new Set(chunks.map((c) => c.knowledgeEntryId))];
   if (entryIds.length === 0) {
@@ -54,7 +55,8 @@ const attachWikiPaths = async <T extends { knowledgeEntryId: string }>(
 
   const pathByPageId = await resolveKnowledgeTextPaths(
     [...pageIdByEntryId.values()],
-    tenantId
+    tenantId,
+    { publicOnly }
   );
 
   return chunks.map((c) => {
@@ -102,6 +104,16 @@ export async function getNearestEmbeddings(q: {
   filterKnowledgeEntryIds?: string[];
   filterName?: string[];
   workspaceId?: string;
+  /**
+   * Anonymous/public retrieval: restrict to knowledge entries mirrored from
+   * published wiki pages (knowledgeEntry.publicEffective).
+   *
+   * Without it this function scopes by tenant only — which is correct for a
+   * signed-in caller whose access was already checked upstream, but would
+   * expose internal content to an unauthenticated one. A public chatbot MUST
+   * pass this. Additive and off by default so existing callers are unchanged.
+   */
+  publicOnly?: boolean;
 }): Promise<
   {
     id: string;
@@ -143,6 +155,10 @@ export async function getNearestEmbeddings(q: {
 
   if (q.filterName && q.filterName.length > 0) {
     filters.push(sql`${knowledgeEntry.name} IN (${sql.join(q.filterName)})`);
+  }
+
+  if (q.publicOnly) {
+    filters.push(eq(knowledgeEntry.publicEffective, true));
   }
 
   const whereClause =
@@ -249,7 +265,7 @@ export async function getNearestEmbeddings(q: {
 
   // return if no addBeforeN and addAfterN
   if (q.addBeforeN < 1 && q.addAfterN < 1) {
-    return attachWikiPaths(rows, q.tenantId);
+    return attachWikiPaths(rows, q.tenantId, q.publicOnly);
   }
 
   // Else. Also add before and after N
@@ -289,7 +305,7 @@ export async function getNearestEmbeddings(q: {
     );
     resultRows.push(...entries);
   }
-  return attachWikiPaths(resultRows, q.tenantId);
+  return attachWikiPaths(resultRows, q.tenantId, q.publicOnly);
 }
 
 /**

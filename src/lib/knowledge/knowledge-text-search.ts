@@ -39,6 +39,15 @@ type Context = {
   teamId?: string;
   workspaceId?: string;
   includeHidden?: boolean;
+  /**
+   * Anonymous read: restrict both retrieval legs to published pages.
+   *
+   * Applied inside each leg's SQL rather than by filtering the fused result,
+   * so RRF ranks over the published set only. Post-filtering would rank over
+   * the whole tenant first and let internal pages crowd published ones out of
+   * the top-N.
+   */
+  publicOnly?: boolean;
 };
 
 export type KnowledgeTextSearchMode = "hybrid" | "fulltext" | "semantic";
@@ -395,7 +404,9 @@ export const searchKnowledgeTexts = async (
   const metaById = new Map(meta.map((m) => [m.id, m]));
 
   // resolve the wiki path (breadcrumb) of every hit in one pass
-  const pathById = await resolveKnowledgeTextPaths(fusedIds, context.tenantId);
+  const pathById = await resolveKnowledgeTextPaths(fusedIds, context.tenantId, {
+    publicOnly: context.publicOnly,
+  });
 
   const enriched: KnowledgeTextSearchResult[] = [...fused.values()].map((f) => {
     const m = metaById.get(f.id);
