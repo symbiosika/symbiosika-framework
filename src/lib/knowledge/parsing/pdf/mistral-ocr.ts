@@ -16,7 +16,8 @@ type MistralOcrResult = {
   pages: {
     images?: {
       id: string;
-      image_base64: string;
+      /** null when the OCR request did not ask for base64 image payloads */
+      image_base64: string | null;
     }[];
     markdown: string;
   }[];
@@ -111,9 +112,12 @@ export const parsePdfFileAsMarkdownMistral = async (
       (await ocrResponse.json()) as MistralOcrResult;
     log.debug("OCR result retrieved successfully.");
 
-    // Process images from all pages
+    // Process images from all pages. Mistral still lists the detected images
+    // when `include_image_base64` is false, but with `image_base64: null` —
+    // so only walk them when image extraction was actually requested.
     const imageMap = new Map<string, string>(); // Maps image ID to URL
-    for (const page of ocrResult.pages) {
+    const extractImages = options?.extractImages ?? true;
+    for (const page of extractImages ? ocrResult.pages : []) {
       if (page.images) {
         for (const image of page.images) {
           // Persist the extracted image to storage
