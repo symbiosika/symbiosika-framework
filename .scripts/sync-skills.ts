@@ -80,6 +80,49 @@ function getSkillDirs(baseDir: string): string[] {
 }
 
 /**
+ * Read the `name` from a SKILL.md YAML frontmatter block.
+ * Returns undefined when there is no frontmatter or no name field.
+ */
+function readSkillName(skillMdPath: string): string | undefined {
+  const content = fs.readFileSync(skillMdPath, "utf8");
+  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+  if (!frontmatter?.[1]) return undefined;
+  const name = /^name:[ \t]*(.+)$/m.exec(frontmatter[1]);
+  return name?.[1]?.trim().replace(/^["']|["']$/g, "");
+}
+
+/**
+ * The skill format requires `name` to equal the containing directory name: the
+ * directory name is what an agent invokes, so a mismatch makes the skill
+ * unreachable by name. Fail the sync instead of shipping broken skills to every
+ * app that consumes them.
+ */
+function assertSkillNamesMatchDirectories(skillDirs: string[]): void {
+  const problems: string[] = [];
+
+  for (const skillDir of skillDirs) {
+    const dirName = path.basename(skillDir);
+    if (excludeDirs.includes(dirName)) continue;
+
+    const name = readSkillName(path.join(skillDir, "SKILL.md"));
+    if (!name) {
+      problems.push(`  - ${dirName}: SKILL.md has no "name" in its frontmatter`);
+    } else if (name !== dirName) {
+      problems.push(`  - ${dirName}: frontmatter name is "${name}"`);
+    }
+  }
+
+  if (problems.length > 0) {
+    console.error(
+      "Error: skill name(s) do not match their directory name:\n" +
+        problems.join("\n") +
+        "\n\nFix the frontmatter (or rename the directory) and run the sync again."
+    );
+    process.exit(1);
+  }
+}
+
+/**
  * Main sync function
  */
 function syncSkills(): void {
@@ -98,6 +141,8 @@ function syncSkills(): void {
     console.log("No skills found in source directory.");
     return;
   }
+
+  assertSkillNamesMatchDirectories(skillDirs);
 
   console.log(`Found ${skillDirs.length} skill(s) to sync:\n`);
 

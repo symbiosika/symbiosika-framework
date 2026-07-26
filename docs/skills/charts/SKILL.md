@@ -1,6 +1,6 @@
 ---
-name: apexcharts-vue-standard-charts
-description: Create and customize ApexCharts (ApexCharts.js) charts in Vue (Vue 2 + Vue 3) using vue-apexcharts / vue3-apexcharts. Provides correct series schemas and options for common chart types (line, area, bar/column, mixed, rangeArea, rangeBar/timeline, funnel, candlestick, boxPlot, bubble, scatter, heatmap, treemap, pie/donut, radialBar, radar, polarArea) with pattern fills and Vue-friendly reactivity/update guidance.
+name: charts
+description: Create and customize ApexCharts (ApexCharts.js) charts in Vue (Vue 2 + Vue 3) using vue-apexcharts / vue3-apexcharts. Use when adding, editing or debugging a chart, graph, plot or dashboard visual in the frontend. Provides correct series schemas and options for common chart types (line, area, bar/column, mixed, rangeArea, rangeBar/timeline, funnel, candlestick, boxPlot, bubble, scatter, heatmap, treemap, pie/donut, radialBar, radar, polarArea) with pattern fills and Vue-friendly reactivity/update guidance.
 license: Apache-2.0
 compatibility: Vue 3 (vue3-apexcharts) + apexcharts. For Nuxt SSR, use client-only plugin/ClientOnly.
 metadata:

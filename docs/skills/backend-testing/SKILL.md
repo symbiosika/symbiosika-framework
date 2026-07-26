@@ -2,13 +2,17 @@
 name: backend-testing
 description: >
   Use when the user asks to write, create, fix, or run a backend test.
-  Use when editing *.test.ts files in backend/.
-  Use when the user asks about test setup, initTests(), testFetcher, or test assertions.
+  Use when editing *.test.ts files in a backend.
+  Use when the user asks about test setup, initTests(), testFetcher, test
+  assertions, end-to-end tests, or when a test fails and needs diagnosing.
+  A database is always available (`bun run test:local`) — never skip or stub a
+  test because "there is no DB"; see the `local-database` skill.
 ---
 
 # Backend Testing
 
-Uses Bun's built-in test framework (`bun:test`).
+Uses Bun's built-in test framework (`bun:test`) against a **real database and a
+real Hono app** — nothing is mocked.
 
 ## Running Tests (zero setup — use this)
 
@@ -41,6 +45,36 @@ Notes:
 - JWT gotcha: session tokens are **HS256** — `JWT_PRIVATE_KEY` and
   `JWT_PUBLIC_KEY` must contain the **same** secret, otherwise every
   authenticated request returns 401. `test:local` handles this for you.
+- Ports, persistent dev DB, reset and DB troubleshooting: **`local-database` skill**.
+  "No database available" is never a valid reason to skip or stub a test.
+
+## Test end-to-end, not just the unit
+
+Unit-testing the helper you happened to touch is **not** sufficient. Every change
+to an endpoint or to business logic needs a test that drives the **full path** —
+HTTP request → route → middleware/auth → business logic → real DB → response
+body — with `testFetcher` against the real app.
+
+For a new or changed endpoint, cover all of these:
+
+1. **Happy path through the full stack** — assert the response body *and* prove
+   the data really landed (follow-up read, or a direct DB query).
+2. **The whole lifecycle**, not a single verb — create → read → update → delete,
+   each step using the IDs the previous one returned.
+3. **Auth** — the same request without a token is `401`.
+4. **Tenant isolation** — a user from another tenant gets `403`/`404`, never data.
+5. **Validation** — at least one malformed payload returns `400`.
+6. **Cross-boundary flows** — when a change spans services or transports
+   (second backend, MQTT, sync, external API), test across the boundary instead
+   of each side in isolation. Name such files `*.e2e.test.ts` /
+   `*.integration.test.ts`.
+
+**Run what you claim.** Execute the suite and report its real output. Never
+describe a test as passing without having run it, and never report work as done
+on a red suite — surface the failure with its message instead. If a specific test
+genuinely cannot run in the current environment (e.g. it needs a real broker or
+an API key), say exactly which one and why; a missing database is never such a
+reason (see the `local-database` skill).
 
 ## Test File Structure
 
@@ -181,7 +215,11 @@ import {
 ## Rules
 
 - **Never mock functions** - use real implementations with test data
-- **Use real database connections** - never mock the DB
+- **Use real database connections** - never mock the DB. If the DB is unreachable,
+  start it (`bun run test:local`, see the `local-database` skill) instead of
+  mocking, stubbing or skipping
+- **Never weaken a test to get green** - no `test.skip`, no deleted assertions, no
+  loosened expectations to hide a failure. A failing test is a finding to report
 - **All tests in single `describe` block** - Bun bug workaround
 - **Async cleanup**: Use `.then(() => {})` in `afterAll` (Bun limitation)
 - **Clean up test data** in `beforeAll` AND `afterAll`
