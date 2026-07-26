@@ -1,6 +1,10 @@
 ---
-name: PrimeVue components
-description: Use when the user wants to use PrimeVue components and need details about the components.
+name: prime-vue
+description: >
+  PrimeVue / Volt component reference — props, slots, APIs, theming, design tokens.
+  Use when adding or changing a PrimeVue component (DataTable, Dialog, Form, Select,
+  Toast, …) in a frontend, or when a component's props, styling or unstyled/Volt
+  variant need to be looked up.
 ---
 
 # PrimeVue components
