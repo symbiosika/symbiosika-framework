@@ -92,7 +92,7 @@ describe("Mistral OCR parser", () => {
     expect(lastOcrBody.include_image_base64).toBe(true);
     expect(savedImages).toEqual(["img-0.jpeg"]);
     expect(result.includesImages).toBe(true);
-    expect(result.pages?.[0].text).toBe(
+    expect(result.pages?.[0]?.text).toBe(
       "page one ![img-0.jpeg](/storage/img-0.jpeg)"
     );
     expect(result.pages?.map((p) => p.page)).toEqual([1, 2]);
@@ -108,7 +108,7 @@ describe("Mistral OCR parser", () => {
     expect(lastOcrBody.include_image_base64).toBe(false);
     expect(savedImages).toEqual([]);
     expect(result.includesImages).toBe(false);
-    expect(result.pages?.[0].text).toBe("page one ![img-0.jpeg](img-0.jpeg)");
+    expect(result.pages?.[0]?.text).toBe("page one ![img-0.jpeg](img-0.jpeg)");
     expect(result.pages?.length).toBe(2);
   });
 });
