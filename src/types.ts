@@ -122,6 +122,19 @@ export interface ServerSpecificConfig {
   customCollectionPermissions?: PermissionDefinitionPerTable;
   staticPrivateDataPath?: string;
   staticPublicDataPath?: string;
+  /**
+   * Path prefixes inside the public static folder that must NOT be served.
+   *
+   * For bundles that ship in the image but are switched off on this instance
+   * — the files stay on disk, the routes answer 404. The rest of the folder,
+   * including the login pages, remains reachable, so this is not a way to turn
+   * the public mount off as a whole.
+   *
+   * Matched on whole path segments: `["reports"]` hides `/reports` and
+   * everything below it, but not `/reports-archive`. Entries that normalise to
+   * nothing are ignored rather than matching everything.
+   */
+  staticPublicExclude?: string[];
 
   // Registration Flow
   customPreRegisterCustomVerifications?: CustomPreRegisterVerification[];
