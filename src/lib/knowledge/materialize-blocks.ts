@@ -8,6 +8,7 @@
 
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
+import { unescapeWikiLinkMarkers, wikiLinkMarker } from "./wikilinks";
 
 /** Join separator between materialized blocks. */
 export const BLOCK_SEPARATOR = "\n\n";
@@ -26,14 +27,33 @@ const getTurndown = (): TurndownService => {
       codeBlockStyle: "fenced",
     });
     turndown.use(gfm);
+    // A page reference is stored as <code data-wiki-link="Target">[[Target]]</code>
+    // (see wikilinks.ts). Emit the bare marker instead of Turndown's default
+    // `` `[[Target]]` `` so the cache reads like hand-written markdown.
+    turndown.addRule("wikiLink", {
+      filter: (node) =>
+        node.nodeName === "CODE" && node.getAttribute("data-wiki-link") !== null,
+      replacement: (content, node) => {
+        const element = node as unknown as HTMLElement;
+        const target = element.getAttribute("data-wiki-link") ?? "";
+        if (!target) return content;
+        return wikiLinkMarker(target, element.getAttribute("data-wiki-alias"));
+      },
+    });
   }
   return turndown;
 };
 
-/** One block's rendered markdown text (html → markdown), trimmed. */
+/**
+ * One block's rendered markdown text (html → markdown), trimmed.
+ *
+ * Turndown escapes square brackets (`[[X]]` → `\[\[X\]\]`), which would hide a
+ * page reference from the link extraction and show the backslashes to anyone
+ * reading the page through the API — so wikilink markers are restored.
+ */
 const renderBlockText = (block: Pick<MaterializeBlock, "type" | "content">): string =>
   block.type === "html"
-    ? getTurndown().turndown(block.content).trim()
+    ? unescapeWikiLinkMarkers(getTurndown().turndown(block.content)).trim()
     : block.content.trim();
 
 /**

@@ -30,6 +30,9 @@ import {
   buildKnowledgeTextVisibilityConditions,
 } from "./knowledge-texts";
 import { getConfiguredEmbeddingModelId } from "./embedding";
+// the marker syntax itself (and its html / escaped variants) lives in one
+// module shared with the write path and the block materialization
+import { PAGE_LINK_PATTERN } from "./wikilinks";
 
 type Context = {
   tenantId: string;
@@ -38,9 +41,6 @@ type Context = {
   workspaceId?: string;
   includeHidden?: boolean;
 };
-
-/** [[Target]] or [[Target|alias]] — target must not contain [, ] or | */
-const PAGE_LINK_PATTERN = /\[\[([^\[\]|]+)(?:\|[^\[\]]*)?\]\]/g;
 
 /** Extract the distinct page link targets from a page's content */
 export const extractPageLinkTargets = (content: string): string[] => {

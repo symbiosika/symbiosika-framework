@@ -8,6 +8,7 @@ import {
   syncKnowledgeTextBlocks,
   getKnowledgeTextBlocks,
 } from "./knowledge-text-blocks";
+import { getKnowledgeTextLinks } from "./knowledge-text-links";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
 
 const ctx = { tenantId: TEST_ORGANISATION_1.id };
@@ -304,6 +305,83 @@ describe("Knowledge Text Edit (string replacement)", () => {
       ctx
     );
     expect(result.replacements).toBe(2);
+  });
+
+  it("writes a [[wikilink]] into an html block as a real reference", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        {
+          type: "html",
+          content: "<p>Zwei Ausprägungen: Systemhaus und Elektriker.</p>",
+        },
+      ],
+      ctx
+    );
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      {
+        oldString: "Systemhaus und Elektriker",
+        newString: "[[03.03.01 Systemhaus]] und [[03.03.01 Elektriker]]",
+      },
+      ctx
+    );
+
+    // stored in the editor's canonical form → a clickable chip, not text
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks[0]!.content).toContain('data-wiki-link="03.03.01 Systemhaus"');
+    expect(blocks[0]!.content).toContain(
+      'data-wiki-link="03.03.01 Elektriker"'
+    );
+    // ...and the materialized text carries plain markers, no backslashes
+    expect(result.content).toBe(
+      "Zwei Ausprägungen: [[03.03.01 Systemhaus]] und [[03.03.01 Elektriker]]."
+    );
+    expect(result.content).not.toContain("\\[");
+
+    const links = await getKnowledgeTextLinks(page.id, ctx);
+    expect(links.map((l) => l.targetTitle).sort()).toEqual([
+      "03.03.01 Elektriker",
+      "03.03.01 Systemhaus",
+    ]);
+  });
+
+  it("edits over a reference read back as a plain marker", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        {
+          type: "html",
+          content:
+            '<p>Siehe <code data-wiki-link="Onboarding" class="wiki-link">' +
+            "[[Onboarding]]</code> für den Start.</p>",
+        },
+      ],
+      ctx
+    );
+
+    // the agent copies oldString out of read_page_content, where the
+    // reference reads as the bare marker
+    const view = await readKnowledgeTextContent(page.id, ctx);
+    expect(view.content).toBe("Siehe [[Onboarding]] für den Start.");
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      {
+        oldString: "Siehe [[Onboarding]] für den Start.",
+        newString: "Siehe [[Onboarding]] und [[Handbuch]].",
+      },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe("Siehe [[Onboarding]] und [[Handbuch]].");
+
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]!.content).toContain('data-wiki-link="Handbuch"');
   });
 
   it("rejects empty or identical strings", async () => {
