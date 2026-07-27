@@ -184,7 +184,7 @@ export const syncKnowledgeTextEmbedding = async (
 
   // Mirror the page's resolved public flag onto the RAG entry so public
   // similarity search (the retrieval path a public chatbot uses) can filter on
-  // published content inside the vector query. Set here, where the wiki owns
+  // published content inside the vector query. Set here, where this sync owns
   // the mirror, so it covers both a freshly inserted and a replaced entry.
   await getDb()
     .update(knowledgeEntry)

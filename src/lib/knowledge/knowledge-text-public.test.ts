@@ -61,7 +61,7 @@ const makePage = async (opts: {
 
 let teamId: string;
 
-describe("Public wiki visibility", () => {
+describe("Public knowledgeText visibility", () => {
   beforeAll(async () => {
     await initTests();
     const team = await createTeam({

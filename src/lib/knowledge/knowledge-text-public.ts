@@ -1,5 +1,5 @@
 /**
- * Public publishing of wiki pages — resolving inheritance.
+ * Public publishing of knowledgeText pages — resolving inheritance.
  *
  * A page carries an explicit publishing INTENT in `knowledgeText.publicMode`:
  *
@@ -121,8 +121,8 @@ const resolveSubtree = (
 
 /**
  * Persist the resolved values for the pages whose state actually changed, and
- * mirror the change onto the RAG entries so similarity search agrees with the
- * wiki. Returns the number of pages updated.
+ * mirror the change onto the linked knowledgeEntry rows so similarity search
+ * agrees with the pages. Returns the number of pages updated.
  */
 const persistResolved = async (
   pages: PageRow[],

@@ -106,7 +106,7 @@ export async function getNearestEmbeddings(q: {
   workspaceId?: string;
   /**
    * Anonymous/public retrieval: restrict to knowledge entries mirrored from
-   * published wiki pages (knowledgeEntry.publicEffective).
+   * published knowledgeText pages (knowledgeEntry.publicEffective).
    *
    * Without it this function scopes by tenant only — which is correct for a
    * signed-in caller whose access was already checked upstream, but would

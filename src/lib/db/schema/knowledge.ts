@@ -61,7 +61,7 @@ export const knowledgeSummaryModeEnum = pgEnum("knowledge_summary_mode", [
   "off",
 ]);
 
-// Explicit publishing intent of a wiki page, as set by a human. NULL (the
+// Explicit publishing intent of a knowledgeText page, as set by a human. NULL (the
 // default) means "inherit from the parent page" — which is why this is a
 // three-valued concept and not a boolean:
 // - "public":   publish this page and, by inheritance, its whole subtree
@@ -233,7 +233,7 @@ export const knowledgeText = pgBaseTable(
     index("knowledge_text_user_id_idx").on(knowledgeText.userId),
     index("knowledge_text_parent_id_idx").on(knowledgeText.parentId),
     // every public read filters on (tenant, publicEffective); the composite
-    // index keeps the public views cheap even on a large mostly-internal wiki
+    // index keeps public reads cheap even in a large, mostly-internal tenant
     index("knowledge_text_public_effective_idx").on(
       knowledgeText.tenantId,
       knowledgeText.publicEffective
@@ -526,13 +526,14 @@ export const knowledgeEntry = pgBaseTable(
     // optional assign a document only to my user
     // security feature to limit access to knowledge entries
     userOwned: boolean("user_owned").notNull().default(false),
-    // Mirror of knowledgeText.publicEffective for entries that were created by
-    // the wiki embedding sync. Lets similarity search (the RAG path a public
-    // chatbot uses) filter on published content in the same query as the
-    // vector distance, instead of post-filtering a ranked result set.
+    // Mirror of knowledgeText.publicEffective for entries created by the
+    // knowledgeText embedding sync. Lets similarity search (the retrieval path
+    // an unauthenticated consumer uses) filter on published content in the same
+    // query as the vector distance, instead of post-filtering a ranked result
+    // set.
     //
-    // Plain RAG documents that were uploaded directly (not mirrored from a
-    // wiki page) keep the default false and are therefore never public.
+    // Entries ingested directly (not mirrored from a knowledgeText page) keep
+    // the default false and are therefore never public.
     publicEffective: boolean("public_effective").notNull().default(false),
     parentId: uuid("parentId").references(
       (): AnyPgColumn => knowledgeEntry.id,
