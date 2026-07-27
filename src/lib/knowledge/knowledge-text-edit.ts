@@ -27,6 +27,7 @@ import {
   type KnowledgeTextBlockInput,
 } from "./knowledge-text-blocks";
 import { materializeBlocksTextWithSpans } from "./materialize-blocks";
+import { containsWikiLinkMarker, wikiLinksToHtml } from "./wikilinks";
 import type { KnowledgeTextBlockSelect } from "../db/schema/knowledge";
 
 type Context = {
@@ -99,6 +100,36 @@ const replaceAllOccurrences = (
   needle: string,
   replacement: string
 ): string => haystack.split(needle).join(replacement);
+
+/**
+ * Wikilinks written into an html block ("[[Target]]") are stored in the
+ * editor's canonical `<code data-wiki-link>` form, so a reference an agent
+ * writes is a real, clickable page link — exactly like one inserted by hand.
+ * Markdown blocks keep the plain marker (that IS their canonical form).
+ */
+const blockReplacement = (
+  block: Pick<KnowledgeTextBlockSelect, "type">,
+  newString: string
+): string => (block.type === "html" ? wikiLinksToHtml(newString) : newString);
+
+/**
+ * The string to search for inside one block. An agent copies `oldString` out
+ * of the materialized text, where a reference reads as the bare `[[Target]]`
+ * marker — inside an html block it is stored as `<code data-wiki-link>…`, so
+ * the marker form is translated before matching (only when the literal string
+ * isn't there, so nothing else changes).
+ */
+const blockNeedle = (
+  block: Pick<KnowledgeTextBlockSelect, "type" | "content">,
+  oldString: string
+): string => {
+  if (block.type !== "html" || !containsWikiLinkMarker(oldString)) {
+    return oldString;
+  }
+  if (block.content.includes(oldString)) return oldString;
+  const asHtml = wikiLinksToHtml(oldString);
+  return block.content.includes(asHtml) ? asHtml : oldString;
+};
 
 /** Message used when a cross-block match can't be resolved to a clean edit. */
 const SPANS_BLOCKS_MESSAGE =
@@ -238,8 +269,9 @@ export const editKnowledgeTextContent = async (
 
   // ----- block pages ------------------------------------------------------
   const blocks = await getKnowledgeTextBlocks(id, context);
-  const occurrencesPerBlock = blocks.map((block) =>
-    countOccurrences(block.content, oldString)
+  const needles = blocks.map((block) => blockNeedle(block, oldString));
+  const occurrencesPerBlock = blocks.map((block, i) =>
+    countOccurrences(block.content, needles[i]!)
   );
   const totalOccurrences = occurrencesPerBlock.reduce((a, b) => a + b, 0);
 
@@ -290,7 +322,11 @@ export const editKnowledgeTextContent = async (
     type: block.type,
     content:
       occurrencesPerBlock[i]! > 0
-        ? replaceAllOccurrences(block.content, oldString, newString)
+        ? replaceAllOccurrences(
+            block.content,
+            needles[i]!,
+            blockReplacement(block, newString)
+          )
         : block.content,
     meta: (block.meta ?? {}) as Record<string, unknown>,
   }));
