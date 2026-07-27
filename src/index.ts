@@ -25,6 +25,10 @@ import { getConnInfo } from "hono/bun";
 import log from "./lib/log";
 import { validateAllEnvVariables } from "./lib/utils/env-validate";
 import { globalErrorHandler } from "./lib/utils/global-error-handler";
+import {
+  isExcludedFromPublicStatic,
+  prepareStaticExclusions,
+} from "./lib/utils/static-exclude";
 // Registration actions
 import {
   registerPostRegisterAction,
@@ -435,6 +439,29 @@ export const defineServer = (config: ServerSpecificConfig) => {
        */
       const staticPublicDataPath = config.staticPublicDataPath ?? "./public";
       log.debug(`Static public data path: ${staticPublicDataPath}`);
+
+      /**
+       * Subtrees of that folder the consumer wants withheld on this instance
+       * (see `staticPublicExclude`). Resolved once here; the guard in front of
+       * the static handler only compares.
+       */
+      const staticPublicExclusions = prepareStaticExclusions(
+        config.staticPublicExclude
+      );
+      if (staticPublicExclusions.length > 0) {
+        log.debug(
+          `Static public exclusions: ${staticPublicExclusions
+            .map((segments) => "/" + segments.join("/"))
+            .join(", ")}`
+        );
+        app.use("/*", async (c, next) => {
+          if (isExcludedFromPublicStatic(c.req.path, staticPublicExclusions)) {
+            return c.notFound();
+          }
+          return next();
+        });
+      }
+
       app.use(
         "/*",
         serveStatic({

@@ -46,6 +46,16 @@ This guide explains how to quickly set up a webserver using the `symbiosika-fram
   - Path to a directory for public static files (served to clients).
   - Example: `./public`
 
+- **staticPublicExclude**
+
+  - Path prefixes inside `staticPublicDataPath` that must not be served — for
+    bundles that ship in the image but are switched off on this instance. The
+    files stay on disk, the routes answer 404; the rest of the folder,
+    including the login pages, stays reachable.
+  - Matched on whole path segments, so `["reports"]` hides `/reports` and
+    everything below it but not `/reports-archive`.
+  - Example: `["reports"]`
+
 - **useLicenseSystem**
 
   - Set to `true` to enable license key validation for your server.
