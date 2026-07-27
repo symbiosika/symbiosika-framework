@@ -677,18 +677,27 @@ export const updateKnowledgeText = async (
   // content, and cleanup after embedding was turned off. No-op otherwise;
   // failures are logged and never fail the update itself.
   let resultPage = result[0];
+  let needsFreshRow = false;
   if (result[0].embeddingEnabled || currentEntry.knowledgeEntryId) {
     const syncResult = await syncKnowledgeTextEmbeddingSafe(
       result[0].id,
       result[0].tenantId
     );
-    if (syncResult && (syncResult.synced || syncResult.removed)) {
-      // the sync wrote knowledgeEntryId/meta — return the fresh row
-      resultPage = await getKnowledgeTextById(id, {
-        ...context,
-        includeHidden: true,
-      });
-    }
+    // the sync wrote knowledgeEntryId/meta
+    needsFreshRow = !!syncResult && (syncResult.synced || syncResult.removed);
+  }
+
+  // The row above was RETURNED by the UPDATE, i.e. captured before the
+  // publishing propagation ran, so its derived `publicEffective` is stale
+  // whenever this call changed publishing. Re-read so a caller can render the
+  // resolved state from the response instead of issuing a second request.
+  if (reParented || intentChanged) needsFreshRow = true;
+
+  if (needsFreshRow) {
+    resultPage = await getKnowledgeTextById(id, {
+      ...context,
+      includeHidden: true,
+    });
   }
 
   // fire the outgoing "updated" webhook (fire-and-forget; never throws)

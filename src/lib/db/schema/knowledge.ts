@@ -171,14 +171,6 @@ export const knowledgeText = pgBaseTable(
       .$type<Record<string, string>>()
       .notNull()
       .default({}),
-    // --- agent-instructions marker ---
-    // Marks this page as the "CLAUDE.md of the knowledge base": curated
-    // orientation for agents (what lives where, conventions, glossary,
-    // authoritative areas). One per tenant (teamId null) and optionally one per
-    // team. Surfaced by the knowledge overview endpoint.
-    isAgentInstructions: boolean("is_agent_instructions")
-      .notNull()
-      .default(false),
     // --- public publishing (anonymous, unauthenticated read access) ---
     // Explicit intent set by a human; NULL means "inherit from the parent".
     // See knowledgePublicModeEnum above.
@@ -270,11 +262,53 @@ export const knowledgeText = pgBaseTable(
       "gin",
       knowledgeText.attributes.op("jsonb_path_ops")
     ),
-    // quickly find a tenant's agent-instructions page(s).
-    index("knowledge_text_agent_instructions_idx")
-      .on(knowledgeText.tenantId)
-      .where(sql`${knowledgeText.isAgentInstructions} = true`),
   ]
+);
+
+/**
+ * The "CLAUDE.md of the knowledge base": curated orientation an agent is handed
+ * at the start of a session (what lives where, conventions, glossary, which
+ * areas are authoritative). Surfaced by the knowledge overview endpoint.
+ *
+ * Exactly one row per tenant, enforced by the unique constraint on tenantId —
+ * this used to be a boolean flag on knowledgeText, which modelled a per-tenant
+ * singleton as a property of every single page and left "which page wins?"
+ * up to a query's ORDER BY.
+ */
+export const knowledgeAgentInstructions = pgBaseTable(
+  "knowledge_agent_instructions",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .unique()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    // Markdown. Empty string is a legitimate state (configured, then cleared);
+    // "no instructions at all" is the absence of the row.
+    content: text("content").notNull().default(""),
+    // Audit: who last changed the instructions. SET NULL so deleting a user
+    // keeps the instructions but drops the pointer; null for service writes.
+    updatedBy: uuid("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+  }
+);
+
+export type KnowledgeAgentInstructionsSelect =
+  typeof knowledgeAgentInstructions.$inferSelect;
+export type KnowledgeAgentInstructionsInsert =
+  typeof knowledgeAgentInstructions.$inferInsert;
+
+export const knowledgeAgentInstructionsSchema = createSelectSchema(
+  knowledgeAgentInstructions
 );
 
 // History table for knowledgeText versions

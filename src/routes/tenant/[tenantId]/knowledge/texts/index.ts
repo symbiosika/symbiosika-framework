@@ -39,6 +39,11 @@ import { enqueueSummaryBackfill } from "../../../../../lib/knowledge/summaries";
 import { getUsedAttributeValues } from "../../../../../lib/knowledge/knowledge-texts";
 import { getKnowledgeOverview } from "../../../../../lib/knowledge/knowledge-overview";
 import {
+  readAgentInstructions,
+  saveAgentInstructions,
+  deleteAgentInstructions,
+} from "../../../../../lib/knowledge/knowledge-agent-instructions";
+import {
   getPageOutline,
   readPageSection,
 } from "../../../../../lib/knowledge/knowledge-text-sections";
@@ -895,6 +900,86 @@ export default function defineRoutesForKnowledgeTexts(
       const { tenantId } = c.req.valid("param");
       const patch = c.req.valid("json");
       return c.json(await setKnowledgeTenantConfig(tenantId, patch));
+    }
+  );
+
+  /**
+   * Read the organisation's agent instructions (the "CLAUDE.md of the
+   * knowledge base"). Returns `{ instructions: null }` when none are set.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/agent-instructions",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Get the organisation's agent instructions",
+      responses: { 200: { description: "Agent instructions (or null)" } },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      return c.json({ instructions: await readAgentInstructions(tenantId) });
+    }
+  );
+
+  /**
+   * Create or replace the organisation's agent instructions.
+   */
+  app.put(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/agent-instructions",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Create or replace the organisation's agent instructions",
+      responses: { 200: { description: "Saved agent instructions" } },
+    }),
+    validateScope("knowledge:write"),
+    validator("param", v.object({ tenantId: v.string() })),
+    validator("json", v.object({ content: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const body = c.req.valid("json");
+        const instructions = await saveAgentInstructions(tenantId, body, {
+          userId: c.get("usersId"),
+        });
+        return c.json({ instructions });
+      } catch (e) {
+        throw new HTTPException(400, { message: e + "" });
+      }
+    }
+  );
+
+  /**
+   * Remove the organisation's agent instructions entirely.
+   */
+  app.delete(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/agent-instructions",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Delete the organisation's agent instructions",
+      responses: { 200: { description: "Deletion result" } },
+    }),
+    validateScope("knowledge:write"),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantMember,
+    async (c) => {
+      try {
+        const { tenantId } = c.req.valid("param");
+        const deleted = await deleteAgentInstructions(tenantId, {
+          userId: c.get("usersId"),
+        });
+        return c.json({ deleted });
+      } catch (e) {
+        throw new HTTPException(400, { message: e + "" });
+      }
     }
   );
 

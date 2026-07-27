@@ -1,10 +1,8 @@
 import { describe, test, expect, beforeAll } from "bun:test";
-import { eq } from "drizzle-orm";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
-import { getDb } from "../db/db-connection";
-import { knowledgeText } from "../db/schema/knowledge";
 import { createKnowledgeText } from "./knowledge-texts";
 import { getKnowledgeOverview } from "./knowledge-overview";
+import { saveAgentInstructions } from "./knowledge-agent-instructions";
 
 const TENANT = TEST_ORGANISATION_1.id;
 const ctx = { tenantId: TENANT };
@@ -39,21 +37,13 @@ describe("wiki overview", () => {
     expect(overview.recentChanges.length).toBeGreaterThanOrEqual(1);
   });
 
-  test("embeds the agent-instructions page when one is flagged", async () => {
-    const instr = await createKnowledgeText({
-      tenantId: TENANT,
-      title: "Agent Instructions",
-      text: "Where things live and how to name pages.",
-      tenantWide: true,
+  test("embeds the tenant's agent instructions when configured", async () => {
+    await saveAgentInstructions(TENANT, {
+      content: "Where things live and how to name pages.",
     });
-    await getDb()
-      .update(knowledgeText)
-      .set({ isAgentInstructions: true })
-      .where(eq(knowledgeText.id, instr.id));
 
     const overview = await getKnowledgeOverview(ctx);
     expect(overview.agentInstructions).not.toBeNull();
-    expect(overview.agentInstructions?.id).toBe(instr.id);
     expect(overview.agentInstructions?.content).toContain("Where things live");
   });
 });
