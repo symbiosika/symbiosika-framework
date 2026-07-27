@@ -43,6 +43,10 @@ import {
   emitKnowledgeTextDeleted,
 } from "./knowledge-text-events";
 import type { WebhookEventSource } from "../webhooks/dispatch";
+import {
+  resolvePublicEffectiveForNewPage,
+  propagatePublicEffectiveSafe,
+} from "./knowledge-text-public";
 import log from "../log";
 
 /**
@@ -183,6 +187,19 @@ export const createKnowledgeText = async (
     await checkTenantKnowledgeWriteAccess(data.tenantId, data.userId);
   }
 
+  // Resolve the derived public flag up front: a page created below a published
+  // branch must be public from its very first read, and a page created
+  // anywhere else must not be. Never trust a caller-supplied publicEffective —
+  // it is derived state, so recompute it from the intent + parent.
+  data = {
+    ...data,
+    publicEffective: await resolvePublicEffectiveForNewPage({
+      tenantId: data.tenantId,
+      parentId: data.parentId,
+      publicMode: data.publicMode,
+    }),
+  };
+
   const e = await getDb()
     .insert(knowledgeText)
     .values(data)
@@ -228,12 +245,32 @@ export const createKnowledgeText = async (
  * Build the WHERE conditions that decide which knowledgeText entries are
  * visible in a given context (tenant, hidden flag, user/team access).
  * Shared by every read path so the visibility rules cannot drift apart.
+ *
+ * Three shapes of context exist:
+ *   - `{ tenantId, userId }`     a signed-in user: own + team + tenant-wide
+ *   - `{ tenantId, publicOnly }` an anonymous visitor: published pages only
+ *   - `{ tenantId }`             an internal/service call: the whole tenant.
+ *     Note this last shape is deliberately unrestricted — background jobs and
+ *     sync paths rely on it — so a route handler must always pass either a
+ *     `userId` or `publicOnly`, never a bare tenant.
  */
 export const buildKnowledgeTextVisibilityConditions = (filters: {
   tenantId: string;
   teamId?: string;
   userId?: string;
   includeHidden?: boolean;
+  /**
+   * Anonymous/public read: restrict to pages published via `publicMode`
+   * inheritance (see knowledge-text-public.ts) and ignore user/team access
+   * entirely — a published page is readable by everyone, a non-published one
+   * by nobody on this path.
+   *
+   * Additive and off by default, so callers that do not pass it keep their
+   * exact previous behaviour. Because `publicEffective` defaults to false,
+   * this narrows to nothing rather than to everything when a tenant has
+   * published nothing.
+   */
+  publicOnly?: boolean;
 }): SQLWrapper[] => {
   const permissionConditions: SQLWrapper[] = [
     eq(knowledgeText.tenantId, filters.tenantId),
@@ -244,7 +281,14 @@ export const buildKnowledgeTextVisibilityConditions = (filters: {
     permissionConditions.push(eq(knowledgeText.hidden, false));
   }
 
-  if (filters.userId) {
+  // Public reads are user-agnostic: the published flag replaces the
+  // user/team check rather than being combined with it. Checked before
+  // `userId` so a context that carries both (e.g. a signed-in user
+  // previewing the public view) still sees exactly what an anonymous
+  // visitor would.
+  if (filters.publicOnly) {
+    permissionConditions.push(eq(knowledgeText.publicEffective, true));
+  } else if (filters.userId) {
     permissionConditions.push(
       or(
         eq(knowledgeText.userId, filters.userId),
@@ -284,6 +328,8 @@ export const getKnowledgeText = async (
     limit?: number;
     page?: number;
     includeHidden?: boolean; // Optional: include system/hidden entries
+    /** Anonymous read: published pages only (see buildKnowledgeTextVisibilityConditions). */
+    publicOnly?: boolean;
   } & FacetFilters
 ) => {
   // Exclude 'text' field to reduce payload size
@@ -332,6 +378,8 @@ export const getUsedAttributeValues = async (context: {
   teamId?: string;
   workspaceId?: string;
   includeHidden?: boolean;
+  /** Anonymous read: published pages only (see buildKnowledgeTextVisibilityConditions). */
+  publicOnly?: boolean;
 }): Promise<Record<string, string[]>> => {
   const visibility = and(...buildKnowledgeTextVisibilityConditions(context));
   const rows = (await getDb().execute<{ key: string; value: string }>(sql`
@@ -359,6 +407,8 @@ export const getKnowledgeTextById = async (
     teamId?: string;
     workspaceId?: string;
     includeHidden?: boolean; // Optional: include system/hidden entries
+    /** Anonymous read: published pages only (see buildKnowledgeTextVisibilityConditions). */
+    publicOnly?: boolean;
   }
 ) => {
   const permissionConditions: SQLWrapper[] = [
@@ -562,6 +612,12 @@ export const updateKnowledgeText = async (
   // Audit: createdBy is immutable after creation, and updatedBy always
   // reflects who performed this change (never a client-supplied value).
   delete updateData.createdBy;
+
+  // publicEffective is DERIVED from publicMode + the parent chain. Accepting
+  // it from a caller would let a single update publish a page while bypassing
+  // inheritance, so it is dropped here and only ever written by
+  // knowledge-text-public.ts. Callers change `publicMode` instead.
+  delete updateData.publicEffective;
   if (context.userId) {
     updateData.updatedBy = context.userId;
   } else {
@@ -586,6 +642,19 @@ export const updateKnowledgeText = async (
 
   if (!result[0]) {
     throw new Error("Failed to update knowledge text");
+  }
+
+  // Publishing bookkeeping: re-parenting a page or changing its intent
+  // re-resolves the whole subtree below it. This is what stops a subtree from
+  // silently becoming (or staying) public after a move.
+  const reParented =
+    data.parentId !== undefined &&
+    (data.parentId ?? null) !== (currentEntry.parentId ?? null);
+  const intentChanged =
+    data.publicMode !== undefined &&
+    (data.publicMode ?? null) !== (currentEntry.publicMode ?? null);
+  if (reParented || intentChanged) {
+    await propagatePublicEffectiveSafe(id, context.tenantId);
   }
 
   // page link + file-reference bookkeeping
