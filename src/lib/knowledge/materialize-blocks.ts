@@ -34,7 +34,10 @@ const getTurndown = (): TurndownService => {
       filter: (node) =>
         node.nodeName === "CODE" && node.getAttribute("data-wiki-link") !== null,
       replacement: (content, node) => {
-        const element = node as unknown as HTMLElement;
+        // typed structurally: the strict consumer build has no DOM lib
+        const element = node as unknown as {
+          getAttribute(name: string): string | null;
+        };
         const target = element.getAttribute("data-wiki-link") ?? "";
         if (!target) return content;
         return wikiLinkMarker(target, element.getAttribute("data-wiki-alias"));
