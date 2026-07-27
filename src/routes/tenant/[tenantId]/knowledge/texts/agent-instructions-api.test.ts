@@ -12,8 +12,8 @@ import {
 let app = new Hono<{ Variables: SFContextVariables }>();
 let TOKEN: string;
 
-// Own tenant so the overview assertion below is not disturbed by fixtures
-// other knowledge tests flag as agent instructions.
+// Own tenant so the overview assertions are not disturbed by the fixtures of
+// the other knowledge tests.
 const TENANT = TEST_ORGANISATION_3.id;
 const base = `/api/tenant/${TENANT}/knowledge/texts/agent-instructions`;
 
@@ -33,7 +33,7 @@ describe("Agent instructions API", () => {
     expect(res.jsonResponse.instructions).toBeNull();
   });
 
-  test("PUT creates the page, a second PUT updates it", async () => {
+  test("PUT saves, a second PUT replaces the content", async () => {
     const created = await testFetcher.put(app, base, TOKEN, {
       content: "Cite the page title.",
     });
@@ -41,50 +41,36 @@ describe("Agent instructions API", () => {
     expect(created.jsonResponse.instructions.content).toBe(
       "Cite the page title."
     );
-    const id = created.jsonResponse.instructions.id;
 
     const updated = await testFetcher.put(app, base, TOKEN, {
       content: "Cite the page title and its id.",
     });
     expect(updated.status).toBe(200);
-    expect(updated.jsonResponse.instructions.id).toBe(id);
 
     const read = await testFetcher.get(app, base, TOKEN);
     expect(read.jsonResponse.instructions.content).toBe(
       "Cite the page title and its id."
     );
+    expect(read.jsonResponse.instructions.updatedBy).toBeTruthy();
   });
 
-  test("the page stays hidden from the normal page endpoints", async () => {
-    const saved = await testFetcher.put(app, base, TOKEN, {
-      content: "hidden but delivered",
+  test("the overview an agent loads at session start carries them", async () => {
+    await testFetcher.put(app, base, TOKEN, {
+      content: "briefing for agents",
     });
-    const id = saved.jsonResponse.instructions.id;
 
-    const list = await testFetcher.get(
-      app,
-      `/api/tenant/${TENANT}/knowledge/texts`,
-      TOKEN
-    );
-    expect(list.status).toBe(200);
-    expect(list.jsonResponse.map((p: { id: string }) => p.id)).not.toContain(
-      id
-    );
-
-    // ...but the overview an agent loads at session start does carry it
     const overview = await testFetcher.get(
       app,
       `/api/tenant/${TENANT}/knowledge/texts/overview`,
       TOKEN
     );
     expect(overview.status).toBe(200);
-    expect(overview.jsonResponse.agentInstructions?.id).toBe(id);
     expect(overview.jsonResponse.agentInstructions?.content).toBe(
-      "hidden but delivered"
+      "briefing for agents"
     );
   });
 
-  test("DELETE removes it and the overview falls back to null", async () => {
+  test("DELETE removes them and the overview falls back to null", async () => {
     const removed = await testFetcher.delete(app, base, TOKEN);
     expect(removed.status).toBe(200);
     expect(removed.jsonResponse.deleted).toBe(true);

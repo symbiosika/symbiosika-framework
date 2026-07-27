@@ -36,7 +36,6 @@ export interface KnowledgeTextEventData {
   pageType: string | null;
   status: string | null;
   hidden: boolean;
-  isAgentInstructions: boolean;
   embeddingEnabled: boolean;
   createdBy: string | null;
   updatedBy: string | null;
@@ -56,7 +55,6 @@ const toEventData = (page: KnowledgeTextSelect): KnowledgeTextEventData => ({
   pageType: page.pageType,
   status: page.status,
   hidden: page.hidden,
-  isAgentInstructions: page.isAgentInstructions,
   embeddingEnabled: page.embeddingEnabled,
   createdBy: page.createdBy,
   updatedBy: page.updatedBy,

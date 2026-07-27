@@ -6,16 +6,16 @@
  *   - metrics: page count, number of top-level areas, last activity
  *   - top-level structure WITH summaries and facets
  *   - the most recently changed pages (reuses the recent-changes helper)
- *   - the tenant's agent-instructions page (flagged via isAgentInstructions),
- *     with its content embedded so it can be loaded in one call. This one is
- *     also looked up among HIDDEN pages — see the note at the query.
+ *   - the tenant's agent instructions, embedded so a session can load the
+ *     whole briefing in one call
  */
 
-import { and, count, desc, eq, isNull, max, getTableColumns } from "drizzle-orm";
+import { and, count, isNull, max, getTableColumns } from "drizzle-orm";
 import { getDb } from "../db/db-connection";
 import { knowledgeText } from "../db/schema/knowledge";
 import { buildKnowledgeTextVisibilityConditions } from "./knowledge-texts";
 import { listRecentChanges } from "./knowledge-text-agent";
+import { readAgentInstructions } from "./knowledge-agent-instructions";
 
 type Context = {
   tenantId: string;
@@ -33,7 +33,8 @@ export interface KnowledgeOverview {
   };
   topLevel: Record<string, unknown>[];
   recentChanges: Record<string, unknown>[];
-  agentInstructions: { id: string; title: string; content: string } | null;
+  /** Null when the tenant configured none, or cleared them to empty. */
+  agentInstructions: { content: string; updatedAt: string } | null;
 }
 
 const listColumns = () => {
@@ -66,37 +67,10 @@ export const getKnowledgeOverview = async (
     limit: options.recentLimit ?? 10,
   });
 
-  // Agent-instructions page: prefer a tenant-wide one (teamId null), else any
-  // visible flagged page. Content is embedded so a session can load it at once.
-  //
-  // Deliberately its own visibility set with includeHidden: the page managed
-  // from the admin UI is hidden on purpose (it must not show up in the tree,
-  // search or recent changes), and the default visibility would filter it out
-  // right here. Only this query sees hidden pages — metrics, top-level and
-  // recent changes above keep the caller's normal visibility.
-  const instructionsVisibility = buildKnowledgeTextVisibilityConditions({
-    ...context,
-    includeHidden: true,
-  });
-
-  const instructionsRows = await getDb()
-    .select({
-      id: knowledgeText.id,
-      title: knowledgeText.title,
-      content: knowledgeText.text,
-      teamId: knowledgeText.teamId,
-    })
-    .from(knowledgeText)
-    .where(
-      and(
-        ...instructionsVisibility,
-        eq(knowledgeText.isAgentInstructions, true)
-      )
-    )
-    .orderBy(knowledgeText.teamId, desc(knowledgeText.updatedAt));
-
-  const preferred =
-    instructionsRows.find((r) => r.teamId === null) ?? instructionsRows[0];
+  // The organisation's agent instructions, embedded so a session can load the
+  // whole briefing in one call. Tenant-scoped configuration, not a page, so it
+  // is unaffected by the caller's page visibility.
+  const instructions = await readAgentInstructions(context.tenantId);
 
   return {
     metrics: {
@@ -106,8 +80,8 @@ export const getKnowledgeOverview = async (
     },
     topLevel,
     recentChanges,
-    agentInstructions: preferred
-      ? { id: preferred.id, title: preferred.title, content: preferred.content }
+    agentInstructions: instructions?.content
+      ? { content: instructions.content, updatedAt: instructions.updatedAt }
       : null,
   };
 };

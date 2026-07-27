@@ -1,24 +1,22 @@
 import { describe, test, expect, beforeAll } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   initTests,
   TEST_ORGANISATION_2,
   TEST_ORG2_USER_1,
 } from "../../test/init.test";
 import { getDb } from "../db/db-connection";
-import { knowledgeText } from "../db/schema/knowledge";
-import { createKnowledgeText, getKnowledgeText } from "./knowledge-texts";
+import { knowledgeAgentInstructions } from "../db/schema/knowledge";
 import { updateTenantMemberKnowledgeAccess } from "../usermanagement/tenants";
 import { getKnowledgeOverview } from "./knowledge-overview";
 import {
-  AGENT_INSTRUCTIONS_DEFAULT_TITLE,
   readAgentInstructions,
   saveAgentInstructions,
   deleteAgentInstructions,
 } from "./knowledge-agent-instructions";
 
-// Own tenant: the overview asserts on "the" instructions page, so this must
-// not race with the flagged page created by knowledge-overview.test.ts.
+// Own tenant so the overview assertions are not disturbed by the fixtures of
+// the other knowledge tests.
 const TENANT = TEST_ORGANISATION_2.id;
 
 describe("agent instructions", () => {
@@ -29,76 +27,53 @@ describe("agent instructions", () => {
 
   test("is null before anything was saved", async () => {
     expect(await readAgentInstructions(TENANT)).toBeNull();
+    const overview = await getKnowledgeOverview({ tenantId: TENANT });
+    expect(overview.agentInstructions).toBeNull();
   });
 
-  test("creates the page on first save, updates it afterwards", async () => {
+  test("saves once and updates in place, never creating a second row", async () => {
     const created = await saveAgentInstructions(TENANT, {
       content: "Always cite the page title.",
     });
-    expect(created.title).toBe(AGENT_INSTRUCTIONS_DEFAULT_TITLE);
     expect(created.content).toBe("Always cite the page title.");
 
     const updated = await saveAgentInstructions(TENANT, {
       content: "Always cite the page title and its id.",
     });
-    // same page, not a second one
-    expect(updated.id).toBe(created.id);
     expect(updated.content).toContain("and its id");
 
     const rows = await getDb()
       .select()
-      .from(knowledgeText)
-      .where(
-        and(
-          eq(knowledgeText.tenantId, TENANT),
-          eq(knowledgeText.isAgentInstructions, true)
-        )
-      );
+      .from(knowledgeAgentInstructions)
+      .where(eq(knowledgeAgentInstructions.tenantId, TENANT));
     expect(rows.length).toBe(1);
-    expect(rows[0]?.hidden).toBe(true);
-    expect(rows[0]?.tenantWide).toBe(true);
-    expect(rows[0]?.teamId).toBeNull();
-    // hidden page must never be mirrored into the RAG index
-    expect(rows[0]?.embeddingEnabled).toBe(false);
   });
 
-  test("stays out of the normal page listing but reaches the overview", async () => {
-    const saved = await saveAgentInstructions(TENANT, {
-      content: "House rules for agents.",
-    });
-
-    const listed = await getKnowledgeText({ tenantId: TENANT });
-    expect(listed.map((p) => p.id)).not.toContain(saved.id);
+  test("is delivered by the knowledge overview", async () => {
+    await saveAgentInstructions(TENANT, { content: "House rules for agents." });
 
     const overview = await getKnowledgeOverview({ tenantId: TENANT });
-    expect(overview.agentInstructions?.id).toBe(saved.id);
     expect(overview.agentInstructions?.content).toBe("House rules for agents.");
-    // and it must not pad the visible structure
-    expect(overview.topLevel.map((p) => p.id)).not.toContain(saved.id);
+    expect(overview.agentInstructions?.updatedAt).toBeTruthy();
   });
 
-  test("keeps a single organisation-wide page when another one is flagged", async () => {
-    const saved = await saveAgentInstructions(TENANT, { content: "canonical" });
+  test("empty content is stored but reads as no briefing in the overview", async () => {
+    await saveAgentInstructions(TENANT, { content: "" });
 
-    // a stray second flagged page, e.g. set by hand before this UI existed
-    const stray = await createKnowledgeText({
-      tenantId: TENANT,
-      title: "Old instructions",
-      text: "outdated",
-      tenantWide: true,
-      isAgentInstructions: true,
-    });
-
-    await saveAgentInstructions(TENANT, { content: "canonical again" });
-
-    const [strayRow] = await getDb()
-      .select({ flag: knowledgeText.isAgentInstructions })
-      .from(knowledgeText)
-      .where(eq(knowledgeText.id, stray.id));
-    expect(strayRow?.flag).toBe(false);
-
+    // the row still exists — the organisation configured and then cleared it
+    expect(await readAgentInstructions(TENANT)).not.toBeNull();
+    // ...but an agent must not be handed an empty instruction block
     const overview = await getKnowledgeOverview({ tenantId: TENANT });
-    expect(overview.agentInstructions?.id).toBe(saved.id);
+    expect(overview.agentInstructions).toBeNull();
+  });
+
+  test("records who last changed them", async () => {
+    const saved = await saveAgentInstructions(
+      TENANT,
+      { content: "attributed" },
+      { userId: TEST_ORG2_USER_1.id }
+    );
+    expect(saved.updatedBy).toBe(TEST_ORG2_USER_1.id);
   });
 
   test("rejects a member with read-only knowledge access", async () => {
@@ -114,6 +89,9 @@ describe("agent instructions", () => {
         { userId: TEST_ORG2_USER_1.id }
       )
     ).rejects.toThrow();
+    expect(
+      deleteAgentInstructions(TENANT, { userId: TEST_ORG2_USER_1.id })
+    ).rejects.toThrow();
 
     await updateTenantMemberKnowledgeAccess(
       TENANT,
@@ -126,10 +104,9 @@ describe("agent instructions", () => {
       { userId: TEST_ORG2_USER_1.id }
     );
     expect(saved.content).toBe("allowed now");
-    expect(saved.updatedBy).toBe(TEST_ORG2_USER_1.id);
   });
 
-  test("delete removes the page and reports whether there was one", async () => {
+  test("delete removes the row and reports whether there was one", async () => {
     await saveAgentInstructions(TENANT, { content: "to be removed" });
     expect(await deleteAgentInstructions(TENANT)).toBe(true);
     expect(await readAgentInstructions(TENANT)).toBeNull();

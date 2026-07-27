@@ -904,11 +904,8 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * Read the organisation's agent-instructions page (the "CLAUDE.md of the
-   * knowledge base"). Returns `{ instructions: null }` when none exists yet.
-   *
-   * The page is hidden, so it is deliberately NOT reachable through the normal
-   * page endpoints — this is the managed entry point for the admin UI.
+   * Read the organisation's agent instructions (the "CLAUDE.md of the
+   * knowledge base"). Returns `{ instructions: null }` when none are set.
    */
   app.get(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/agent-instructions",
@@ -916,7 +913,7 @@ export default function defineRoutesForKnowledgeTexts(
     checkUserPermission,
     describeRoute({
       tags: ["knowledge"],
-      summary: "Get the organisation's agent-instructions page",
+      summary: "Get the organisation's agent instructions",
       responses: { 200: { description: "Agent instructions (or null)" } },
     }),
     validateScope("knowledge:read"),
@@ -929,8 +926,7 @@ export default function defineRoutesForKnowledgeTexts(
   );
 
   /**
-   * Create or update the organisation's agent-instructions page. The page is
-   * created on first save, so the admin UI never has to know whether it exists.
+   * Create or replace the organisation's agent instructions.
    */
   app.put(
     API_BASE_PATH + "/tenant/:tenantId/knowledge/texts/agent-instructions",
@@ -938,18 +934,12 @@ export default function defineRoutesForKnowledgeTexts(
     checkUserPermission,
     describeRoute({
       tags: ["knowledge"],
-      summary: "Create or update the organisation's agent-instructions page",
+      summary: "Create or replace the organisation's agent instructions",
       responses: { 200: { description: "Saved agent instructions" } },
     }),
     validateScope("knowledge:write"),
     validator("param", v.object({ tenantId: v.string() })),
-    validator(
-      "json",
-      v.object({
-        content: v.string(),
-        title: v.optional(v.pipe(v.string(), v.minLength(1))),
-      })
-    ),
+    validator("json", v.object({ content: v.string() })),
     isTenantMember,
     async (c) => {
       try {
@@ -974,7 +964,7 @@ export default function defineRoutesForKnowledgeTexts(
     checkUserPermission,
     describeRoute({
       tags: ["knowledge"],
-      summary: "Delete the organisation's agent-instructions page",
+      summary: "Delete the organisation's agent instructions",
       responses: { 200: { description: "Deletion result" } },
     }),
     validateScope("knowledge:write"),
