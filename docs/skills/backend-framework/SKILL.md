@@ -65,6 +65,7 @@ defineServer({
   // Static files
   staticPublicDataPath: string,
   staticPrivateDataPath: string,
+  staticPublicExclude: string[],   // subtrees of the public folder to withhold
 })
 ```
 
