@@ -7,7 +7,8 @@
  *   - top-level structure WITH summaries and facets
  *   - the most recently changed pages (reuses the recent-changes helper)
  *   - the tenant's agent-instructions page (flagged via isAgentInstructions),
- *     with its content embedded so it can be loaded in one call
+ *     with its content embedded so it can be loaded in one call. This one is
+ *     also looked up among HIDDEN pages — see the note at the query.
  */
 
 import { and, count, desc, eq, isNull, max, getTableColumns } from "drizzle-orm";
@@ -67,6 +68,17 @@ export const getKnowledgeOverview = async (
 
   // Agent-instructions page: prefer a tenant-wide one (teamId null), else any
   // visible flagged page. Content is embedded so a session can load it at once.
+  //
+  // Deliberately its own visibility set with includeHidden: the page managed
+  // from the admin UI is hidden on purpose (it must not show up in the tree,
+  // search or recent changes), and the default visibility would filter it out
+  // right here. Only this query sees hidden pages — metrics, top-level and
+  // recent changes above keep the caller's normal visibility.
+  const instructionsVisibility = buildKnowledgeTextVisibilityConditions({
+    ...context,
+    includeHidden: true,
+  });
+
   const instructionsRows = await getDb()
     .select({
       id: knowledgeText.id,
@@ -75,7 +87,12 @@ export const getKnowledgeOverview = async (
       teamId: knowledgeText.teamId,
     })
     .from(knowledgeText)
-    .where(and(...visibility, eq(knowledgeText.isAgentInstructions, true)))
+    .where(
+      and(
+        ...instructionsVisibility,
+        eq(knowledgeText.isAgentInstructions, true)
+      )
+    )
     .orderBy(knowledgeText.teamId, desc(knowledgeText.updatedAt));
 
   const preferred =
