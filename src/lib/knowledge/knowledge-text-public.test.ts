@@ -316,6 +316,103 @@ describe("Public knowledgeText visibility", () => {
     });
   });
 
+  /**
+   * setKnowledgeTextPublicMode is the explicit API, but `publicMode` is also a
+   * plain column on the update schema, so the generic update route
+   * (PUT /tenant/:tenantId/knowledge/texts/:id) accepts it too. That is the
+   * path a UI or an API client actually takes, so it gets its own coverage
+   * rather than being implied by the tests above.
+   */
+  describe("publishing through the generic update", () => {
+    it("setting publicMode publishes the page and its subtree", async () => {
+      const root = await makePage({ title: "Update Root" });
+      const child = await makePage({ title: "Update Child", parentId: root.id });
+      expect(await storedPublicEffective(root.id)).toBe(false);
+
+      await updateKnowledgeText(
+        root.id,
+        { publicMode: "public" },
+        { tenantId: TENANT, userId: OWNER }
+      );
+
+      expect(await storedPublicEffective(root.id)).toBe(true);
+      expect(await storedPublicEffective(child.id)).toBe(true);
+    });
+
+    it("clearing publicMode back to null un-publishes the subtree", async () => {
+      const root = await makePage({ title: "Toggle Root" });
+      const child = await makePage({ title: "Toggle Child", parentId: root.id });
+      await updateKnowledgeText(
+        root.id,
+        { publicMode: "public" },
+        { tenantId: TENANT, userId: OWNER }
+      );
+      expect(await storedPublicEffective(child.id)).toBe(true);
+
+      await updateKnowledgeText(
+        root.id,
+        { publicMode: null },
+        { tenantId: TENANT, userId: OWNER }
+      );
+
+      expect(await storedPublicEffective(root.id)).toBe(false);
+      expect(await storedPublicEffective(child.id)).toBe(false);
+    });
+
+    it('setting publicMode to "excluded" keeps a subtree internal below a published parent', async () => {
+      const root = await makePage({ title: "Excl Root" });
+      const branch = await makePage({ title: "Excl Branch", parentId: root.id });
+      const leaf = await makePage({ title: "Excl Leaf", parentId: branch.id });
+      await updateKnowledgeText(
+        root.id,
+        { publicMode: "public" },
+        { tenantId: TENANT, userId: OWNER }
+      );
+      expect(await storedPublicEffective(leaf.id)).toBe(true);
+
+      await updateKnowledgeText(
+        branch.id,
+        { publicMode: "excluded" },
+        { tenantId: TENANT, userId: OWNER }
+      );
+
+      expect(await storedPublicEffective(root.id)).toBe(true);
+      expect(await storedPublicEffective(branch.id)).toBe(false);
+      expect(await storedPublicEffective(leaf.id)).toBe(false);
+    });
+
+    it("an unrelated update does not disturb the published state", async () => {
+      const root = await makePage({ title: "Untouched Root" });
+      const child = await makePage({ title: "Untouched Child", parentId: root.id });
+      await updateKnowledgeText(
+        root.id,
+        { publicMode: "public" },
+        { tenantId: TENANT, userId: OWNER }
+      );
+
+      await updateKnowledgeText(
+        root.id,
+        { text: "new content, nothing to do with publishing" },
+        { tenantId: TENANT, userId: OWNER }
+      );
+
+      expect(await storedPublicEffective(root.id)).toBe(true);
+      expect(await storedPublicEffective(child.id)).toBe(true);
+    });
+
+    it("the update response reflects the new publishing state", async () => {
+      const page = await makePage({ title: "Response Shape" });
+      const updated = await updateKnowledgeText(
+        page.id,
+        { publicMode: "public" },
+        { tenantId: TENANT, userId: OWNER }
+      );
+      // a UI reads this back to render its state without a second request
+      expect(updated.publicMode).toBe("public");
+      expect(updated.publicEffective).toBe(true);
+    });
+  });
+
   describe("derived state cannot be forged", () => {
     it("updateKnowledgeText ignores a caller-supplied publicEffective", async () => {
       const page = await makePage({ title: "Forge Attempt" });
