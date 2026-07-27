@@ -7,7 +7,13 @@ import {
   type PdfParserResult,
 } from "./types";
 
-const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
+/**
+ * Read the key on every call instead of once at module load. The module is
+ * pulled in transitively by ./index, so a load-time snapshot would capture
+ * whatever the environment looked like at the very first import — which is
+ * before a test file (or any late .env loading) gets a chance to set the key.
+ */
+const getMistralApiKey = () => process.env.MISTRAL_API_KEY;
 const MISTRAL_API_BASE_URL = "https://api.mistral.ai/v1";
 
 // https://docs.mistral.ai/capabilities/document/
@@ -31,6 +37,7 @@ export const parsePdfFileAsMarkdownMistral = async (
   context: PdfParserContext,
   options?: PdfParserOptions
 ): Promise<PdfParserResult> => {
+  const MISTRAL_API_KEY = getMistralApiKey();
   if (!MISTRAL_API_KEY) {
     throw new Error("No API key set for Mistral API.");
   }
