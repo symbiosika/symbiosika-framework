@@ -43,6 +43,7 @@ export const getUserById = async (userId: string) => {
       phoneNumberAsNumber: users.phoneNumberAsNumber,
       phoneNumberVerified: users.phoneNumberVerified,
       phonePinNumber: users.phonePinNumber,
+      mobilePhone: users.mobilePhone,
     })
     .from(users)
     .where(eq(users.id, userId));

@@ -112,6 +112,11 @@ export const users = pgBaseTable(
       .default(false),
     phoneNumberAsNumber: bigint("phone_number_as_number", { mode: "number" }),
     phonePinNumber: varchar("phone_pin_number", { length: 6 }),
+    // General-purpose mobile phone number, independent of the WhatsApp
+    // verification flow above (phoneNumber / phoneNumberVerified /
+    // phoneNumberAsNumber / phonePinNumber). Plain free text, no
+    // verification, no uniqueness constraint.
+    mobilePhone: varchar("mobile_phone", { length: 255 }),
     createdAt: timestamp("created_at", { mode: "string" })
       .notNull()
       .defaultNow(),

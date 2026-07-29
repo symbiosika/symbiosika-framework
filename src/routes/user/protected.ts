@@ -165,6 +165,7 @@ export function defineSecuredUserRoutes(
         image: v.optional(v.nullable(v.string())),
         lastTenantId: v.optional(v.nullable(v.string())),
         phoneNumber: v.optional(v.nullable(v.string())),
+        mobilePhone: v.optional(v.nullable(v.string())),
       })
     ),
     async (c) => {
@@ -178,6 +179,7 @@ export function defineSecuredUserRoutes(
           image,
           lastTenantId,
           phoneNumber,
+          mobilePhone,
         } = c.req.valid("json");
         await updateUser(c.get("usersId"), {
           firstname,
@@ -187,6 +189,7 @@ export function defineSecuredUserRoutes(
           image,
           lastTenantId,
           phoneNumber,
+          mobilePhone,
         });
         const user = await getUserById(c.get("usersId"));
         return c.json(user);

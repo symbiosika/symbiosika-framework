@@ -1,0 +1,1 @@
+ALTER TABLE "base_users" ADD COLUMN "mobile_phone" varchar(255);
