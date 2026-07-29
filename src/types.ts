@@ -73,6 +73,9 @@ export interface ServerSpecificConfig {
 
   authType?: "local" | "auth0" | "hanko";
   jwtExpiresAfter?: number;
+  // TTL for magic-link tokens (login, email verification, password reset),
+  // in seconds. Default 900 (15m).
+  magicLinkTtl?: number;
 
   // OAuth2 / OIDC Authorization Server (opt-in).
   // When enabled, the app acts as an OAuth2/OIDC provider so third-party

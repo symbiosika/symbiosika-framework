@@ -35,6 +35,7 @@ export const _GLOBAL_SERVER_CONFIG = {
   // accepting a tenant invitation via the emailed link. Override per app.
   invitationAcceptRedirectUrl: "/",
   jwtExpiresAfter: 60 * 60 * 24 * 30, // 30 days
+  magicLinkTtl: 60 * 15, // 15 minutes
   useConsoleLogger: true,
   useLicenseSystem: false,
   publicKey: "",
@@ -111,6 +112,9 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
 
   if (config.jwtExpiresAfter) {
     _GLOBAL_SERVER_CONFIG.jwtExpiresAfter = config.jwtExpiresAfter;
+  }
+  if (config.magicLinkTtl) {
+    _GLOBAL_SERVER_CONFIG.magicLinkTtl = config.magicLinkTtl;
   }
 
   _GLOBAL_SERVER_CONFIG.useLicenseSystem = config.useLicenseSystem ?? false;
