@@ -17,7 +17,7 @@ import {
 } from "../usermanagement/invitations";
 import { checkGeneralInvitationCode } from "./index";
 
-const EXPIRE_TIME = 15 * 60 * 1000; // 15 minutes
+const expireTimeMs = () => _GLOBAL_SERVER_CONFIG.magicLinkTtl * 1000;
 
 /**
  * How often a single login / email-verification token may be redeemed within
@@ -159,7 +159,7 @@ export const createMagicLinkToken = async (
 
   // Generate a unique token
   const token = nanoid(32);
-  const expiresAt = new Date(Date.now() + EXPIRE_TIME); // token expires after 15 minutes
+  const expiresAt = new Date(Date.now() + expireTimeMs());
 
   // Store the token in the database
   await getDb().insert(magicLinkSessions).values({
@@ -287,8 +287,8 @@ export const sendVerificationEmail = async (email: string) => {
  */
 export const verifyEmailToken = async (token: string) => {
   // Find the magic link record. Compare against the current time directly:
-  // `expiresAt` is already stored as `createdAt + EXPIRE_TIME`, so subtracting
-  // EXPIRE_TIME again here would double the effective validity window.
+  // `expiresAt` is already stored as `createdAt + magicLinkTtl`, so subtracting
+  // the TTL again here would double the effective validity window.
   const now = new Date().toISOString();
   const magicLinkResult = await getDb()
     .select()
