@@ -218,24 +218,65 @@ export type OAuthProfile = {
 };
 
 /**
+ * Look an account up by the provider's subject id (`extUserId`) — Microsoft's
+ * `oid`, Google's `sub`.
+ *
+ * Two guards:
+ *  - an empty id never matches. `extUserId` defaults to `""`, so every local
+ *    account carries that value and an empty needle would match an arbitrary
+ *    stranger.
+ *  - a hit that belongs to a *different* social provider is ignored: the id
+ *    spaces are unrelated, so an id colliding across them is a coincidence,
+ *    not the user. Accounts whose `provider` is not a social one (`local`,
+ *    `hanko`, …) do match — that is exactly the linked case below, where the
+ *    id was backfilled but `provider` stayed as it was.
+ */
+async function findUserByExternalId(extUserId: string, provider: OAuthProvider) {
+  if (!extUserId) return undefined;
+
+  const candidates = await getDb()
+    .select()
+    .from(users)
+    .where(eq(users.extUserId, extUserId));
+
+  return candidates.find(
+    (candidate) =>
+      candidate.provider === provider || !isOAuthProvider(candidate.provider)
+  );
+}
+
+/**
  * Find the account for an OAuth identity, or create it.
  *
- * The lookup is by e-mail **only**. Matching on `email + provider` instead
- * would try to insert a second row for an address that already exists (the
- * unique index on `users.email` rejects it), which made social login fail for
- * every account created by another method — the common case.
+ * Resolution order:
+ *  1. **the provider's subject id** (`extUserId`). It is immutable, so this
+ *     keeps working after the address was renamed in the directory.
+ *  2. **the e-mail address** the provider just verified. This links a login to
+ *     an account that already existed (magic link, password, …) and backfills
+ *     the subject id, so step 1 catches it from then on.
+ *     Matching on `email + provider` instead would try to insert a second row
+ *     for an address that already exists — rejected by the unique index on
+ *     `users.email` — which made social login fail for every account created
+ *     another way, i.e. the common case.
+ *  3. otherwise register a new account.
  *
  * `provider` is left untouched on an existing account: it records how the
- * account was originally created. `emailVerified` is set because the provider
- * has just proven ownership of the address.
+ * account was originally created, and it gates nothing (a linked account keeps
+ * every login method it had). `emailVerified` is set because the provider has
+ * just proven ownership of the address.
+ *
+ * The stored `email` is deliberately NOT overwritten from the profile: with a
+ * unique index on the column, silently rewriting an address could collide with
+ * another account and merge two identities.
  */
 async function findOrCreateOAuthUser(profile: OAuthProfile) {
   const { email, id, provider, firstname = "", surname = "" } = profile;
 
-  const existingUser = await getDb()
-    .select()
-    .from(users)
-    .where(eq(users.email, email));
+  const byExternalId = await findUserByExternalId(id, provider);
+
+  const existingUser = byExternalId
+    ? [byExternalId]
+    : await getDb().select().from(users).where(eq(users.email, email));
 
   if (existingUser[0]) {
     const updatedUser = await getDb()
@@ -247,9 +288,9 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
       .where(eq(users.id, existingUser[0].id))
       .returning();
 
-    if (existingUser[0].provider !== provider) {
+    if (!byExternalId) {
       log.info(
-        `Signed in existing ${existingUser[0].provider} account ${existingUser[0].id} via ${provider}`
+        `Linked ${provider} login to existing ${existingUser[0].provider} account ${existingUser[0].id}`
       );
     }
 
@@ -369,9 +410,20 @@ async function fetchOAuthProfile(
     throw new Error(`${provider} account has no usable e-mail address`);
   }
 
+  // The provider's stable subject id: Microsoft's `oid`, Google's `sub`. It is
+  // the primary key of the identity, so a response without one is refused
+  // rather than stored as the string "undefined".
+  const id = String(
+    (provider === "google" ? info.sub : info.id) ?? ""
+  ).trim();
+
+  if (id === "") {
+    throw new Error(`${provider} profile has no subject id`);
+  }
+
   return {
     email,
-    id: String(provider === "google" ? info.sub : info.id),
+    id,
     provider,
     firstname: (provider === "google" ? info.given_name : info.givenName) ?? "",
     surname: (provider === "google" ? info.family_name : info.surname) ?? "",
