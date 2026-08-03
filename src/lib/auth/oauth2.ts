@@ -102,8 +102,16 @@ if (isOAuthProviderActive("google")) {
 
 if (isOAuthProviderActive("microsoft")) {
   MICROSOFT_AUTH_IS_ACTIVE = true;
+  // The directory is part of the log on purpose: a single-tenant app
+  // registration rejects the `common` endpoint (AADSTS50194), and that is the
+  // most common setup mistake. MICROSOFT_TENANT_ID selects the directory.
   log.info(
-    "Microsoft Auth active. Redirect URI: " + getOAuthRedirectUri("microsoft")
+    `Microsoft Auth active. Directory: ${microsoftDirectory()}` +
+      (microsoftDirectory() === "common"
+        ? " (set MICROSOFT_TENANT_ID to the tenant GUID for a single-tenant app registration)"
+        : "") +
+      ". Redirect URI: " +
+      getOAuthRedirectUri("microsoft")
   );
 }
 
@@ -246,6 +254,55 @@ async function findUserByExternalId(extUserId: string, provider: OAuthProvider) 
 }
 
 /**
+ * Keep the stored address in sync with the directory after a rename.
+ *
+ * Best effort by design: `users.email` is unique, so the update can legitimately
+ * fail when another account already holds the new address (a colleague was
+ * renamed to it, an old row was never cleaned up, …). Failing the login over
+ * that would lock a user out of an account they demonstrably own, and taking the
+ * address away from the other account would merge two identities. So the
+ * conflict is logged with everything needed to resolve it by hand, and the login
+ * continues with the address on file.
+ *
+ * Returns the updated row, or undefined when nothing was changed — callers fall
+ * back to the row they already have.
+ */
+async function syncOAuthEmail(
+  user: { id: string; email: string },
+  email: string
+) {
+  if (user.email === email) return undefined;
+
+  try {
+    const [updated] = await getDb()
+      .update(users)
+      .set({ email })
+      .where(eq(users.id, user.id))
+      .returning();
+
+    log.info(
+      `Updated e-mail of account ${user.id} from ${user.email} to ${email} (renamed at the identity provider)`
+    );
+
+    return updated;
+  } catch (err) {
+    // Keep the reason short: a driver error carries the whole failed statement
+    // in `message`, the underlying cause has the useful part ("duplicate key
+    // value violates unique constraint \"unique_email\"").
+    const reason =
+      (err as { cause?: { message?: string } })?.cause?.message ??
+      (err instanceof Error ? err.message.split("\n")[0] : String(err));
+
+    log.error(
+      `Could not update e-mail of account ${user.id} from ${user.email} to ${email}: ${reason}. ` +
+        `The new address is most likely already used by another account — ` +
+        `the login continues with ${user.email}; merge or free the duplicate account to fix this.`
+    );
+    return undefined;
+  }
+}
+
+/**
  * Find the account for an OAuth identity, or create it.
  *
  * Resolution order:
@@ -265,9 +322,8 @@ async function findUserByExternalId(extUserId: string, provider: OAuthProvider) 
  * every login method it had). `emailVerified` is set because the provider has
  * just proven ownership of the address.
  *
- * The stored `email` is deliberately NOT overwritten from the profile: with a
- * unique index on the column, silently rewriting an address could collide with
- * another account and merge two identities.
+ * A changed address is synced onto the account on a best-effort basis, see
+ * `syncOAuthEmail`.
  */
 async function findOrCreateOAuthUser(profile: OAuthProfile) {
   const { email, id, provider, firstname = "", surname = "" } = profile;
@@ -294,7 +350,7 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
       );
     }
 
-    return updatedUser[0];
+    return (await syncOAuthEmail(existingUser[0], email)) ?? updatedUser[0];
   }
 
   // No account for this address yet → register one.

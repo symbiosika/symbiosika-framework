@@ -125,10 +125,15 @@ An OAuth identity is resolved in this order:
    pending organisation invitations accepted and the post-register actions run).
 
 The `provider` column keeps recording how the account was originally created
-and gates nothing. The stored `email` is never overwritten from the profile:
-with a unique index on the column, silently rewriting an address could collide
-with another account and merge two identities. A profile without a subject id is
-rejected.
+and gates nothing. A profile without a subject id is rejected.
+
+A changed address is **synced onto the account** (rename in the directory), on a
+best-effort basis: `users.email` is unique, so the update can legitimately fail
+when another account already holds the new address. Failing the login over that
+would lock a user out of an account they demonstrably own, so the conflict is
+logged as an error with both addresses and the account id, and the login
+continues with the address on file — merge or free the duplicate account to
+resolve it.
 
 The login methods are not exclusive: `users.provider` records only how the
 account was created and never gates a login, so an account created via OAuth
