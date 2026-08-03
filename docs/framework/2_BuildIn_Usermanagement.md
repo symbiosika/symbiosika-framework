@@ -116,6 +116,13 @@ address is always one account. A user created by a magic link (`provider:
 Unknown addresses are registered on the spot (with `emailVerified: true`,
 pending organisation invitations accepted and the post-register actions run).
 
+The login methods are not exclusive: `users.provider` records only how the
+account was created and never gates a login, so an account created via OAuth
+can still sign in with a magic link (and with a passkey once one is
+registered), and vice versa. The only method that needs a prerequisite is the
+password login — an account created by OAuth or by a magic link has no
+password until one is set via password reset.
+
 ### Configuration
 
 | Variable | Meaning |
