@@ -4,6 +4,7 @@ import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { getDb } from "../db/db-connection";
 import { users } from "../db/db-schema";
 import { initTests, TEST_ORG1_USER_1 } from "../../test/init.test";
+import { createMagicLinkToken, verifyMagicLink } from "./magic-link";
 import {
   OAuthAuth,
   createOAuthCodeChallenge,
@@ -310,6 +311,24 @@ describe("OAuth callback handling", () => {
     expect(rows[0]?.firstname).toBe("Mia");
     expect(rows[0]?.surname).toBe("Muster");
     expect(rows[0]?.emailVerified).toBe(true);
+  });
+
+  test("an account created via OAuth can still use the magic link", async () => {
+    // Both login methods must stay open on the same account: `users.provider`
+    // only records how the account came to be, it never gates a login. The
+    // magic-link flow resolves by e-mail and redeems by user id — no provider
+    // check anywhere in between.
+    const rows = await getDb()
+      .select({ id: users.id, provider: users.provider })
+      .from(users)
+      .where(eq(users.email, NEW_USER_EMAIL));
+    expect(rows[0]?.provider).toBe("microsoft");
+
+    const magicToken = await createMagicLinkToken(NEW_USER_EMAIL, "login");
+    const { user, token } = await verifyMagicLink(magicToken);
+
+    expect(user.id).toBe(rows[0]?.id);
+    expect(token.split(".").length).toBe(3);
   });
 
   test("a second login with the same account does not create a duplicate", async () => {
