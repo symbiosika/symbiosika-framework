@@ -830,16 +830,19 @@ export function definePublicUserRoutes(
       // The user declined consent, or the provider rejected the request.
       const providerError = c.req.query("error");
       if (providerError) {
-        log.info(
-          `${provider} login aborted: ${providerError} ${
-            c.req.query("error_description") ?? ""
-          }`
-        );
+        const cancelledByUser = providerError === "access_denied";
+        const message = `${provider} login aborted: ${providerError} ${
+          c.req.query("error_description") ?? ""
+        }`;
+        // A cancelled consent screen is routine; anything else means the app
+        // registration and this server disagree (wrong redirect URI, wrong
+        // directory, …) and belongs in the error log.
+        if (cancelledByUser) log.info(message);
+        else log.error(message);
+
         return c.redirect(
           oauthLoginError(
-            providerError === "access_denied"
-              ? "oauth_cancelled"
-              : "oauth_failed"
+            cancelledByUser ? "oauth_cancelled" : "oauth_failed"
           )
         );
       }
