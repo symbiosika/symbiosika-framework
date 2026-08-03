@@ -84,15 +84,48 @@ The following endpoints are available for user authentication and registration:
   ```
 
 - **GET `/api/v1/user/oauth-providers`**  
-  List available OAuth providers (e.g., Google, Microsoft).
+  List available OAuth providers (`{ "google": bool, "microsoft": bool }`).
+  A provider counts as available only when **both** its client id and its
+  client secret are configured — a login page can use this to decide whether to
+  offer the button at all.
 
 - **GET `/api/v1/user/auth/:provider`**  
-  Redirect to OAuth login for the given provider.
-  **Query (optional):** `?redirectUrl=...`
+  Start the social login: redirects to the provider's sign-in page.
+  **Query (optional):** `?redirectUrl=...` — where to send the user after a
+  successful login. Only server-relative paths are accepted (no open redirect);
+  the default is `oauthCallbackUrl` from `defineServer`.
+  The `state` value and the PKCE verifier are pinned in a short-lived HttpOnly
+  cookie (`oauth_login_tx`), so the callback can only be completed by the same
+  browser that started the login.
 
 - **GET `/api/v1/user/auth/:provider/callback`**  
-  Handle OAuth callback and complete authentication.
-  **Query:** `?code=...&state=...`
+  Finish the social login. Verifies `state`, exchanges the code (PKCE), resolves
+  the account and **sets the normal auth cookies** (`jwt` HttpOnly +
+  `jwt_present`) — the session token never travels through a URL. Then redirects
+  to the target from the login transaction.
+  **Query:** `?code=...&state=...` (or `?error=...` when the user cancels).
+  Failures redirect to `loginUrl?error=oauth_unavailable|oauth_cancelled|oauth_failed`.
+
+### Social login and existing accounts
+
+Accounts are resolved **by e-mail address**, not by `email + provider`: the
+provider has just verified the address, and `users.email` is unique, so one
+address is always one account. A user created by a magic link (`provider:
+"local"`) can therefore sign in with Microsoft or Google afterwards; the
+`provider` column keeps recording how the account was originally created.
+Unknown addresses are registered on the spot (with `emailVerified: true`,
+pending organisation invitations accepted and the post-register actions run).
+
+### Configuration
+
+| Variable | Meaning |
+| --- | --- |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | enables "Sign in with Google" |
+| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | enables "Sign in with Microsoft" |
+| `MICROSOFT_TENANT_ID` | optional Entra directory (tenant GUID or `organizations`); defaults to `common` |
+
+Redirect URI to register with the provider:
+`<baseUrl><basePath>/user/auth/<provider>/callback`
 
 ---
 

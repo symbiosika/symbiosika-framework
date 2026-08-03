@@ -19,7 +19,19 @@ import {
   acceptInvitationByToken,
 } from "../../lib/usermanagement/invitations";
 import { verifyApiTokenAndGetJwt } from "../../lib/auth/token-auth";
-import { OAuthAuth } from "../../lib/auth/oauth2";
+import {
+  OAUTH_LOGIN_TX_COOKIE,
+  OAUTH_LOGIN_TX_TTL_SECONDS,
+  OAuthAuth,
+  createOAuthCodeChallenge,
+  createOAuthRandomToken,
+  decodeOAuthTransaction,
+  encodeOAuthTransaction,
+  isOAuthProvider,
+  isOAuthProviderActive,
+  isSameOAuthState,
+  sanitizeOAuthRedirect,
+} from "../../lib/auth/oauth2";
 import {
   isPasskeysEnabledForLocalAuth,
   passkeyAuthenticationOptions,
@@ -30,9 +42,24 @@ import {
   clearAuthCookies,
   JWT_COOKIE_NAME,
 } from "../../lib/auth/auth-cookies";
-import { getCookie } from "hono/cookie";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { revokeSessionByToken } from "../../lib/auth/sessions";
 import { deleteCachedToken } from "../../lib/utils/redis-cache";
+
+/**
+ * Error codes a failed social login appends to the login page URL. The page
+ * turns them into a message; no server-side detail leaks into the browser.
+ */
+export type OAuthLoginError =
+  | "oauth_unavailable"
+  | "oauth_cancelled"
+  | "oauth_failed";
+
+const oauthLoginError = (error: OAuthLoginError) =>
+  `${_GLOBAL_SERVER_CONFIG.loginUrl}?error=${error}`;
+
+const isSecureContext = () =>
+  _GLOBAL_SERVER_CONFIG.baseUrl.startsWith("https://");
 
 /**
  * Define the payment routes
@@ -684,15 +711,19 @@ export function definePublicUserRoutes(
   );
 
   /**
-   * OAuth Google authentication redirect
+   * Start a social login: build the provider's authorize URL and pin `state`
+   * plus the PKCE verifier (and the post-login redirect target) in a
+   * short-lived HttpOnly cookie. See ../../lib/auth/oauth2.
    */
   app.get(
     API_BASE_PATH + "/user/auth/:provider",
     describeRoute({
       tags: ["user"],
-      summary: "Redirect to Google authentication",
+      summary: "Redirect to the provider's sign-in page",
       responses: {
-        302: { description: "Redirect to Google OAuth" },
+        302: {
+          description: "Redirect to the provider (or back to the login page)",
+        },
       },
     }),
     validator(
@@ -708,54 +739,68 @@ export function definePublicUserRoutes(
       })
     ),
     async (c) => {
-      try {
-        const provider = c.req.valid("param").provider;
-        const redirectUrl = c.req.query("redirectUrl") || "";
-        let authUrl;
-        if (provider === "google") {
-          authUrl = OAuthAuth.getGoogleAuthUrl();
-        } else if (provider === "microsoft") {
-          authUrl = OAuthAuth.getMicrosoftAuthUrl();
-        } else {
-          throw new Error("Invalid provider");
-        }
-        return c.redirect(authUrl);
-      } catch (err) {
-        throw new HTTPException(500, {
-          message: "Error redirecting to Google auth: " + err,
-        });
+      const provider = c.req.valid("param").provider;
+
+      if (!isOAuthProvider(provider) || !isOAuthProviderActive(provider)) {
+        // Not configured on this instance: no button should have been offered,
+        // so this is a stale page or a hand-crafted URL.
+        return c.redirect(oauthLoginError("oauth_unavailable"));
       }
+
+      const state = createOAuthRandomToken();
+      const verifier = createOAuthRandomToken();
+      const redirect = sanitizeOAuthRedirect(
+        c.req.query("redirectUrl"),
+        `${_GLOBAL_SERVER_CONFIG.oauthCallbackUrl}?provider=${provider}`
+      );
+
+      setCookie(
+        c,
+        OAUTH_LOGIN_TX_COOKIE,
+        encodeOAuthTransaction({ state, verifier, redirect }),
+        {
+          httpOnly: true,
+          secure: isSecureContext(),
+          // Lax, not Strict: the user comes back through a top-level
+          // navigation started on the provider's domain.
+          sameSite: "Lax",
+          path: "/",
+          maxAge: OAUTH_LOGIN_TX_TTL_SECONDS,
+        }
+      );
+
+      return c.redirect(
+        OAuthAuth.getAuthUrl(provider, {
+          state,
+          codeChallenge: createOAuthCodeChallenge(verifier),
+        })
+      );
     }
   );
 
   /**
-   * OAuth Microsoft callback
+   * Finish a social login. Sets the same auth cookies as every other login
+   * flow and redirects into the app — the session token never travels through
+   * the URL.
    */
   app.get(
     API_BASE_PATH + "/user/auth/:provider/callback",
     describeRoute({
       tags: ["user"],
-      summary: "Handle Microsoft OAuth callback",
+      summary: "Handle the provider's OAuth callback",
       responses: {
-        200: {
-          description: "Successful authentication",
-          content: {
-            "application/json": {
-              schema: v.object({
-                token: v.string(),
-                expiresAt: v.string(),
-                user: usersRestrictedSelectSchema,
-              }),
-            },
-          },
+        302: {
+          description: "Redirect into the app (or back to the login page)",
         },
       },
     }),
     validator(
       "query",
       v.object({
-        code: v.string(),
+        code: v.optional(v.string()),
         state: v.optional(v.string()),
+        error: v.optional(v.string()),
+        error_description: v.optional(v.string()),
       })
     ),
     validator(
@@ -765,29 +810,68 @@ export function definePublicUserRoutes(
       })
     ),
     async (c) => {
-      try {
-        const provider = c.req.valid("param").provider;
-        const code = c.req.query("code");
-        if (!code) {
-          throw new Error("No code provided");
-        }
+      const provider = c.req.valid("param").provider;
+      const transaction = decodeOAuthTransaction(
+        getCookie(c, OAUTH_LOGIN_TX_COOKIE)
+      );
 
-        let result;
-        if (provider === "microsoft") {
-          result = await OAuthAuth.handleMicrosoftCallback(code);
-        } else if (provider === "google") {
-          result = await OAuthAuth.handleGoogleCallback(code);
-        } else {
-          throw new Error("Invalid provider");
-        }
+      // One-shot: the transaction must not be replayable, not even after a
+      // failure further down.
+      deleteCookie(c, OAUTH_LOGIN_TX_COOKIE, {
+        path: "/",
+        secure: isSecureContext(),
+        sameSite: "Lax",
+      });
 
-        return c.redirect(
-          `${_GLOBAL_SERVER_CONFIG.oauthCallbackUrl}/${provider}?token=${result.token}`
+      if (!isOAuthProvider(provider) || !isOAuthProviderActive(provider)) {
+        return c.redirect(oauthLoginError("oauth_unavailable"));
+      }
+
+      // The user declined consent, or the provider rejected the request.
+      const providerError = c.req.query("error");
+      if (providerError) {
+        log.info(
+          `${provider} login aborted: ${providerError} ${
+            c.req.query("error_description") ?? ""
+          }`
         );
+        return c.redirect(
+          oauthLoginError(
+            providerError === "access_denied"
+              ? "oauth_cancelled"
+              : "oauth_failed"
+          )
+        );
+      }
+
+      const code = c.req.query("code");
+      const state = c.req.query("state");
+
+      if (
+        !transaction ||
+        !code ||
+        !state ||
+        !isSameOAuthState(transaction.state, state)
+      ) {
+        // Missing/expired cookie or a state mismatch (CSRF, or the login was
+        // started in another browser).
+        log.info(`${provider} login callback with invalid state`);
+        return c.redirect(oauthLoginError("oauth_failed"));
+      }
+
+      try {
+        const result = await OAuthAuth.handleCallback(
+          provider,
+          code,
+          transaction.verifier
+        );
+
+        setAuthCookies(c, result.token);
+
+        return c.redirect(transaction.redirect);
       } catch (err) {
-        throw new HTTPException(401, {
-          message: "Failed to authenticate with Microsoft: " + err,
-        });
+        log.error(`${provider} login failed: ${err}`);
+        return c.redirect(oauthLoginError("oauth_failed"));
       }
     }
   );
