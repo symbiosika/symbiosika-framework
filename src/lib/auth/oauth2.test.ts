@@ -4,6 +4,7 @@ import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { getDb } from "../db/db-connection";
 import { users } from "../db/db-schema";
 import { initTests, TEST_ORG1_USER_1 } from "../../test/init.test";
+import { createMagicLinkToken, verifyMagicLink } from "./magic-link";
 import {
   OAuthAuth,
   createOAuthCodeChallenge,
@@ -197,6 +198,21 @@ describe("OAuth login transaction", () => {
 describe("OAuth callback handling", () => {
   const realFetch = globalThis.fetch;
   const NEW_USER_EMAIL = "oauth-new-user@symbiosika.de";
+  const RENAME_BEFORE_EMAIL = "oauth-before-rename@symbiosika.de";
+  const RENAMED_EMAIL = "oauth-renamed-user@symbiosika.de";
+  const CONFLICT_OWNER_EMAIL = "oauth-conflict-owner@symbiosika.de";
+  const CONFLICT_TAKEN_EMAIL = "oauth-conflict-taken@symbiosika.de";
+  const COLLIDING_EMAIL = "oauth-colliding-id@symbiosika.de";
+  const OTHER_PROVIDER_EMAIL = "oauth-google-user@symbiosika.de";
+  const CREATED_EMAILS = [
+    NEW_USER_EMAIL,
+    RENAME_BEFORE_EMAIL,
+    RENAMED_EMAIL,
+    CONFLICT_OWNER_EMAIL,
+    CONFLICT_TAKEN_EMAIL,
+    COLLIDING_EMAIL,
+    OTHER_PROVIDER_EMAIL,
+  ];
 
   let profileResponse: Record<string, unknown> = {};
   let tokenResponse: Record<string, unknown> = { access_token: "ms-access" };
@@ -205,6 +221,13 @@ describe("OAuth callback handling", () => {
   beforeAll(async () => {
     await initTests();
     enableMicrosoft();
+
+    // Start from a never-linked account, whatever an earlier run left behind,
+    // so the e-mail path and the id backfill below are actually exercised.
+    await getDb()
+      .update(users)
+      .set({ extUserId: "" })
+      .where(eq(users.id, TEST_ORG1_USER_1.id));
 
     globalThis.fetch = (async (input: any, init?: any) => {
       const url = typeof input === "string" ? input : input.url;
@@ -226,7 +249,7 @@ describe("OAuth callback handling", () => {
     globalThis.fetch = realFetch;
     restoreEnv();
     try {
-      await getDb().delete(users).where(inArray(users.email, [NEW_USER_EMAIL]));
+      await getDb().delete(users).where(inArray(users.email, CREATED_EMAILS));
     } catch (err) {
       console.warn("[oauth2.test] cleanup failed:", err);
     }
@@ -310,6 +333,168 @@ describe("OAuth callback handling", () => {
     expect(rows[0]?.firstname).toBe("Mia");
     expect(rows[0]?.surname).toBe("Muster");
     expect(rows[0]?.emailVerified).toBe(true);
+  });
+
+  test("an account created via OAuth can still use the magic link", async () => {
+    // Both login methods must stay open on the same account: `users.provider`
+    // only records how the account came to be, it never gates a login. The
+    // magic-link flow resolves by e-mail and redeems by user id — no provider
+    // check anywhere in between.
+    const rows = await getDb()
+      .select({ id: users.id, provider: users.provider })
+      .from(users)
+      .where(eq(users.email, NEW_USER_EMAIL));
+    expect(rows[0]?.provider).toBe("microsoft");
+
+    const magicToken = await createMagicLinkToken(NEW_USER_EMAIL, "login");
+    const { user, token } = await verifyMagicLink(magicToken);
+
+    expect(user.id).toBe(rows[0]!.id);
+    expect(token.split(".").length).toBe(3);
+  });
+
+  test("prefers the subject id over the e-mail address and syncs the rename", async () => {
+    // The `oid` is immutable, the address is not: after a rename in the
+    // directory the profile arrives with a new e-mail, and only the subject id
+    // still points at the right account. Matching on the address alone would
+    // register a second account for the same person here.
+    const [linked] = await getDb()
+      .insert(users)
+      .values({
+        email: RENAME_BEFORE_EMAIL,
+        firstname: "Before",
+        surname: "Rename",
+        provider: "local",
+        extUserId: "ms-oid-rename",
+        emailVerified: true,
+        salt: "",
+        password: "",
+      })
+      .returning({ id: users.id });
+
+    profileResponse = {
+      id: "ms-oid-rename",
+      mail: RENAMED_EMAIL,
+      givenName: "After",
+      surname: "Rename",
+    };
+
+    const result = await OAuthAuth.handleCallback("microsoft", "code-r", "v-r");
+
+    expect(result.user.id).toBe(linked!.id);
+
+    // No second account for the new address …
+    const rows = await getDb()
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(inArray(users.email, [RENAME_BEFORE_EMAIL, RENAMED_EMAIL]));
+    expect(rows.length).toBe(1);
+    // … the rename is carried over to the account …
+    expect(rows[0]?.id).toBe(linked!.id);
+    expect(rows[0]?.email).toBe(RENAMED_EMAIL);
+    // … and the session is issued for the new address
+    expect(result.user.email).toBe(RENAMED_EMAIL);
+  });
+
+  test("keeps the login working when the new address is already taken", async () => {
+    // users.email is unique. Failing the login here would lock a user out of an
+    // account they demonstrably own, so the conflict is logged and the login
+    // continues with the address on file.
+    const [owner] = await getDb()
+      .insert(users)
+      .values({
+        email: CONFLICT_OWNER_EMAIL,
+        firstname: "Conflict",
+        surname: "Owner",
+        provider: "microsoft",
+        extUserId: "ms-oid-conflict",
+        emailVerified: true,
+        salt: "",
+        password: "",
+      })
+      .returning({ id: users.id });
+
+    // Somebody else already holds the address the directory now reports
+    await getDb()
+      .insert(users)
+      .values({
+        email: CONFLICT_TAKEN_EMAIL,
+        firstname: "Address",
+        surname: "Squatter",
+        provider: "local",
+        extUserId: "",
+        emailVerified: true,
+        salt: "",
+        password: "",
+      });
+
+    profileResponse = {
+      id: "ms-oid-conflict",
+      mail: CONFLICT_TAKEN_EMAIL,
+    };
+
+    const result = await OAuthAuth.handleCallback("microsoft", "code-x", "v-x");
+
+    // The login succeeds, on the right account, with the old address
+    expect(result.user.id).toBe(owner!.id);
+    expect(result.user.email).toBe(CONFLICT_OWNER_EMAIL);
+
+    const rows = await getDb()
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(inArray(users.email, [CONFLICT_OWNER_EMAIL, CONFLICT_TAKEN_EMAIL]));
+    expect(rows.length).toBe(2);
+    // The other account keeps its address
+    expect(
+      rows.find((row) => row.email === CONFLICT_TAKEN_EMAIL)?.id
+    ).not.toBe(owner!.id);
+  });
+
+  test("ignores a subject id that belongs to another provider", async () => {
+    // Google `sub` and Microsoft `oid` live in unrelated id spaces, so an id
+    // that matches across them is a coincidence — the login must fall back to
+    // the e-mail address instead of taking over the other account.
+    const [googleUser] = await getDb()
+      .insert(users)
+      .values({
+        email: OTHER_PROVIDER_EMAIL,
+        firstname: "Google",
+        surname: "User",
+        provider: "google",
+        extUserId: "shared-subject-id",
+        emailVerified: true,
+        salt: "",
+        password: "",
+      })
+      .returning({ id: users.id });
+
+    profileResponse = {
+      id: "shared-subject-id",
+      userPrincipalName: COLLIDING_EMAIL,
+    };
+
+    const result = await OAuthAuth.handleCallback("microsoft", "code-c", "v-c");
+
+    expect(result.user.id).not.toBe(googleUser!.id);
+    expect(result.user.email).toBe(COLLIDING_EMAIL);
+
+    // The Google account keeps its identity
+    const untouched = await getDb()
+      .select({ provider: users.provider, extUserId: users.extUserId })
+      .from(users)
+      .where(eq(users.id, googleUser!.id));
+    expect(untouched[0]?.provider).toBe("google");
+    expect(untouched[0]?.extUserId).toBe("shared-subject-id");
+  });
+
+  test("a profile without a subject id is rejected", async () => {
+    // Without an `oid` there is no stable identity to store — and an empty
+    // extUserId would match the column default of every local account.
+    profileResponse = { userPrincipalName: NEW_USER_EMAIL };
+
+    await expect(
+      OAuthAuth.handleCallback("microsoft", "code-no-id", "v-no-id")
+    ).rejects.toThrow(/subject id/i);
   });
 
   test("a second login with the same account does not create a duplicate", async () => {

@@ -108,13 +108,39 @@ The following endpoints are available for user authentication and registration:
 
 ### Social login and existing accounts
 
-Accounts are resolved **by e-mail address**, not by `email + provider`: the
-provider has just verified the address, and `users.email` is unique, so one
-address is always one account. A user created by a magic link (`provider:
-"local"`) can therefore sign in with Microsoft or Google afterwards; the
-`provider` column keeps recording how the account was originally created.
-Unknown addresses are registered on the spot (with `emailVerified: true`,
-pending organisation invitations accepted and the post-register actions run).
+An OAuth identity is resolved in this order:
+
+1. **the provider's subject id** (`users.extUserId`) — Microsoft's `oid`,
+   Google's `sub`. It is immutable, so the login keeps hitting the right account
+   after the address was renamed in the directory. An empty id never matches
+   (it is the column default on every local account), and a hit belonging to a
+   *different* social provider is ignored — the id spaces are unrelated.
+2. **the e-mail address** the provider just verified. `users.email` is unique,
+   so one address is one account: a user created by a magic link (`provider:
+   "local"`) can sign in with Microsoft or Google, and the subject id is
+   **backfilled** onto that account so step 1 catches it from then on.
+   Resolving by `email + provider` instead would try to insert a second row for
+   an existing address, which the unique index rejects.
+3. otherwise the address is registered on the spot (with `emailVerified: true`,
+   pending organisation invitations accepted and the post-register actions run).
+
+The `provider` column keeps recording how the account was originally created
+and gates nothing. A profile without a subject id is rejected.
+
+A changed address is **synced onto the account** (rename in the directory), on a
+best-effort basis: `users.email` is unique, so the update can legitimately fail
+when another account already holds the new address. Failing the login over that
+would lock a user out of an account they demonstrably own, so the conflict is
+logged as an error with both addresses and the account id, and the login
+continues with the address on file — merge or free the duplicate account to
+resolve it.
+
+The login methods are not exclusive: `users.provider` records only how the
+account was created and never gates a login, so an account created via OAuth
+can still sign in with a magic link (and with a passkey once one is
+registered), and vice versa. The only method that needs a prerequisite is the
+password login — an account created by OAuth or by a magic link has no
+password until one is set via password reset.
 
 ### Configuration
 

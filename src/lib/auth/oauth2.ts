@@ -102,8 +102,16 @@ if (isOAuthProviderActive("google")) {
 
 if (isOAuthProviderActive("microsoft")) {
   MICROSOFT_AUTH_IS_ACTIVE = true;
+  // The directory is part of the log on purpose: a single-tenant app
+  // registration rejects the `common` endpoint (AADSTS50194), and that is the
+  // most common setup mistake. MICROSOFT_TENANT_ID selects the directory.
   log.info(
-    "Microsoft Auth active. Redirect URI: " + getOAuthRedirectUri("microsoft")
+    `Microsoft Auth active. Directory: ${microsoftDirectory()}` +
+      (microsoftDirectory() === "common"
+        ? " (set MICROSOFT_TENANT_ID to the tenant GUID for a single-tenant app registration)"
+        : "") +
+      ". Redirect URI: " +
+      getOAuthRedirectUri("microsoft")
   );
 }
 
@@ -218,24 +226,113 @@ export type OAuthProfile = {
 };
 
 /**
+ * Look an account up by the provider's subject id (`extUserId`) — Microsoft's
+ * `oid`, Google's `sub`.
+ *
+ * Two guards:
+ *  - an empty id never matches. `extUserId` defaults to `""`, so every local
+ *    account carries that value and an empty needle would match an arbitrary
+ *    stranger.
+ *  - a hit that belongs to a *different* social provider is ignored: the id
+ *    spaces are unrelated, so an id colliding across them is a coincidence,
+ *    not the user. Accounts whose `provider` is not a social one (`local`,
+ *    `hanko`, …) do match — that is exactly the linked case below, where the
+ *    id was backfilled but `provider` stayed as it was.
+ */
+async function findUserByExternalId(extUserId: string, provider: OAuthProvider) {
+  if (!extUserId) return undefined;
+
+  const candidates = await getDb()
+    .select()
+    .from(users)
+    .where(eq(users.extUserId, extUserId));
+
+  return candidates.find(
+    (candidate) =>
+      candidate.provider === provider || !isOAuthProvider(candidate.provider)
+  );
+}
+
+/**
+ * Keep the stored address in sync with the directory after a rename.
+ *
+ * Best effort by design: `users.email` is unique, so the update can legitimately
+ * fail when another account already holds the new address (a colleague was
+ * renamed to it, an old row was never cleaned up, …). Failing the login over
+ * that would lock a user out of an account they demonstrably own, and taking the
+ * address away from the other account would merge two identities. So the
+ * conflict is logged with everything needed to resolve it by hand, and the login
+ * continues with the address on file.
+ *
+ * Returns the updated row, or undefined when nothing was changed — callers fall
+ * back to the row they already have.
+ */
+async function syncOAuthEmail(
+  user: { id: string; email: string },
+  email: string
+) {
+  if (user.email === email) return undefined;
+
+  try {
+    const [updated] = await getDb()
+      .update(users)
+      .set({ email })
+      .where(eq(users.id, user.id))
+      .returning();
+
+    log.info(
+      `Updated e-mail of account ${user.id} from ${user.email} to ${email} (renamed at the identity provider)`
+    );
+
+    return updated;
+  } catch (err) {
+    // Keep the reason short: a driver error carries the whole failed statement
+    // in `message`, the underlying cause has the useful part ("duplicate key
+    // value violates unique constraint \"unique_email\"").
+    const reason =
+      (err as { cause?: { message?: string } })?.cause?.message ??
+      (err instanceof Error ? err.message.split("\n")[0] : String(err));
+
+    log.error(
+      `Could not update e-mail of account ${user.id} from ${user.email} to ${email}: ${reason}. ` +
+        `The new address is most likely already used by another account — ` +
+        `the login continues with ${user.email}; merge or free the duplicate account to fix this.`
+    );
+    return undefined;
+  }
+}
+
+/**
  * Find the account for an OAuth identity, or create it.
  *
- * The lookup is by e-mail **only**. Matching on `email + provider` instead
- * would try to insert a second row for an address that already exists (the
- * unique index on `users.email` rejects it), which made social login fail for
- * every account created by another method — the common case.
+ * Resolution order:
+ *  1. **the provider's subject id** (`extUserId`). It is immutable, so this
+ *     keeps working after the address was renamed in the directory.
+ *  2. **the e-mail address** the provider just verified. This links a login to
+ *     an account that already existed (magic link, password, …) and backfills
+ *     the subject id, so step 1 catches it from then on.
+ *     Matching on `email + provider` instead would try to insert a second row
+ *     for an address that already exists — rejected by the unique index on
+ *     `users.email` — which made social login fail for every account created
+ *     another way, i.e. the common case.
+ *  3. otherwise register a new account.
  *
  * `provider` is left untouched on an existing account: it records how the
- * account was originally created. `emailVerified` is set because the provider
- * has just proven ownership of the address.
+ * account was originally created, and it gates nothing (a linked account keeps
+ * every login method it had). `emailVerified` is set because the provider has
+ * just proven ownership of the address.
+ *
+ * A changed address is synced onto the account on a best-effort basis, see
+ * `syncOAuthEmail`.
  */
 async function findOrCreateOAuthUser(profile: OAuthProfile) {
   const { email, id, provider, firstname = "", surname = "" } = profile;
 
-  const existingUser = await getDb()
-    .select()
-    .from(users)
-    .where(eq(users.email, email));
+  const byExternalId = await findUserByExternalId(id, provider);
+
+  const existingUser = byExternalId
+    ? [byExternalId]
+    : await getDb().select().from(users).where(eq(users.email, email));
 
   if (existingUser[0]) {
     const updatedUser = await getDb()
@@ -247,13 +344,13 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
       .where(eq(users.id, existingUser[0].id))
       .returning();
 
-    if (existingUser[0].provider !== provider) {
+    if (!byExternalId) {
       log.info(
-        `Signed in existing ${existingUser[0].provider} account ${existingUser[0].id} via ${provider}`
+        `Linked ${provider} login to existing ${existingUser[0].provider} account ${existingUser[0].id}`
       );
     }
 
-    return updatedUser[0];
+    return (await syncOAuthEmail(existingUser[0], email)) ?? updatedUser[0];
   }
 
   // No account for this address yet → register one.
@@ -369,9 +466,20 @@ async function fetchOAuthProfile(
     throw new Error(`${provider} account has no usable e-mail address`);
   }
 
+  // The provider's stable subject id: Microsoft's `oid`, Google's `sub`. It is
+  // the primary key of the identity, so a response without one is refused
+  // rather than stored as the string "undefined".
+  const id = String(
+    (provider === "google" ? info.sub : info.id) ?? ""
+  ).trim();
+
+  if (id === "") {
+    throw new Error(`${provider} profile has no subject id`);
+  }
+
   return {
     email,
-    id: String(provider === "google" ? info.sub : info.id),
+    id,
     provider,
     firstname: (provider === "google" ? info.given_name : info.givenName) ?? "",
     surname: (provider === "google" ? info.family_name : info.surname) ?? "",
