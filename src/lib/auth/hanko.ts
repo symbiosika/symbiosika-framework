@@ -6,6 +6,7 @@ import { users } from "../db/db-schema";
 import log from "../log";
 import { getCachedToken, setCachedToken } from "../utils/redis-cache";
 import { postRegisterActions } from "./actions";
+import { normalizeEmail } from "../utils/email";
 
 const HANKO_API_URL = process.env.HANKO_API_URL ?? "";
 
@@ -70,7 +71,9 @@ export async function verifyHankoToken(c: Context) {
   log.info("Token not in cache, fetching/upserting user...");
 
   // Extract data from Hanko response structure
-  const userEmail = validationData.claims?.email?.address ?? "";
+  const userEmail = normalizeEmail(
+    validationData.claims?.email?.address ?? ""
+  );
   const userId =
     validationData.user_id ?? validationData.claims?.subject ?? "";
   const emailVerified = validationData.claims?.email?.is_verified ?? false;

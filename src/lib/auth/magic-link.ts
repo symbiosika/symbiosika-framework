@@ -16,6 +16,7 @@ import {
   acceptAllPendingInvitationsForTenantMember,
 } from "../usermanagement/invitations";
 import { checkGeneralInvitationCode } from "./index";
+import { normalizeEmail } from "../utils/email";
 
 const expireTimeMs = () => _GLOBAL_SERVER_CONFIG.magicLinkTtl * 1000;
 
@@ -36,7 +37,7 @@ const MAX_REDEMPTIONS = 5;
  * Create a Magic Link Token
  */
 export const createMagicLinkToken = async (
-  email: string,
+  rawEmail: string,
   purpose: "login" | "email_verification" | "password_reset",
   createUserIfMissing: boolean = false,
   invitationCode?: string,
@@ -44,6 +45,11 @@ export const createMagicLinkToken = async (
   firstname?: string,
   surname?: string
 ): Promise<string> => {
+  // This is the single entry point for the magic-link, e-mail-verification and
+  // password-reset flows, so normalising here covers all three: the lookup
+  // below must not miss an existing account just because the address was typed
+  // with different capitalisation, which would then create a duplicate user.
+  const email = normalizeEmail(rawEmail);
   // Check if user exists
   let userResult = await getDb()
     .select({

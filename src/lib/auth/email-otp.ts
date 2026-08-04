@@ -22,6 +22,7 @@ import { getDb } from "../db/db-connection";
 import { emailLoginCodes, users } from "../db/db-schema";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { smtpService } from "../email";
+import { normalizeEmail } from "../utils/email";
 
 export type EmailOtpPurpose = "oauth_login";
 
@@ -40,8 +41,6 @@ const hashCode = (code: string): string =>
 /** Cryptographically secure 6-digit numeric code (leading zeros kept). */
 const generateCode = (): string =>
   crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
-
-const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 /**
  * Create a login code for an email and return the plaintext code (for sending).

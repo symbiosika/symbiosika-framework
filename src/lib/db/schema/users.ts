@@ -136,7 +136,23 @@ export const users = pgBaseTable(
   },
   (users) => [
     index("users_email_idx").on(users.email),
+    // Two unique indexes on one column, on purpose:
+    //
+    // `unique_email_lower` is the actual identity guarantee. `email` is plain
+    // `text`, so a btree over the raw value compares byte for byte and would
+    // happily accept `Max@example.com` next to `max@example.com` — two
+    // accounts for one mailbox. Application code normalises every write (see
+    // lib/utils/email.ts); this index is what makes a path that forgets to
+    // fail loudly instead of silently duplicating a user.
+    //
+    // `unique_email` (byte-wise) is kept because `ON CONFLICT` needs a unique
+    // index matching its target list, and Drizzle's `target` only accepts
+    // columns, never expressions — so the upsert in lib/auth/hanko.ts cannot
+    // reference `lower(email)`. It is implied by the index above (unique
+    // lower-cased values force unique raw values), so it constrains nothing
+    // extra; it exists to give that upsert an inferrable target.
     uniqueIndex("unique_email").on(users.email),
+    uniqueIndex("unique_email_lower").on(sql`lower(${users.email})`),
     uniqueIndex("unique_phone_number").on(users.phoneNumber),
     uniqueIndex("unique_phone_number_as_number").on(users.phoneNumberAsNumber),
     index("users_created_at_idx").on(users.createdAt),
@@ -640,8 +656,17 @@ export const tenantInvitations = pgBaseTable(
       .defaultNow(),
   },
   (tenantInvitations) => [
+    // Same pairing as on `users.email`, for the same reasons:
+    // `unique_invitation_lower` is the guarantee (two invitations differing
+    // only in capitalisation are one invitation), `unique_invitation` stays
+    // byte-wise so the (tenantId, email) upsert in
+    // lib/usermanagement/invitations.ts keeps an inferrable ON CONFLICT target.
     uniqueIndex("unique_invitation").on(
       tenantInvitations.email,
+      tenantInvitations.tenantId
+    ),
+    uniqueIndex("unique_invitation_lower").on(
+      sql`lower(${tenantInvitations.email})`,
       tenantInvitations.tenantId
     ),
     index("invitations_status_idx").on(tenantInvitations.status),

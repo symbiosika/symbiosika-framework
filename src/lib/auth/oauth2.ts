@@ -35,6 +35,7 @@ import {
   acceptAllPendingInvitationsForTenantMember,
 } from "../usermanagement/invitations";
 import log from "../log";
+import { normalizeEmail } from "../utils/email";
 
 export type OAuthProvider = "google" | "microsoft";
 
@@ -326,7 +327,12 @@ async function syncOAuthEmail(
  * `syncOAuthEmail`.
  */
 async function findOrCreateOAuthUser(profile: OAuthProfile) {
-  const { email, id, provider, firstname = "", surname = "" } = profile;
+  const { id, provider, firstname = "", surname = "" } = profile;
+  // Directories hand out whatever capitalisation the address was entered with
+  // (Entra in particular preserves it), so the raw value cannot be used for
+  // lookup or insert — step 2 of the resolution order above would miss the
+  // existing account and we would try to register a duplicate.
+  const email = normalizeEmail(profile.email);
 
   const byExternalId = await findUserByExternalId(id, provider);
 
