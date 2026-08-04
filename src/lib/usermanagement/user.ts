@@ -8,6 +8,7 @@ import {
   teams,
   type UsersInsert,
 } from "../db/schema/users";
+import { normalizeEmail } from "../utils/email";
 
 /**
  * Get a user by its external id
@@ -53,7 +54,8 @@ export const getUserById = async (userId: string) => {
 /**
  * Get a user by its email
  */
-export const getUserByEmail = async (email: string, tenantId?: string) => {
+export const getUserByEmail = async (rawEmail: string, tenantId?: string) => {
+  const email = normalizeEmail(rawEmail);
   const q = getDb()
     .select({
       id: users.id,
@@ -115,6 +117,12 @@ export const updateUser = async (
     .update(users)
     .set({
       ...data,
+      // An update may carry a new address (profile edit, admin correction);
+      // it has to land in the same canonical form as every insert, otherwise
+      // the row would stop being findable by its own login.
+      ...(data.email !== undefined
+        ? { email: normalizeEmail(data.email) }
+        : {}),
       phoneNumberAsNumber,
       phoneNumberVerified: phoneNumberChanged
         ? false

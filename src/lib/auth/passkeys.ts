@@ -17,6 +17,7 @@ import {
 } from "../utils/redis-cache";
 import { createJwtSessionForUserId } from "./index";
 import { getUserById } from "../usermanagement/user";
+import { normalizeEmail } from "../utils/email";
 
 const CHALLENGE_TYPE_REGISTRATION = "registration" as const;
 const CHALLENGE_TYPE_AUTHENTICATION = "authentication" as const;
@@ -246,8 +247,9 @@ export async function passkeyRegistrationVerify(
 
 export async function passkeyAuthenticationOptions(
   c: Context,
-  email: string
+  rawEmail: string
 ) {
+  const email = normalizeEmail(rawEmail);
   const cfg = getPasskeyConfig();
   if (!cfg) {
     throw new Error("Passkeys are not configured");

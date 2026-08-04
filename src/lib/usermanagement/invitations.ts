@@ -19,6 +19,7 @@ import { addUserToDefaultTeams } from "./teams";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { smtpService } from "../email";
 import log from "../log";
+import { normalizeEmail } from "../utils/email";
 
 /**
  * Get all tenant invitations
@@ -108,7 +109,10 @@ export const acceptTenantInvitation = async (
     .where(eq(users.id, userId));
   const user = userRes[0] || undefined;
 
-  if (!user || user.email !== invitation.email) {
+  if (
+    !user ||
+    normalizeEmail(user.email) !== normalizeEmail(invitation.email)
+  ) {
     throw new Error("User email does not match invitation email");
   }
 
@@ -409,9 +413,14 @@ export const createTenantInvitation = async (
 ) => {
   log.info("Creating tenant invitation. Send Mail? " + sendMail);
 
-  // Ensure data has a status field, defaulting to "pending" if not provided
+  // Ensure data has a status field, defaulting to "pending" if not provided.
+  // The address is canonicalised here because it is the key an invitation is
+  // later matched by — both against `users.email` and against itself via the
+  // (tenantId, email) upsert target, which is what makes re-inviting the same
+  // person update their invitation instead of adding a second one.
   const dataWithStatus = {
     ...data,
+    email: normalizeEmail(data.email),
     status: data.status || "pending",
   };
 
@@ -524,10 +533,11 @@ export const checkIfInvitationCodeIsNeededToRegister = async () => {
  * Get all pending invitations for a email address
  */
 export const getPendingInvitationsForEmail = async (
-  email: string
+  rawEmail: string
 ): Promise<{
   invitedInTenantIds: string[];
 }> => {
+  const email = normalizeEmail(rawEmail);
   const invitations = await getDb()
     .select()
     .from(tenantInvitations)

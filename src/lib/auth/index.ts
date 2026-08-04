@@ -28,6 +28,7 @@ import {
   acceptAllPendingInvitationsForTenantMember,
   getPendingInvitationsForEmail,
 } from "../usermanagement/invitations";
+import { normalizeEmail } from "../utils/email";
 
 // JWT_PRIVATE_KEY will be set by the key generation utility in hono-middlewares.ts
 const JWT_PRIVATE_KEY = process.env.JWT_PRIVATE_KEY || "";
@@ -46,7 +47,7 @@ export const saltAndHashPassword = async (
  * Gets a user from the database
  */
 const getUserFromDb = async (
-  email: string,
+  rawEmail: string,
   password: string,
   sendMailIfUserNotVerified = true
 ): Promise<{
@@ -57,6 +58,7 @@ const getUserFromDb = async (
   firstname: string;
   surname: string;
 }> => {
+  const email = normalizeEmail(rawEmail);
   // no-role-check necessary here
   try {
     const user = await getDb()
@@ -100,10 +102,11 @@ const getUserFromDb = async (
  * Sets a user in the database
  */
 const setUserInDb = async (
-  email: string,
+  rawEmail: string,
   password: string,
   sendMailAfterRegister: boolean
 ) => {
+  const email = normalizeEmail(rawEmail);
   const hash = await saltAndHashPassword(password);
 
   const user = await getDb()
@@ -309,7 +312,7 @@ export const LocalAuth = {
   },
 
   async register(
-    email: string,
+    rawEmail: string,
     password: string,
     sendVerificationEmail: boolean,
     meta: {
@@ -318,6 +321,7 @@ export const LocalAuth = {
       [key: string]: any;
     }
   ) {
+    const email = normalizeEmail(rawEmail);
     log.info(`Registering user: ${email}`);
 
     // go through all pre-register custom verifications
@@ -465,7 +469,8 @@ export const LocalAuth = {
     return { token, expiresAt };
   },
 
-  async forgotPasswort(email: string, sendWelcomeText = false) {
+  async forgotPasswort(rawEmail: string, sendWelcomeText = false) {
+    const email = normalizeEmail(rawEmail);
     // Look up the user but never reveal whether the address exists — returning
     // a different result / error for unknown emails enables account
     // enumeration. Only send the reset link when the user actually exists.
