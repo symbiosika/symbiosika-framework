@@ -65,22 +65,27 @@ const referencePattern = (id: string): RegExp =>
  * have rewritten them, so leaving one behind ships a permanently broken image
  * into the document.
  *
- * @param extract Whether image extraction was requested at all. When false no
- *   image is stored and every reference is stripped.
+ * Whether to store an image is decided by the payload alone, never by the
+ * caller's `extractImages` flag: a service that hands us base64 despite the
+ * flag being off still gets its image persisted, exactly as before. With no
+ * payload — extraction disabled, or the service listed an image it did not
+ * send — nothing is written and the reference goes away.
  */
 export const resolveImageReferences = async (
   text: string,
   images: ParsedPageImage[],
   tenantId: string,
-  extract: boolean,
 ): Promise<{ text: string; savedPaths: string[] }> => {
   let out = text;
   const savedPaths: string[] = [];
+  let strippedAny = false;
 
   for (const image of images) {
-    const savedPath = extract
-      ? await saveBase64ImageToStorage(image.base64, image.id, tenantId)
-      : null;
+    const savedPath = await saveBase64ImageToStorage(
+      image.base64,
+      image.id,
+      tenantId,
+    );
 
     if (savedPath) {
       savedPaths.push(savedPath);
@@ -91,29 +96,39 @@ export const resolveImageReferences = async (
       continue;
     }
 
-    const stripped = out.replace(referencePattern(image.id), "");
+    const stripped = stripReference(out, referencePattern(image.id));
     if (stripped !== out) {
-      log.debug(
-        `Dropped unresolved image reference "${image.id}" (extraction ${
-          extract ? "yielded no payload" : "disabled"
-        }).`,
-      );
+      strippedAny = true;
+      log.debug(`Dropped unresolved image reference "${image.id}".`);
     }
     out = stripped;
   }
 
-  return { text: collapseBlankLines(out), savedPaths };
+  // Only touch the surrounding whitespace when a reference actually went away.
+  // Pages we merely rewrote (or left alone) must come back byte-identical —
+  // reflowing every parsed page would eat trailing double-spaces, which are
+  // markdown hard line breaks, and rewrite the inside of fenced code blocks.
+  return { text: strippedAny ? collapseBlankLines(out) : out, savedPaths };
 };
 
 /**
- * Tidy up after stripped references: a removed image on its own line leaves an
- * empty line behind, and several in a row leave a hole in the document.
+ * Remove a reference. When it sits alone on its line the whole line goes with
+ * it, so a dropped image does not leave an indented empty line behind.
+ */
+const stripReference = (text: string, pattern: RegExp): string =>
+  text
+    .replace(
+      new RegExp(`^[^\\S\\n]*(?:${pattern.source})[^\\S\\n]*\\n?`, "gm"),
+      "",
+    )
+    .replace(pattern, "");
+
+/**
+ * Close the hole left by stripped lines: several removed images in a row leave
+ * a run of blank lines where the document had at most one.
  */
 const collapseBlankLines = (text: string): string =>
-  text
-    .replace(/[^\S\n]+$/gm, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trimEnd();
+  text.replace(/\n{3,}/g, "\n\n").trimEnd();
 
 /**
  * Strip every markdown image reference that still points at a non-path target.
@@ -122,9 +137,19 @@ const collapseBlankLines = (text: string): string =>
  * OpenRouter route only yields images positionally). Anything that already
  * points at a stored path — absolute, relative or a URL — is left alone.
  */
-export const stripUnresolvedImageReferences = (text: string): string =>
-  collapseBlankLines(
-    text.replace(/!\[[^\]]*\]\(\s*([^)\s]*)\s*\)/g, (match, target: string) =>
-      /^(\/|\.{1,2}\/|[a-z][a-z0-9+.-]*:)/i.test(target) ? match : "",
-    ),
-  );
+export const stripUnresolvedImageReferences = (text: string): string => {
+  const unresolved = /!\[[^\]]*\]\(\s*([^)\s]*)\s*\)/g;
+  const isResolved = (target: string) =>
+    /^(\/|\.{1,2}\/|[a-z][a-z0-9+.-]*:)/i.test(target);
+
+  const out = text
+    .replace(
+      new RegExp(`^[^\\S\\n]*(?:${unresolved.source})[^\\S\\n]*\\n?`, "gm"),
+      (match, target: string) => (isResolved(target) ? match : ""),
+    )
+    .replace(unresolved, (match, target: string) =>
+      isResolved(target) ? match : "",
+    );
+
+  return out === text ? text : collapseBlankLines(out);
+};

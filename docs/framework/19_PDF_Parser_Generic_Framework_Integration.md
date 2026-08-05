@@ -231,13 +231,15 @@ export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
   const data = MODE === "async" ? await runAsync(form) : await runSync(form);
 
   // Save images + replace placeholders (identical to the Mistral parser).
+  // An image is stored whenever the service sent a payload — the caller's
+  // `extractImages` flag does not veto that. A reference we cannot resolve is
+  // removed rather than left behind as a dead link.
   let includesImages = false;
   for (const page of data.pages) {
     const { text, savedPaths } = await resolveImageReferences(
       page.text,
       page.images ?? [],
-      context.tenantId,
-      options?.extractImages ?? false
+      context.tenantId
     );
     page.text = text;
     if (savedPaths.length > 0) includesImages = true;

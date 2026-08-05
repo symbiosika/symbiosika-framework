@@ -49,6 +49,8 @@ let lastParseForm: {
 } | null = null;
 let capabilitiesHits = 0;
 let failNextParse = false;
+/** Overrides RESULT_BODY for a single parse, reset in afterEach. */
+let nextResultBody: unknown = null;
 
 const CAPABILITIES_BODY = {
   service: "generic-v1",
@@ -125,17 +127,22 @@ beforeAll(() => {
         if (failNextParse) {
           return Response.json({ error: "cannot_parse" }, { status: 422 });
         }
-        return Response.json(RESULT_BODY);
+        return Response.json(nextResultBody ?? RESULT_BODY);
       }
 
       if (url.pathname === "/v1/jobs" && req.method === "POST") {
         await req.formData();
         const jobId = `job_${(jobCounter += 1)}`;
         jobs.add(jobId);
-        return Response.json({ job_id: jobId, status: "pending" }, { status: 202 });
+        return Response.json(
+          { job_id: jobId, status: "pending" },
+          { status: 202 },
+        );
       }
 
-      const jobResultMatch = url.pathname.match(/^\/v1\/jobs\/([^/]+)\/result$/);
+      const jobResultMatch = url.pathname.match(
+        /^\/v1\/jobs\/([^/]+)\/result$/,
+      );
       if (jobResultMatch) {
         return jobs.has(jobResultMatch[1]!)
           ? Response.json(RESULT_BODY)
@@ -166,6 +173,7 @@ afterAll(() => {
 afterEach(() => {
   resetGenericParserCapabilitiesCache();
   failNextParse = false;
+  nextResultBody = null;
   delete process.env.PDF_PARSER_SERVICE_MODE;
   delete process.env.PDF_PARSER_SERVICE;
 });
@@ -190,7 +198,7 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
             required: true,
           },
         ],
-      }
+      },
     );
 
     // What the framework actually sent to the service.
@@ -216,10 +224,32 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     expect(result.metadata?.typ?.found).toBe(false);
   });
 
+  test("stores an image the service sent even when extractImages was not set", async () => {
+    // Regression guard: the decision to store is driven by the payload, not by
+    // the caller's flag. A service that hands us base64 anyway must still get
+    // its image persisted — that was the behaviour before the reference
+    // cleanup and dropping it would silently lose images.
+    const result = await parsePdfFileAsMarkdownGeneric(pdfFile(), {
+      tenantId: "tenant-1",
+    });
+
+    expect(lastParseForm?.extractImages).toBe("false");
+    expect(result.includesImages).toBe(true);
+    expect(result.pages?.[0]?.text).toBe("Hersteller ![img-1](/storage/img-1)");
+  });
+
   test("strips placeholders for images the service listed but did not send", async () => {
-    // `extractImages` defaults to false: nothing is written to storage even if
-    // the service over-sends payloads, so the `![img-1](img-1)` placeholder
-    // can never resolve and must not reach the document.
+    nextResultBody = {
+      model: "generic-v1",
+      pages: [
+        {
+          page: 1,
+          text: "Hersteller ![img-1](img-1)",
+          images: [{ id: "img-1", base64: null }],
+        },
+      ],
+    };
+
     const result = await parsePdfFileAsMarkdownGeneric(pdfFile(), {
       tenantId: "tenant-1",
     });
@@ -227,6 +257,19 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     expect(result.includesImages).toBe(false);
     expect(result.pages?.[0]?.text).toBe("Hersteller");
     expect(result.pages?.[0]?.text).not.toContain("![");
+  });
+
+  test("leaves a page without dropped images byte-identical", async () => {
+    // Nothing was stripped, so no whitespace reflow may happen: the trailing
+    // double space is a markdown hard line break and must survive.
+    const text = "Zeile eins  \nZeile zwei\n\n```\ncode\n\n\nEnde\n```\n";
+    nextResultBody = { model: "generic-v1", pages: [{ page: 1, text }] };
+
+    const result = await parsePdfFileAsMarkdownGeneric(pdfFile(), {
+      tenantId: "tenant-1",
+    });
+
+    expect(result.pages?.[0]?.text).toBe(text);
   });
 
   test("omits the extract field when no targets are given", async () => {
@@ -246,7 +289,7 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     await parsePdfFileAsMarkdownGeneric(
       pdfFile(),
       { tenantId: "tenant-1" },
-      { ocr: true, parseImagesInDoc: true, detectTables: true }
+      { ocr: true, parseImagesInDoc: true, detectTables: true },
     );
     expect(lastParseForm?.ocr).toBe("true");
     expect(lastParseForm?.parseImagesInDoc).toBe("true");
@@ -256,7 +299,7 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
   test("throws on a non-2xx response", async () => {
     failNextParse = true;
     await expect(
-      parsePdfFileAsMarkdownGeneric(pdfFile(), { tenantId: "tenant-1" })
+      parsePdfFileAsMarkdownGeneric(pdfFile(), { tenantId: "tenant-1" }),
     ).rejects.toThrow("Parsing failed");
   });
 

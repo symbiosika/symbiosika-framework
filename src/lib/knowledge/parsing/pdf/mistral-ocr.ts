@@ -35,7 +35,7 @@ type MistralOcrResult = {
 export const parsePdfFileAsMarkdownMistral = async (
   fileContent: File,
   context: PdfParserContext,
-  options?: PdfParserOptions
+  options?: PdfParserOptions,
 ): Promise<PdfParserResult> => {
   const MISTRAL_API_KEY = getMistralApiKey();
   if (!MISTRAL_API_KEY) {
@@ -61,7 +61,7 @@ export const parsePdfFileAsMarkdownMistral = async (
     if (!uploadResponse.ok) {
       const errorText = await uploadResponse.text();
       throw new Error(
-        `Upload failed: ${uploadResponse.statusText} - ${errorText}`
+        `Upload failed: ${uploadResponse.statusText} - ${errorText}`,
       );
     }
 
@@ -75,12 +75,12 @@ export const parsePdfFileAsMarkdownMistral = async (
         headers: {
           Authorization: `Bearer ${MISTRAL_API_KEY}`,
         },
-      }
+      },
     );
 
     if (!signedUrlResponse.ok) {
       throw new Error(
-        `Failed to get signed URL: ${signedUrlResponse.statusText}`
+        `Failed to get signed URL: ${signedUrlResponse.statusText}`,
       );
     }
 
@@ -111,7 +111,7 @@ export const parsePdfFileAsMarkdownMistral = async (
     if (!ocrResponse.ok) {
       const errorText = await ocrResponse.text();
       throw new Error(
-        `OCR processing failed: ${ocrResponse.statusText} - ${errorText}`
+        `OCR processing failed: ${ocrResponse.statusText} - ${errorText}`,
       );
     }
 
@@ -124,14 +124,12 @@ export const parsePdfFileAsMarkdownMistral = async (
     // pages are walked either way: the markdown carries `![id](id)`
     // placeholders for every listed image, and one we cannot persist has to be
     // removed rather than shipped as a dead link.
-    const extractImages = options?.extractImages ?? true;
     let savedCount = 0;
     for (const page of ocrResult.pages) {
       const { text, savedPaths } = await resolveImageReferences(
         page.markdown,
         (page.images ?? []).map((i) => ({ id: i.id, base64: i.image_base64 })),
         context.tenantId,
-        extractImages
       );
       page.markdown = text;
       savedCount += savedPaths.length;

@@ -80,7 +80,7 @@ const runAsync = async (form: FormData): Promise<RawResult> => {
   });
   if (!createRes.ok) {
     throw new Error(
-      `Job creation failed: ${createRes.status} ${createRes.statusText}`
+      `Job creation failed: ${createRes.status} ${createRes.statusText}`,
     );
   }
   const { job_id: jobId } = (await createRes.json()) as { job_id: string };
@@ -94,7 +94,7 @@ const runAsync = async (form: FormData): Promise<RawResult> => {
     });
     if (!statusRes.ok) {
       throw new Error(
-        `Status check failed: ${statusRes.status} ${statusRes.statusText}`
+        `Status check failed: ${statusRes.status} ${statusRes.statusText}`,
       );
     }
     const status = (await statusRes.json()) as {
@@ -116,7 +116,7 @@ const runAsync = async (form: FormData): Promise<RawResult> => {
   });
   if (!resultRes.ok) {
     throw new Error(
-      `Result retrieval failed: ${resultRes.status} ${resultRes.statusText}`
+      `Result retrieval failed: ${resultRes.status} ${resultRes.statusText}`,
     );
   }
   return (await resultRes.json()) as RawResult;
@@ -129,12 +129,13 @@ const runAsync = async (form: FormData): Promise<RawResult> => {
 export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
   fileContent,
   context,
-  options
+  options,
 ) => {
   requireConfig();
 
   const form = buildForm(fileContent, options);
-  const data = getMode() === "async" ? await runAsync(form) : await runSync(form);
+  const data =
+    getMode() === "async" ? await runAsync(form) : await runSync(form);
 
   // Save images and rewrite `![id](id)` placeholders to storage paths, exactly
   // as the Mistral OCR parser does — dropping the placeholders we cannot
@@ -145,7 +146,6 @@ export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
       page.text,
       page.images ?? [],
       context.tenantId,
-      options?.extractImages ?? false
     );
     page.text = text;
     if (savedPaths.length > 0) {
@@ -182,7 +182,7 @@ export const getGenericParserCapabilities =
     });
     if (!res.ok) {
       throw new Error(
-        `Capabilities fetch failed: ${res.status} ${res.statusText}`
+        `Capabilities fetch failed: ${res.status} ${res.statusText}`,
       );
     }
     const raw = (await res.json()) as {
@@ -225,13 +225,13 @@ export const resetGenericParserCapabilitiesCache = (): void => {
  */
 export const genericParserSupports = async (
   mimeType?: string,
-  extension?: string
+  extension?: string,
 ): Promise<boolean> => {
   const caps = await getGenericParserCapabilities();
   const ext = extension?.toLowerCase();
   return caps.modalities.some(
     (m) =>
       (mimeType !== undefined && m.mimeTypes.includes(mimeType)) ||
-      (ext !== undefined && m.extensions.includes(ext))
+      (ext !== undefined && m.extensions.includes(ext)),
   );
 };
