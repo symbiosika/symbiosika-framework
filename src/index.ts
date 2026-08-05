@@ -25,6 +25,7 @@ import { getConnInfo } from "hono/bun";
 import log from "./lib/log";
 import { validateAllEnvVariables } from "./lib/utils/env-validate";
 import { globalErrorHandler } from "./lib/utils/global-error-handler";
+import { withRequestPathGuard } from "./lib/utils/request-path-guard";
 import {
   isExcludedFromPublicStatic,
   prepareStaticExclusions,
@@ -559,7 +560,10 @@ export const defineServer = (config: ServerSpecificConfig) => {
   return {
     idleTimeout: 255,
     port: config.port ?? 3000,
-    fetch: app.fetch,
+    // Malformed paths are refused here, in front of the whole app — including
+    // the static mounts above, which would otherwise turn a NUL byte into a
+    // logged 500. See request-path-guard.ts.
+    fetch: withRequestPathGuard(app.fetch),
     ...(tls ? { tls } : {}),
   };
 };
