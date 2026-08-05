@@ -1,5 +1,5 @@
 import log from "../../../log";
-import { saveBase64ImageToStorage } from "./images";
+import { resolveImageReferences } from "./images";
 import {
   PDF_PARSER,
   type ExtractedValue,
@@ -137,21 +137,19 @@ export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
   const data = getMode() === "async" ? await runAsync(form) : await runSync(form);
 
   // Save images and rewrite `![id](id)` placeholders to storage paths, exactly
-  // as the Mistral OCR parser does.
+  // as the Mistral OCR parser does — dropping the placeholders we cannot
+  // resolve so no dead reference reaches the document.
   let includesImages = false;
   for (const page of data.pages) {
-    for (const img of page.images ?? []) {
-      const savedPath = await saveBase64ImageToStorage(
-        img.base64,
-        img.id,
-        context.tenantId
-      );
-      if (!savedPath) {
-        continue;
-      }
+    const { text, savedPaths } = await resolveImageReferences(
+      page.text,
+      page.images ?? [],
+      context.tenantId,
+      options?.extractImages ?? false
+    );
+    page.text = text;
+    if (savedPaths.length > 0) {
       includesImages = true;
-      const ref = new RegExp(`!\\[${img.id}\\]\\(${img.id}\\)`, "g");
-      page.text = page.text.replace(ref, `![${img.id}](${savedPath})`);
     }
   }
 

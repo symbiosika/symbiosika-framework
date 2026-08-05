@@ -137,7 +137,7 @@ Uses the synchronous endpoint by default and falls back to the async job flow if
 
 ```ts
 import log from "../../../log";
-import { saveBase64ImageToStorage } from "./images";
+import { resolveImageReferences } from "./images";
 import {
   PDF_PARSER,
   type ExtractedValue,
@@ -233,17 +233,14 @@ export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
   // Save images + replace placeholders (identical to the Mistral parser).
   let includesImages = false;
   for (const page of data.pages) {
-    for (const img of page.images ?? []) {
-      const savedPath = await saveBase64ImageToStorage(
-        img.base64,
-        img.id,
-        context.tenantId
-      );
-      if (!savedPath) continue;
-      includesImages = true;
-      const ref = new RegExp(`!\\[${img.id}\\]\\(${img.id}\\)`, "g");
-      page.text = page.text.replace(ref, `![${img.id}](${savedPath})`);
-    }
+    const { text, savedPaths } = await resolveImageReferences(
+      page.text,
+      page.images ?? [],
+      context.tenantId,
+      options?.extractImages ?? false
+    );
+    page.text = text;
+    if (savedPaths.length > 0) includesImages = true;
   }
 
   return {
@@ -400,9 +397,14 @@ actually supports, the framework surfaces them end-to-end:
 
 - **`getConfiguredParserCapabilities()`** (`parsing/pdf/index.ts`) resolves the
   capabilities of the *currently configured* parser: for `generic` it returns
-  the cached `GET /v1/capabilities` response; for any other parser it returns an
-  empty `modalities` list (nothing to offer). It never throws — a discovery
-  failure degrades to "no advertised capabilities".
+  the cached `GET /v1/capabilities` response; for the hosted services it returns
+  a static declaration from `STATIC_PARSER_CAPABILITIES` (the Mistral parsers
+  advertise `pdf` + `extractImages`); for anything else an empty `modalities`
+  list (nothing to offer). It never throws — a discovery failure degrades to
+  "no advertised capabilities". A parser missing from the map advertises
+  nothing, which means the import UI renders no checkbox for it and the user
+  cannot opt into any pass-through flag — so add an entry when a parser gains a
+  caller-controlled option.
 - **`GET /tenant/:tenantId/knowledge/parser/capabilities`** exposes that to the
   client (scope `knowledge:read`).
 - **`POST /tenant/:tenantId/knowledge/texts/import`** now also accepts the

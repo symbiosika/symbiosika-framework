@@ -17,11 +17,10 @@ process.env.POSTGRES_USER ??= "postgres";
 process.env.POSTGRES_PASSWORD ??= "postgres";
 process.env.POSTGRES_DB ??= "symbiosika";
 
-// Stub the image saver so the image-rewrite path does not touch real storage.
-// The only other importers are the (disabled) Mistral parser tests.
-mock.module("./images", () => ({
-  saveBase64ImageToStorage: async (_base64: string, id: string) =>
-    `/storage/${id}`,
+// Stub only the storage write, so the reference-resolving logic in ./images
+// (rewrite on success, strip on failure) runs for real.
+mock.module("../../../storage", () => ({
+  saveFile: async (file: File) => ({ path: `/storage/${file.name}` }),
 }));
 
 const {
@@ -217,6 +216,19 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     expect(result.metadata?.typ?.found).toBe(false);
   });
 
+  test("strips placeholders for images the service listed but did not send", async () => {
+    // `extractImages` defaults to false: nothing is written to storage even if
+    // the service over-sends payloads, so the `![img-1](img-1)` placeholder
+    // can never resolve and must not reach the document.
+    const result = await parsePdfFileAsMarkdownGeneric(pdfFile(), {
+      tenantId: "tenant-1",
+    });
+
+    expect(result.includesImages).toBe(false);
+    expect(result.pages?.[0]?.text).toBe("Hersteller");
+    expect(result.pages?.[0]?.text).not.toContain("![");
+  });
+
   test("omits the extract field when no targets are given", async () => {
     await parsePdfFileAsMarkdownGeneric(pdfFile(), { tenantId: "tenant-1" });
     expect(lastParseForm?.extractImages).toBe("false");
@@ -292,10 +304,20 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     expect(caps.modalities[0]!.features?.detectTables).toBe(true);
   });
 
-  test("getConfiguredParserCapabilities advertises nothing for a non-generic parser", async () => {
+  test("getConfiguredParserCapabilities serves static caps for Mistral", async () => {
+    // Without this the import UI renders no checkbox at all and the user has
+    // no way to opt into image extraction.
     process.env.PDF_PARSER_SERVICE = "mistral";
     const caps = await getConfiguredParserCapabilities();
     expect(caps.service).toBe("mistral");
+    expect(caps.modalities[0]!.modality).toBe("pdf");
+    expect(caps.modalities[0]!.features?.extractImages).toBe(true);
+  });
+
+  test("getConfiguredParserCapabilities advertises nothing for a parser without options", async () => {
+    process.env.PDF_PARSER_SERVICE = "llama";
+    const caps = await getConfiguredParserCapabilities();
+    expect(caps.service).toBe("llama");
     expect(caps.modalities).toEqual([]);
   });
 
