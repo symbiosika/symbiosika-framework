@@ -1,5 +1,8 @@
 import log from "../../../log";
-import { saveBase64ImageToStorage } from "./images";
+import {
+  saveBase64ImageToStorage,
+  stripUnresolvedImageReferences,
+} from "./images";
 import {
   PDF_PARSER,
   type PdfParserContext,
@@ -177,20 +180,21 @@ export const parsePdfFileAsMarkdownMistralOpenRouter = async (
     }
 
     // Best-effort: rewrite markdown image references (in order of appearance)
-    // to point at the stored image paths.
-    if (savedImagePaths.length > 0) {
-      let imageIndex = 0;
-      for (const page of pages) {
-        page.text = page.text.replace(
-          /!\[([^\]]*)\]\(([^)]*)\)/g,
-          (match, alt) => {
-            const path = savedImagePaths[imageIndex];
-            if (path === undefined) return match;
-            imageIndex += 1;
-            return `![${alt}](${path})`;
-          }
-        );
-      }
+    // to point at the stored image paths. References beyond the images we
+    // actually stored — and all of them when extraction was off — are stripped
+    // by the sweep below rather than left pointing at an unresolvable target.
+    let imageIndex = 0;
+    for (const page of pages) {
+      page.text = page.text.replace(
+        /!\[([^\]]*)\]\(([^)]*)\)/g,
+        (match, alt) => {
+          const path = savedImagePaths[imageIndex];
+          if (path === undefined) return match;
+          imageIndex += 1;
+          return `![${alt}](${path})`;
+        }
+      );
+      page.text = stripUnresolvedImageReferences(page.text);
     }
 
     return {

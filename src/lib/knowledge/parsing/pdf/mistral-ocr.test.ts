@@ -12,18 +12,14 @@ process.env.POSTGRES_DB ??= "symbiosika";
 // The parser reads the key at module load, so it has to exist before import.
 process.env.MISTRAL_API_KEY ??= "test-key";
 
-// Stub the image saver so the image-rewrite path does not touch real storage.
-// It keeps the null guard of the real implementation, so a null payload does
-// not silently pass here either.
+// Stub only the storage write; the reference-resolving logic under test lives
+// in the same module and must run for real. `saveFile` is the single point
+// where the real implementation would touch storage.
 const savedImages: string[] = [];
-mock.module("./images", () => ({
-  saveBase64ImageToStorage: async (
-    base64OrDataUrl: string | null | undefined,
-    id: string
-  ) => {
-    if (!base64OrDataUrl) return null;
-    savedImages.push(id);
-    return `/storage/${id}`;
+mock.module("../../../storage", () => ({
+  saveFile: async (file: File) => {
+    savedImages.push(file.name);
+    return { path: `/storage/${file.name}` };
   },
 }));
 
@@ -43,7 +39,11 @@ const pdf = () =>
 const originalFetch = globalThis.fetch;
 let lastOcrBody: any = null;
 
-const installFetchMock = (withBase64: boolean) => {
+const installFetchMock = (
+  withBase64: boolean,
+  payload: string | null = "AAAA",
+  firstPageMarkdown = "page one ![img-0.jpeg](img-0.jpeg)",
+) => {
   lastOcrBody = null;
   globalThis.fetch = (async (input: any, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.url;
@@ -58,8 +58,10 @@ const installFetchMock = (withBase64: boolean) => {
       return Response.json({
         pages: [
           {
-            markdown: "page one ![img-0.jpeg](img-0.jpeg)",
-            images: [{ id: "img-0.jpeg", image_base64: withBase64 ? "AAAA" : null }],
+            markdown: firstPageMarkdown,
+            images: [
+              { id: "img-0.jpeg", image_base64: withBase64 ? payload : null },
+            ],
           },
           { markdown: "page two" },
         ],
@@ -93,12 +95,12 @@ describe("Mistral OCR parser", () => {
     expect(savedImages).toEqual(["img-0.jpeg"]);
     expect(result.includesImages).toBe(true);
     expect(result.pages?.[0]?.text).toBe(
-      "page one ![img-0.jpeg](/storage/img-0.jpeg)"
+      "page one ![img-0.jpeg](/storage/img-0.jpeg)",
     );
     expect(result.pages?.map((p) => p.page)).toEqual([1, 2]);
   });
 
-  test("does not crash when image extraction is off and image_base64 is null", async () => {
+  test("drops the reference instead of emitting a dead link when extraction is off", async () => {
     installFetchMock(false);
 
     const result = await parsePdfFileAsMarkdownMistral(pdf(), CONTEXT, {
@@ -108,7 +110,39 @@ describe("Mistral OCR parser", () => {
     expect(lastOcrBody.include_image_base64).toBe(false);
     expect(savedImages).toEqual([]);
     expect(result.includesImages).toBe(false);
-    expect(result.pages?.[0]?.text).toBe("page one ![img-0.jpeg](img-0.jpeg)");
+    // The `![img-0.jpeg](img-0.jpeg)` placeholder would never resolve, so it
+    // must not survive into the document.
+    expect(result.pages?.[0]?.text).toBe("page one");
+    expect(result.pages?.[0]?.text).not.toContain("![");
     expect(result.pages?.length).toBe(2);
+  });
+
+  test("drops the reference when the payload is listed but empty", async () => {
+    // `include_image_base64: true`, yet the service hands back nothing usable.
+    installFetchMock(true, "");
+
+    const result = await parsePdfFileAsMarkdownMistral(pdf(), CONTEXT, {
+      extractImages: true,
+    });
+
+    expect(savedImages).toEqual([]);
+    expect(result.includesImages).toBe(false);
+    expect(result.pages?.[0]?.text).toBe("page one");
+  });
+
+  test("leaves no blank hole where an image-only page is stripped", async () => {
+    // A vector diagram exported to PDF comes back as heading + image and
+    // nothing else — exactly the drawio case.
+    installFetchMock(
+      false,
+      null,
+      "# Lokal auf dem Roboter\n\n![img-0.jpeg](img-0.jpeg)\n",
+    );
+
+    const result = await parsePdfFileAsMarkdownMistral(pdf(), CONTEXT, {
+      extractImages: false,
+    });
+
+    expect(result.pages?.[0]?.text).toBe("# Lokal auf dem Roboter");
   });
 });

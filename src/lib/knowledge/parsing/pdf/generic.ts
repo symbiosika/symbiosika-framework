@@ -1,5 +1,5 @@
 import log from "../../../log";
-import { saveBase64ImageToStorage } from "./images";
+import { resolveImageReferences } from "./images";
 import {
   PDF_PARSER,
   type ExtractedValue,
@@ -80,7 +80,7 @@ const runAsync = async (form: FormData): Promise<RawResult> => {
   });
   if (!createRes.ok) {
     throw new Error(
-      `Job creation failed: ${createRes.status} ${createRes.statusText}`
+      `Job creation failed: ${createRes.status} ${createRes.statusText}`,
     );
   }
   const { job_id: jobId } = (await createRes.json()) as { job_id: string };
@@ -94,7 +94,7 @@ const runAsync = async (form: FormData): Promise<RawResult> => {
     });
     if (!statusRes.ok) {
       throw new Error(
-        `Status check failed: ${statusRes.status} ${statusRes.statusText}`
+        `Status check failed: ${statusRes.status} ${statusRes.statusText}`,
       );
     }
     const status = (await statusRes.json()) as {
@@ -116,7 +116,7 @@ const runAsync = async (form: FormData): Promise<RawResult> => {
   });
   if (!resultRes.ok) {
     throw new Error(
-      `Result retrieval failed: ${resultRes.status} ${resultRes.statusText}`
+      `Result retrieval failed: ${resultRes.status} ${resultRes.statusText}`,
     );
   }
   return (await resultRes.json()) as RawResult;
@@ -129,29 +129,27 @@ const runAsync = async (form: FormData): Promise<RawResult> => {
 export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
   fileContent,
   context,
-  options
+  options,
 ) => {
   requireConfig();
 
   const form = buildForm(fileContent, options);
-  const data = getMode() === "async" ? await runAsync(form) : await runSync(form);
+  const data =
+    getMode() === "async" ? await runAsync(form) : await runSync(form);
 
   // Save images and rewrite `![id](id)` placeholders to storage paths, exactly
-  // as the Mistral OCR parser does.
+  // as the Mistral OCR parser does — dropping the placeholders we cannot
+  // resolve so no dead reference reaches the document.
   let includesImages = false;
   for (const page of data.pages) {
-    for (const img of page.images ?? []) {
-      const savedPath = await saveBase64ImageToStorage(
-        img.base64,
-        img.id,
-        context.tenantId
-      );
-      if (!savedPath) {
-        continue;
-      }
+    const { text, savedPaths } = await resolveImageReferences(
+      page.text,
+      page.images ?? [],
+      context.tenantId,
+    );
+    page.text = text;
+    if (savedPaths.length > 0) {
       includesImages = true;
-      const ref = new RegExp(`!\\[${img.id}\\]\\(${img.id}\\)`, "g");
-      page.text = page.text.replace(ref, `![${img.id}](${savedPath})`);
     }
   }
 
@@ -184,7 +182,7 @@ export const getGenericParserCapabilities =
     });
     if (!res.ok) {
       throw new Error(
-        `Capabilities fetch failed: ${res.status} ${res.statusText}`
+        `Capabilities fetch failed: ${res.status} ${res.statusText}`,
       );
     }
     const raw = (await res.json()) as {
@@ -227,13 +225,13 @@ export const resetGenericParserCapabilitiesCache = (): void => {
  */
 export const genericParserSupports = async (
   mimeType?: string,
-  extension?: string
+  extension?: string,
 ): Promise<boolean> => {
   const caps = await getGenericParserCapabilities();
   const ext = extension?.toLowerCase();
   return caps.modalities.some(
     (m) =>
       (mimeType !== undefined && m.mimeTypes.includes(mimeType)) ||
-      (ext !== undefined && m.extensions.includes(ext))
+      (ext !== undefined && m.extensions.includes(ext)),
   );
 };

@@ -1,5 +1,5 @@
 import log from "../../../log";
-import { saveBase64ImageToStorage } from "./images";
+import { resolveImageReferences } from "./images";
 import {
   PDF_PARSER,
   type PdfParserContext,
@@ -35,7 +35,7 @@ type MistralOcrResult = {
 export const parsePdfFileAsMarkdownMistral = async (
   fileContent: File,
   context: PdfParserContext,
-  options?: PdfParserOptions
+  options?: PdfParserOptions,
 ): Promise<PdfParserResult> => {
   const MISTRAL_API_KEY = getMistralApiKey();
   if (!MISTRAL_API_KEY) {
@@ -61,7 +61,7 @@ export const parsePdfFileAsMarkdownMistral = async (
     if (!uploadResponse.ok) {
       const errorText = await uploadResponse.text();
       throw new Error(
-        `Upload failed: ${uploadResponse.statusText} - ${errorText}`
+        `Upload failed: ${uploadResponse.statusText} - ${errorText}`,
       );
     }
 
@@ -75,12 +75,12 @@ export const parsePdfFileAsMarkdownMistral = async (
         headers: {
           Authorization: `Bearer ${MISTRAL_API_KEY}`,
         },
-      }
+      },
     );
 
     if (!signedUrlResponse.ok) {
       throw new Error(
-        `Failed to get signed URL: ${signedUrlResponse.statusText}`
+        `Failed to get signed URL: ${signedUrlResponse.statusText}`,
       );
     }
 
@@ -111,7 +111,7 @@ export const parsePdfFileAsMarkdownMistral = async (
     if (!ocrResponse.ok) {
       const errorText = await ocrResponse.text();
       throw new Error(
-        `OCR processing failed: ${ocrResponse.statusText} - ${errorText}`
+        `OCR processing failed: ${ocrResponse.statusText} - ${errorText}`,
       );
     }
 
@@ -120,35 +120,19 @@ export const parsePdfFileAsMarkdownMistral = async (
     log.debug("OCR result retrieved successfully.");
 
     // Process images from all pages. Mistral still lists the detected images
-    // when `include_image_base64` is false, but with `image_base64: null` —
-    // so only walk them when image extraction was actually requested.
-    const imageMap = new Map<string, string>(); // Maps image ID to URL
-    const extractImages = options?.extractImages ?? true;
-    for (const page of extractImages ? ocrResult.pages : []) {
-      if (page.images) {
-        for (const image of page.images) {
-          // Persist the extracted image to storage
-          const savedPath = await saveBase64ImageToStorage(
-            image.image_base64,
-            image.id,
-            context.tenantId
-          );
-          if (!savedPath) {
-            continue;
-          }
-          imageMap.set(image.id, savedPath);
-
-          // replace the image reference with the new image path
-          const imageRef = new RegExp(
-            `!\\[${image.id}\\]\\(${image.id}\\)`,
-            "g"
-          );
-          page.markdown = page.markdown.replace(
-            imageRef,
-            `![${image.id}](${savedPath})`
-          );
-        }
-      }
+    // when `include_image_base64` is false, but with `image_base64: null`. The
+    // pages are walked either way: the markdown carries `![id](id)`
+    // placeholders for every listed image, and one we cannot persist has to be
+    // removed rather than shipped as a dead link.
+    let savedCount = 0;
+    for (const page of ocrResult.pages) {
+      const { text, savedPaths } = await resolveImageReferences(
+        page.markdown,
+        (page.images ?? []).map((i) => ({ id: i.id, base64: i.image_base64 })),
+        context.tenantId,
+      );
+      page.markdown = text;
+      savedCount += savedPaths.length;
     }
 
     // Delete the uploaded file from Mistral's servers
@@ -164,7 +148,7 @@ export const parsePdfFileAsMarkdownMistral = async (
         page: index + 1,
         text: page.markdown,
       })),
-      includesImages: imageMap.size > 0,
+      includesImages: savedCount > 0,
       model: PDF_PARSER.MISTRAL,
     };
   } catch (error) {
