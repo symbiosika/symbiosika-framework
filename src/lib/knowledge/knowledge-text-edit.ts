@@ -15,6 +15,19 @@
  * drops it instead of leaving an empty placeholder block behind, and a
  * deletion (empty `newString`) whose `oldString` spans several blocks removes
  * the covered blocks in one go — the clean "remove multiple blocks at once".
+ *
+ * The hard part of a block page is that the agent reads a PROJECTION (the
+ * materialized markdown) of what it writes to (the stored html). Two rules keep
+ * that honest:
+ *
+ *   - matching inside an html block tolerates exactly the differences the
+ *     round trip introduces — a reference stored as a `<code data-wiki-link>`
+ *     element with whatever attributes the editor added, entity-encoded
+ *     characters, collapsed whitespace (`wikiLinkTolerantHtmlPattern`)
+ *   - before anything is persisted, the edited blocks are materialized and
+ *     compared against the expected text (`assertRoundTrips`). An edit the
+ *     block format cannot carry fails loudly instead of leaving mangled
+ *     fragments behind.
  */
 
 import {
@@ -26,8 +39,11 @@ import {
   syncKnowledgeTextBlocks,
   type KnowledgeTextBlockInput,
 } from "./knowledge-text-blocks";
-import { materializeBlocksTextWithSpans } from "./materialize-blocks";
-import { containsWikiLinkMarker, wikiLinksToHtml } from "./wikilinks";
+import {
+  materializeBlocksText,
+  materializeBlocksTextWithSpans,
+} from "./materialize-blocks";
+import { wikiLinksToHtml, wikiLinkTolerantHtmlPattern } from "./wikilinks";
 import type { KnowledgeTextBlockSelect } from "../db/schema/knowledge";
 
 type Context = {
@@ -112,29 +128,108 @@ const blockReplacement = (
   newString: string
 ): string => (block.type === "html" ? wikiLinksToHtml(newString) : newString);
 
+type BlockMatch = {
+  /** how often `oldString` occurs in this block */
+  count: number;
+  /** the block's content with every occurrence replaced */
+  replaced: (replacement: string) => string;
+};
+
 /**
- * The string to search for inside one block. An agent copies `oldString` out
- * of the materialized text, where a reference reads as the bare `[[Target]]`
- * marker — inside an html block it is stored as `<code data-wiki-link>…`, so
- * the marker form is translated before matching (only when the literal string
- * isn't there, so nothing else changes).
+ * Find `oldString` inside one block. An agent copies it out of the materialized
+ * text, which for an html block is Turndown's rendering of the stored html — so
+ * a literal search is only the fast path. When it misses, an html block is
+ * searched with a pattern that tolerates exactly the differences that round
+ * trip introduces: references stored as `<code data-wiki-link>` elements
+ * (whatever attributes the editor put on them), entity-encoded characters and
+ * collapsed whitespace. Markdown blocks store their text verbatim, so for them
+ * the literal search is the whole story.
  */
-const blockNeedle = (
+const matchInBlock = (
   block: Pick<KnowledgeTextBlockSelect, "type" | "content">,
   oldString: string
-): string => {
-  if (block.type !== "html" || !containsWikiLinkMarker(oldString)) {
-    return oldString;
+): BlockMatch => {
+  const literal = countOccurrences(block.content, oldString);
+  if (literal > 0 || block.type !== "html") {
+    return {
+      count: literal,
+      replaced: (replacement) =>
+        replaceAllOccurrences(block.content, oldString, replacement),
+    };
   }
-  if (block.content.includes(oldString)) return oldString;
-  const asHtml = wikiLinksToHtml(oldString);
-  return block.content.includes(asHtml) ? asHtml : oldString;
+
+  const pattern = wikiLinkTolerantHtmlPattern(oldString);
+  return {
+    count: block.content.match(pattern)?.length ?? 0,
+    // a function replacement, so `$&` and friends in the replacement text are
+    // inserted literally
+    replaced: (replacement) =>
+      block.content.replace(pattern, () => replacement),
+  };
 };
 
 /** Message used when a cross-block match can't be resolved to a clean edit. */
 const SPANS_BLOCKS_MESSAGE =
-  "oldString spans multiple blocks. Edit the blocks individually " +
-  "(PUT .../blocks) or use a shorter string within one block";
+  "oldString spans multiple blocks and covers only part of a rich-text " +
+  "block. Edit the blocks individually (PUT .../blocks), or use a string " +
+  "that either stays within one block or covers whole blocks";
+
+/**
+ * Message for a replacement that cannot be represented inside a rich-text
+ * (html) block: block structure — line breaks, lists, headings — has no
+ * meaning as plain text there, and writing it raw is what used to leave
+ * mangled fragments behind.
+ */
+const HTML_BLOCK_STRUCTURE_MESSAGE =
+  "newString contains line breaks, which cannot be written into a rich-text " +
+  "block as markdown. Replace text within one paragraph, append_to_page for " +
+  "new paragraphs, or edit the blocks directly (PUT .../blocks)";
+
+/**
+ * Message for an edit whose result would not read back as it was written.
+ * Raised BEFORE anything is persisted, so a replacement that the block format
+ * cannot represent fails loudly instead of corrupting the page.
+ */
+const ROUND_TRIP_MESSAGE =
+  "the edit could not be applied cleanly: the page would not read back as " +
+  "written. Keep newString plain text (page references [[Title]] are fine) — " +
+  "markdown formatting cannot be written into a rich-text block; use " +
+  "PUT .../blocks for that";
+
+/**
+ * Whitespace is not compared: a deletion that empties or trims a block
+ * legitimately turns spaces into block separators (and back), which says
+ * nothing about whether the edit landed correctly. Everything that matters
+ * here — dropped or duplicated text, markdown Turndown would escape — differs
+ * in more than whitespace.
+ */
+const normalizeForRoundTrip = (text: string): string =>
+  text.replace(/\s+/g, " ").trim();
+
+/**
+ * Verify that applying the edit to the blocks really produces the text the
+ * caller asked for: the edited blocks are materialized locally and compared
+ * against the expected text (the page's current text with the replacement
+ * applied). Because both sides are derived from the same blocks, only the
+ * edited region can differ — so this catches a replacement the html format
+ * cannot carry (markdown that Turndown would escape, structure that collapses)
+ * while leaving legitimate edits alone.
+ */
+const assertRoundTrips = (
+  currentText: string,
+  edit: { oldString: string; newString: string; replaceAll: boolean },
+  nextBlocks: KnowledgeTextBlockInput[]
+): void => {
+  const expected = edit.replaceAll
+    ? replaceAllOccurrences(currentText, edit.oldString, edit.newString)
+    : currentText.replace(edit.oldString, () => edit.newString);
+  if (
+    normalizeForRoundTrip(materializeBlocksText(nextBlocks)) !==
+    normalizeForRoundTrip(expected)
+  ) {
+    throw new Error(ROUND_TRIP_MESSAGE);
+  }
+};
 
 type WorkingBlock = {
   id: string;
@@ -154,10 +249,13 @@ const toWorkingBlock = (block: KnowledgeTextBlockSelect): WorkingBlock => ({
  * Delete every (or the first) occurrence of `oldString` from the materialized
  * text of a block page, mapping the removal back onto the underlying blocks:
  * blocks the match fully covers are emptied (and later dropped), boundary
- * blocks keep the part outside the match. Only markdown blocks can be edited
- * this way — an html block's stored content differs from its materialized
- * markdown, so offsets can't be mapped back; touching one throws
- * `SPANS_BLOCKS_MESSAGE`.
+ * blocks keep the part outside the match.
+ *
+ * A block the match covers COMPLETELY is dropped whatever its type — no
+ * offsets need mapping for that, so removing a whole section (heading plus
+ * list, however it is stored) works. Only a PARTIALLY covered html block is
+ * refused (`SPANS_BLOCKS_MESSAGE`): its stored content differs from its
+ * materialized markdown, so a boundary inside it has no unambiguous position.
  *
  * Returns the surviving block inputs (emptied blocks removed) and the number
  * of matches deleted.
@@ -189,6 +287,15 @@ const deleteSpanningText = (
       if (overlapStart >= overlapEnd) continue; // this block isn't covered
 
       const block = byId.get(span.blockId)!;
+
+      // fully covered → drop the block; no offset mapping needed, so this is
+      // safe for html blocks too (and is how whole sections get removed)
+      if (overlapStart <= span.start && overlapEnd >= span.end) {
+        block.content = "";
+        touched.add(block.id);
+        mutated = true;
+        continue;
+      }
       if (block.type !== "markdown") throw new Error(SPANS_BLOCKS_MESSAGE);
 
       const rendered = text.slice(span.start, span.end);
@@ -269,11 +376,12 @@ export const editKnowledgeTextContent = async (
 
   // ----- block pages ------------------------------------------------------
   const blocks = await getKnowledgeTextBlocks(id, context);
-  const needles = blocks.map((block) => blockNeedle(block, oldString));
-  const occurrencesPerBlock = blocks.map((block, i) =>
-    countOccurrences(block.content, needles[i]!)
-  );
-  const totalOccurrences = occurrencesPerBlock.reduce((a, b) => a + b, 0);
+  const matches = blocks.map((block) => matchInBlock(block, oldString));
+  const totalOccurrences = matches.reduce((sum, m) => sum + m.count, 0);
+  // the blocks are the source of truth; deriving the "before" text from them
+  // (rather than from the page's cached text column) keeps the round-trip check
+  // honest even if the cache is stale
+  const currentText = materializeBlocksText(blocks);
 
   if (totalOccurrences === 0) {
     // Not found inside any single block. It may still exist in the materialized
@@ -281,10 +389,7 @@ export const editKnowledgeTextContent = async (
     // supported — it's the clean way to remove one or more whole blocks at once
     // — but replacing it is not, because there's no unambiguous block to put
     // the replacement text into.
-    const spanning = countOccurrences(
-      materializeBlocksTextWithSpans(blocks.map(toWorkingBlock)).text,
-      oldString
-    );
+    const spanning = countOccurrences(currentText, oldString);
     if (spanning === 0) {
       throw new Error("oldString not found in the document");
     }
@@ -302,6 +407,11 @@ export const editKnowledgeTextContent = async (
       oldString,
       replaceAll
     );
+    assertRoundTrips(
+      currentText,
+      { oldString, newString, replaceAll: replaceAll && replacements > 1 },
+      inputs
+    );
     const result = await syncKnowledgeTextBlocks(id, inputs, context);
     return { id, replacements, content: result.knowledgeText.text };
   }
@@ -310,6 +420,16 @@ export const editKnowledgeTextContent = async (
       `oldString is not unique (${totalOccurrences} occurrences). ` +
         "Provide more surrounding context or set replaceAll: true"
     );
+  }
+
+  // Block structure written as markdown into an html block would be stored as
+  // raw text and come back mangled — refuse it up front, with a message that
+  // names the alternatives.
+  const touchesHtml = blocks.some(
+    (block, i) => matches[i]!.count > 0 && block.type === "html"
+  );
+  if (touchesHtml && newString.includes("\n")) {
+    throw new Error(HTML_BLOCK_STRUCTURE_MESSAGE);
   }
 
   // Apply the replacement inside each affected block. When a replacement leaves
@@ -321,17 +441,19 @@ export const editKnowledgeTextContent = async (
     id: block.id,
     type: block.type,
     content:
-      occurrencesPerBlock[i]! > 0
-        ? replaceAllOccurrences(
-            block.content,
-            needles[i]!,
-            blockReplacement(block, newString)
-          )
+      matches[i]!.count > 0
+        ? matches[i]!.replaced(blockReplacement(block, newString))
         : block.content,
     meta: (block.meta ?? {}) as Record<string, unknown>,
   }));
   const keptBlocks = nextBlocks.filter(
-    (block, i) => occurrencesPerBlock[i] === 0 || block.content.trim().length > 0
+    (block, i) => matches[i]!.count === 0 || block.content.trim().length > 0
+  );
+
+  assertRoundTrips(
+    currentText,
+    { oldString, newString, replaceAll: totalOccurrences > 1 },
+    keptBlocks
   );
 
   const result = await syncKnowledgeTextBlocks(id, keptBlocks, context);
