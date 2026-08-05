@@ -5,6 +5,7 @@ import {
   wikiLinkHtml,
   wikiLinkMarker,
   wikiLinksToHtml,
+  wikiLinkTolerantHtmlPattern,
   PAGE_LINK_PATTERN,
 } from "./wikilinks";
 import { materializeBlocksText } from "./materialize-blocks";
@@ -123,5 +124,85 @@ describe("materializing blocks with references", () => {
       { type: "markdown", content: "siehe [[Onboarding]]" },
     ]);
     expect(text).toBe("siehe [[Onboarding]]");
+  });
+});
+
+describe("wikiLinkTolerantHtmlPattern", () => {
+  const matches = (html: string, text: string): number =>
+    html.match(wikiLinkTolerantHtmlPattern(text))?.length ?? 0;
+
+  it("finds a reference however the editor serialized it", () => {
+    const text = "Siehe [[Onboarding]] für den Start.";
+    // canonical form written by the backend
+    expect(matches(`<p>Siehe ${wikiLinkHtml("Onboarding")} für den Start.</p>`, text)).toBe(1);
+    // the web editor's form for a RESOLVED reference: extra data-page-id
+    expect(
+      matches(
+        '<p>Siehe <code data-wiki-link="Onboarding" data-page-id="7f3d" ' +
+          'class="wiki-link">[[Onboarding]]</code> für den Start.</p>',
+        text
+      )
+    ).toBe(1);
+    // attribute order is nobody's contract either
+    expect(
+      matches(
+        '<p>Siehe <code class="wiki-link" data-page-id="7f3d" ' +
+          'data-wiki-link="Onboarding">[[Onboarding]]</code> für den Start.</p>',
+        text
+      )
+    ).toBe(1);
+    // and a bare marker that was never lifted
+    expect(matches("<p>Siehe [[Onboarding]] für den Start.</p>", text)).toBe(1);
+  });
+
+  it("keeps an alias marker addressable", () => {
+    expect(
+      matches(
+        `<p>Siehe ${wikiLinkHtml("03.03 Errichter", "Errichter")} an.</p>`,
+        "Siehe [[03.03 Errichter|Errichter]] an."
+      )
+    ).toBe(1);
+  });
+
+  it("tolerates entities and collapsed whitespace", () => {
+    expect(
+      matches("<p>Pflege\n   &amp; Betreuung</p>", "Pflege & Betreuung")
+    ).toBe(1);
+    expect(matches("<p>a&nbsp;b</p>", "a b")).toBe(1);
+    expect(matches('<p>Er sagte &quot;ja&quot;</p>', 'Er sagte "ja"')).toBe(1);
+  });
+
+  it("does not match a different target or different text", () => {
+    expect(
+      matches(
+        `<p>Siehe ${wikiLinkHtml("Handbuch")} an.</p>`,
+        "Siehe [[Onboarding]] an."
+      )
+    ).toBe(0);
+    expect(matches("<p>ganz anderer Text</p>", "Siehe [[Onboarding]] an.")).toBe(0);
+  });
+
+  it("does not let a reference match across a block boundary", () => {
+    // the `<code …>…</code>` alternative must not swallow intervening markup
+    expect(
+      matches(
+        `<p>${wikiLinkHtml("A")}</p><p>Text</p><p>${wikiLinkHtml("B")}</p>`,
+        "[[A]] [[B]]"
+      )
+    ).toBe(0);
+  });
+
+  it("counts every occurrence (global pattern)", () => {
+    expect(
+      matches(
+        `<p>${wikiLinkHtml("X")} und ${wikiLinkHtml("X")}</p>`,
+        "[[X]]"
+      )
+    ).toBe(2);
+  });
+
+  it("treats regex metacharacters in the text literally", () => {
+    expect(matches("<p>Preis (netto) 5.00 EUR*</p>", "(netto) 5.00 EUR*")).toBe(1);
+    expect(matches("<p>Preis (netto) 5X00 EUR*</p>", "(netto) 5.00 EUR*")).toBe(0);
   });
 });

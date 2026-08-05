@@ -384,6 +384,201 @@ describe("Knowledge Text Edit (string replacement)", () => {
     expect(blocks[0]!.content).toContain('data-wiki-link="Handbuch"');
   });
 
+  it("edits over a reference the web editor stored with data-page-id", async () => {
+    const page = await createPage("");
+    // what the block editor saves for a RESOLVED reference: it adds
+    // data-page-id, which wikiLinkHtml does not — so the html can never be
+    // rebuilt byte-identically and must be matched structurally
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        {
+          type: "html",
+          content:
+            "<p>Die Entstehung des Unternehmens beschreibt die " +
+            '<code data-wiki-link="04 Historie" data-page-id="7f3d" ' +
+            'class="wiki-link">[[04 Historie]]</code>.</p>',
+        },
+      ],
+      ctx
+    );
+
+    const view = await readKnowledgeTextContent(page.id, ctx);
+    expect(view.content).toBe(
+      "Die Entstehung des Unternehmens beschreibt die [[04 Historie]]."
+    );
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      {
+        oldString: view.content,
+        newString: "Die Entstehung beschreibt die [[04 Historie]].",
+      },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe("Die Entstehung beschreibt die [[04 Historie]].");
+  });
+
+  it("removes a reference the web editor stored with data-page-id", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        {
+          type: "html",
+          content:
+            '<p>Mehr dazu <code data-wiki-link="04 Historie" ' +
+            'data-page-id="7f3d" class="wiki-link">[[04 Historie]]</code> ' +
+            "und Ende.</p>",
+        },
+      ],
+      ctx
+    );
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: " [[04 Historie]]", newString: "" },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe("Mehr dazu und Ende.");
+
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks[0]!.content).not.toContain("data-wiki-link");
+  });
+
+  it("removes a whole section stored as html blocks", async () => {
+    const page = await createPage("");
+    const saved = await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "html", content: "<p>Der eigentliche Fließtext.</p>" },
+        { type: "html", content: "<h2>Verwandte Artikel</h2>" },
+        {
+          type: "html",
+          content:
+            "<ul><li>" +
+            '<code data-wiki-link="04 Historie" data-page-id="a1" ' +
+            'class="wiki-link">[[04 Historie]]</code></li><li>' +
+            '<code data-wiki-link="01 Pflegemarkt" data-page-id="b2" ' +
+            'class="wiki-link">[[01 Pflegemarkt]]</code></li></ul>',
+        },
+      ],
+      ctx
+    );
+
+    const view = await readKnowledgeTextContent(page.id, ctx);
+    // everything after the intro paragraph, copied verbatim out of the read
+    const oldString = view.content.slice("Der eigentliche Fließtext.".length);
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString, newString: "" },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe("Der eigentliche Fließtext.");
+
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]!.id).toBe(saved.blocks[0]!.id);
+  });
+
+  it("matches text whose html carries entities and line breaks", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        {
+          type: "html",
+          content:
+            "<p>Pflege\n   &amp; Betreuung f&uuml;r Tr&auml;ger</p>",
+        },
+      ],
+      ctx
+    );
+
+    const view = await readKnowledgeTextContent(page.id, ctx);
+    expect(view.content).toBe("Pflege & Betreuung für Träger");
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: "Pflege & Betreuung", newString: "Pflege und Betreuung" },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe("Pflege und Betreuung für Träger");
+  });
+
+  it("refuses a replacement with line breaks in an html block", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [{ type: "html", content: "<p>Siehe auch die Nachbarseiten.</p>" }],
+      ctx
+    );
+
+    await expect(
+      editKnowledgeTextContent(
+        page.id,
+        {
+          oldString: "Siehe auch die Nachbarseiten.",
+          newString: "Siehe auch:\n- [[04 Historie]]\n- [[01 Pflegemarkt]]",
+        },
+        ctx
+      )
+    ).rejects.toThrow("line breaks");
+
+    // nothing was written
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks[0]!.content).toBe("<p>Siehe auch die Nachbarseiten.</p>");
+  });
+
+  it("refuses a replacement an html block cannot carry, leaving the page intact", async () => {
+    const page = await createPage("");
+    const before = "<p>Wir betreuen Kunden im Pflegemarkt.</p>";
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [{ type: "html", content: before }],
+      ctx
+    );
+
+    // markdown emphasis would be stored as literal asterisks and read back
+    // escaped ("\*\*Pflegemarkt\*\*") — the round-trip check catches it
+    await expect(
+      editKnowledgeTextContent(
+        page.id,
+        { oldString: "im Pflegemarkt", newString: "im **Pflegemarkt**" },
+        ctx
+      )
+    ).rejects.toThrow("read back as written");
+
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]!.content).toBe(before);
+  });
+
+  it("still refuses a spanning deletion that cuts into an html block", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "markdown", content: "erster Block" },
+        { type: "html", content: "<p>Anfang bleibt, Ende geht weg.</p>" },
+      ],
+      ctx
+    );
+
+    await expect(
+      editKnowledgeTextContent(
+        page.id,
+        { oldString: "erster Block\n\nAnfang bleibt,", newString: "" },
+        ctx
+      )
+    ).rejects.toThrow("spans multiple blocks");
+  });
+
   it("rejects empty or identical strings", async () => {
     const page = await createPage("content");
     await expect(

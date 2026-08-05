@@ -107,3 +107,68 @@ export const unescapeWikiLinkMarkers = (markdown: string): string =>
     (_match, target: string, alias?: string) =>
       wikiLinkMarker(target, alias ?? null),
   );
+
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Pattern for a run of literal text as it may appear inside an html block:
+ * `&`, `<`, `>`, `"` and `'` may be entity-encoded, and any whitespace run may
+ * be a different whitespace run (Turndown collapses the newlines and
+ * indentation of pretty-printed html into single spaces) or `&nbsp;`.
+ */
+const literalHtmlPattern = (text: string): string =>
+  text
+    // odd indices are the captured whitespace runs
+    .split(/(\s+)/)
+    .map((part, index) => {
+      if (index % 2 === 1) return "(?:\\s|&nbsp;|&#160;)+";
+      return escapeRegExp(part)
+        .replace(/&/g, "(?:&|&amp;)")
+        .replace(/</g, "(?:<|&lt;)")
+        .replace(/>/g, "(?:>|&gt;)")
+        .replace(/"/g, '(?:"|&quot;)')
+        .replace(/'/g, "(?:'|&#39;|&apos;)");
+    })
+    .join("");
+
+/**
+ * Pattern for one page reference inside an html block: either the bare marker
+ * (agent-written text that was never lifted) or ANY `<code data-wiki-link>`
+ * element for the same target. Matching the element by its `data-wiki-link`
+ * attribute alone — instead of comparing against a rebuilt html string — is
+ * what makes this robust: the web editor emits `data-page-id` for a resolved
+ * reference (`components/editor/wikiLink.ts`) while `wikiLinkHtml` does not,
+ * and attribute order is nobody's contract.
+ */
+const wikiLinkHtmlPattern = (target: string, alias: string | null): string =>
+  "(?:" +
+  escapeRegExp(wikiLinkMarker(target, alias)) +
+  `|<code\\b[^>]*\\bdata-wiki-link="${escapeRegExp(
+    escapeHtmlAttribute(target),
+  )}"[^>]*>[\\s\\S]*?<\\/code>` +
+  ")";
+
+/**
+ * Build a pattern that finds `text` — copied out of a page's materialized
+ * markdown — inside the html of a block, tolerating the differences the
+ * html → markdown → html round trip introduces: references stored as
+ * `<code data-wiki-link>` elements, entity-encoded characters and collapsed
+ * whitespace. Global, so it can be used for counting and replacing.
+ *
+ * It stays deliberately narrow: everything else (inline formatting, block
+ * structure) is NOT tolerated, because a match there could not be mapped back
+ * onto the stored html unambiguously.
+ */
+export const wikiLinkTolerantHtmlPattern = (text: string): RegExp => {
+  const normalized = unescapeWikiLinkMarkers(text);
+  let source = "";
+  let index = 0;
+  for (const match of normalized.matchAll(PAGE_LINK_PATTERN)) {
+    const start = match.index ?? 0;
+    source += literalHtmlPattern(normalized.slice(index, start));
+    source += wikiLinkHtmlPattern(match[1]!.trim(), match[2]?.trim() || null);
+    index = start + match[0].length;
+  }
+  return new RegExp(source + literalHtmlPattern(normalized.slice(index)), "g");
+};
