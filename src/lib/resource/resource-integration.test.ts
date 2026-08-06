@@ -72,8 +72,14 @@ describe("Resource system (defineResource) against tenantSpecificData", () => {
     await getDb().insert(tenantSpecificData).values(seed);
   });
 
+  // Fire and forget cleanup (Bun limitation). End the chain with `.catch`,
+  // never a bare `.then`: this promise outlives the test file, and an
+  // unhandled rejection between files is counted as an error by Bun, which
+  // exits 1 — blamed on whichever file happened to be running when it landed.
+  // The single-connection PGlite socket makes such a late rejection a real
+  // possibility, not a theoretical one.
   afterAll(() => {
-    cleanup().then(() => {});
+    cleanup().catch((error) => console.warn("afterAll cleanup failed:", error));
   });
 
   test("CRUD cycle via the generated routes", async () => {
