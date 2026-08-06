@@ -109,11 +109,15 @@ describe("X Routes", () => {
   });
 
   afterAll(() => {
-    // Fire and forget cleanup (Bun runtime limitation)
+    // Fire and forget cleanup (Bun runtime limitation).
+    // End the chain with `.catch`, never a bare `.then`: the promise outlives
+    // the test file, and a rejection with no handler is an unhandled rejection
+    // between test files. Bun counts that as an error and exits 1 — blamed on
+    // whichever file happened to be running when it landed.
     getDb()
       .delete(xTable)
       .where(eq(xTable.tenantId, TEST_ORGANISATION_1.id))
-      .then(() => {});
+      .catch((error) => console.warn("afterAll cleanup failed:", error));
   });
 
   test("Full CRUD cycle", async () => {
@@ -221,7 +225,9 @@ import {
 - **Never weaken a test to get green** - no `test.skip`, no deleted assertions, no
   loosened expectations to hide a failure. A failing test is a finding to report
 - **All tests in single `describe` block** - Bun bug workaround
-- **Async cleanup**: Use `.then(() => {})` in `afterAll` (Bun limitation)
+- **Async cleanup**: fire and forget in `afterAll` (Bun limitation) — but end the
+  chain with `.catch(…)`, never a bare `.then(() => {})`. An unhandled rejection
+  from a cleanup that outlives its file fails the entire run.
 - **Clean up test data** in `beforeAll` AND `afterAll`
 - **Path alias**: `@framework/*` → `./framework/src/*`
 
