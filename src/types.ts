@@ -67,6 +67,9 @@ export interface ServerSpecificConfig {
   verifyEmailUrl?: string;
   resetPasswordUrl?: string;
   oauthCallbackUrl?: string;
+  // Page a brand-new social-login user is sent to when the instance requires an
+  // invitation code. Defaults to "/oauth-invitation-code.html".
+  oauthInvitationCodeUrl?: string;
   // Where an existing user is redirected after accepting a tenant invitation
   // via the emailed link (relative to baseUrl). Defaults to "/".
   invitationAcceptRedirectUrl?: string;

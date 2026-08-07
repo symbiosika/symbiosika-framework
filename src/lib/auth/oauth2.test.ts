@@ -1,12 +1,19 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { eq, inArray } from "drizzle-orm";
+import jwt from "jsonwebtoken";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { getDb } from "../db/db-connection";
-import { users } from "../db/db-schema";
-import { initTests, TEST_ORG1_USER_1 } from "../../test/init.test";
+import { invitationCodes, tenantMembers, users } from "../db/db-schema";
+import {
+  initTests,
+  TEST_ORG1_USER_1,
+  TEST_ORGANISATION_1,
+} from "../../test/init.test";
+import { createTenantInvitation } from "../usermanagement/invitations";
 import { createMagicLinkToken, verifyMagicLink } from "./magic-link";
 import {
   OAuthAuth,
+  completePendingOAuthRegistration,
   createOAuthCodeChallenge,
   createOAuthRandomToken,
   decodeOAuthTransaction,
@@ -44,6 +51,21 @@ const restoreEnv = () => {
 const enableMicrosoft = () => {
   process.env.MICROSOFT_CLIENT_ID = "ms-client-id";
   process.env.MICROSOFT_CLIENT_SECRET = "ms-client-secret";
+};
+
+/**
+ * `handleCallback` may also come back with "an invitation code is required"
+ * instead of a session. Every test below that expects a plain sign-in goes
+ * through this narrowing helper.
+ */
+const signInViaOAuth = async (
+  ...args: Parameters<typeof OAuthAuth.handleCallback>
+) => {
+  const result = await OAuthAuth.handleCallback(...args);
+  if (result.status !== "authenticated") {
+    throw new Error(`expected an authenticated login, got ${result.status}`);
+  }
+  return result;
 };
 
 describe("OAuth provider configuration", () => {
@@ -267,7 +289,7 @@ describe("OAuth callback handling", () => {
       surname: "Ignored",
     };
 
-    const result = await OAuthAuth.handleCallback(
+    const result = await signInViaOAuth(
       "microsoft",
       "auth-code",
       "pkce-verifier"
@@ -314,7 +336,7 @@ describe("OAuth callback handling", () => {
       surname: "Muster",
     };
 
-    const result = await OAuthAuth.handleCallback("microsoft", "code-2", "v-2");
+    const result = await signInViaOAuth("microsoft", "code-2", "v-2");
 
     const rows = await getDb()
       .select({
@@ -379,7 +401,7 @@ describe("OAuth callback handling", () => {
       surname: "Rename",
     };
 
-    const result = await OAuthAuth.handleCallback("microsoft", "code-r", "v-r");
+    const result = await signInViaOAuth("microsoft", "code-r", "v-r");
 
     expect(result.user.id).toBe(linked!.id);
 
@@ -433,7 +455,7 @@ describe("OAuth callback handling", () => {
       mail: CONFLICT_TAKEN_EMAIL,
     };
 
-    const result = await OAuthAuth.handleCallback("microsoft", "code-x", "v-x");
+    const result = await signInViaOAuth("microsoft", "code-x", "v-x");
 
     // The login succeeds, on the right account, with the old address
     expect(result.user.id).toBe(owner!.id);
@@ -473,7 +495,7 @@ describe("OAuth callback handling", () => {
       userPrincipalName: COLLIDING_EMAIL,
     };
 
-    const result = await OAuthAuth.handleCallback("microsoft", "code-c", "v-c");
+    const result = await signInViaOAuth("microsoft", "code-c", "v-c");
 
     expect(result.user.id).not.toBe(googleUser!.id);
     expect(result.user.email).toBe(COLLIDING_EMAIL);
@@ -493,7 +515,7 @@ describe("OAuth callback handling", () => {
     profileResponse = { userPrincipalName: NEW_USER_EMAIL };
 
     await expect(
-      OAuthAuth.handleCallback("microsoft", "code-no-id", "v-no-id")
+      signInViaOAuth("microsoft", "code-no-id", "v-no-id")
     ).rejects.toThrow(/subject id/i);
   });
 
@@ -503,7 +525,7 @@ describe("OAuth callback handling", () => {
       userPrincipalName: NEW_USER_EMAIL,
     };
 
-    await OAuthAuth.handleCallback("microsoft", "code-3", "v-3");
+    await signInViaOAuth("microsoft", "code-3", "v-3");
 
     const rows = await getDb()
       .select({ id: users.id })
@@ -517,7 +539,7 @@ describe("OAuth callback handling", () => {
     tokenResponse = { error: "invalid_grant", error_description: "expired" };
 
     await expect(
-      OAuthAuth.handleCallback("microsoft", "stale-code", "v-4")
+      signInViaOAuth("microsoft", "stale-code", "v-4")
     ).rejects.toThrow(/invalid_grant/);
 
     tokenResponse = { access_token: "ms-access" };
@@ -527,7 +549,216 @@ describe("OAuth callback handling", () => {
     profileResponse = { id: "ms-object-id-3" };
 
     await expect(
-      OAuthAuth.handleCallback("microsoft", "code-5", "v-5")
+      signInViaOAuth("microsoft", "code-5", "v-5")
     ).rejects.toThrow(/e-mail/i);
+  });
+});
+
+/**
+ * Social login on an instance that gates sign-ups behind general invitation
+ * codes: a verified identity is not, on its own, permission to use the
+ * instance.
+ */
+describe("OAuth sign-up with required invitation code", () => {
+  const realFetch = globalThis.fetch;
+  const CODE = "oauth-test-invitation-code";
+  const GATED_EMAIL = "oauth-gated-user@symbiosika.de";
+  const INVITED_EMAIL = "oauth-invited-user@symbiosika.de";
+  const CREATED_EMAILS = [GATED_EMAIL, INVITED_EMAIL];
+
+  let profileResponse: Record<string, unknown> = {};
+
+  beforeAll(async () => {
+    await initTests();
+    enableMicrosoft();
+
+    await getDb().delete(users).where(inArray(users.email, CREATED_EMAILS));
+    await getDb()
+      .insert(invitationCodes)
+      .values({
+        code: CODE,
+        isActive: true,
+        tenantId: TEST_ORGANISATION_1.id,
+      })
+      .onConflictDoUpdate({
+        target: [invitationCodes.code],
+        set: { isActive: true, tenantId: TEST_ORGANISATION_1.id },
+      });
+
+    globalThis.fetch = (async (input: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.includes("/oauth2/v2.0/token")) {
+        return Response.json({ access_token: "ms-access" });
+      }
+      if (url.includes("graph.microsoft.com")) {
+        return Response.json(profileResponse);
+      }
+      throw new Error(`unexpected fetch in test: ${url}`);
+    }) as typeof fetch;
+  });
+
+  // An active invitation code left behind would make every other registration
+  // in the dev database demand one, so the cleanup is not optional.
+  afterAll(async () => {
+    globalThis.fetch = realFetch;
+    restoreEnv();
+    try {
+      await getDb().delete(invitationCodes).where(eq(invitationCodes.code, CODE));
+      await getDb().delete(users).where(inArray(users.email, CREATED_EMAILS));
+    } catch (err) {
+      console.warn("[oauth2.test] cleanup failed:", err);
+    }
+  });
+
+  test("an unknown address gets no account, only a pending registration", async () => {
+    profileResponse = {
+      id: "ms-oid-gated",
+      userPrincipalName: GATED_EMAIL,
+      givenName: "Gated",
+      surname: "User",
+    };
+
+    const result = await OAuthAuth.handleCallback(
+      "microsoft",
+      "code-gated",
+      "v-gated",
+      "/static/app/"
+    );
+
+    expect(result.status).toBe("invitation_code_required");
+    if (result.status !== "invitation_code_required") return;
+    expect(result.email).toBe(GATED_EMAIL);
+    expect(result.pendingRegistrationToken.split(".").length).toBe(3);
+
+    // Nothing was written: the identity is verified, but unauthorised
+    const rows = await getDb()
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, GATED_EMAIL));
+    expect(rows.length).toBe(0);
+  });
+
+  test("the second attempt without a code is refused, with one it registers", async () => {
+    profileResponse = {
+      id: "ms-oid-gated",
+      userPrincipalName: GATED_EMAIL,
+      givenName: "Gated",
+      surname: "User",
+    };
+
+    const pending = await OAuthAuth.handleCallback(
+      "microsoft",
+      "code-gated-2",
+      "v-gated-2",
+      "/static/app/"
+    );
+    if (pending.status !== "invitation_code_required") {
+      throw new Error("expected a pending registration");
+    }
+
+    await expect(
+      completePendingOAuthRegistration(pending.pendingRegistrationToken, "")
+    ).rejects.toThrow(/invitation code/i);
+
+    await expect(
+      completePendingOAuthRegistration(
+        pending.pendingRegistrationToken,
+        "not-a-real-code"
+      )
+    ).rejects.toThrow(/not found/i);
+
+    // Still nothing created by the failed attempts
+    expect(
+      (
+        await getDb()
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, GATED_EMAIL))
+      ).length
+    ).toBe(0);
+
+    const result = await completePendingOAuthRegistration(
+      pending.pendingRegistrationToken,
+      CODE
+    );
+
+    expect(result.user.email).toBe(GATED_EMAIL);
+    expect(result.token.split(".").length).toBe(3);
+    // The redirect target from the login start survives the detour
+    expect(result.redirect).toBe("/static/app/");
+
+    const rows = await getDb()
+      .select({
+        id: users.id,
+        provider: users.provider,
+        firstname: users.firstname,
+        emailVerified: users.emailVerified,
+      })
+      .from(users)
+      .where(eq(users.email, GATED_EMAIL));
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.provider).toBe("microsoft");
+    expect(rows[0]?.firstname).toBe("Gated");
+    expect(rows[0]?.emailVerified).toBe(true);
+
+    // The code pointed at a tenant, so the account is a member of it
+    const memberships = await getDb()
+      .select({ tenantId: tenantMembers.tenantId })
+      .from(tenantMembers)
+      .where(eq(tenantMembers.userId, rows[0]!.id));
+    expect(memberships.map((m) => m.tenantId)).toContain(
+      TEST_ORGANISATION_1.id
+    );
+  });
+
+  test("a forged or foreign token is refused", async () => {
+    await expect(
+      completePendingOAuthRegistration("not.a.token", CODE)
+    ).rejects.toThrow();
+
+    // A valid signature with the wrong purpose must not pass either: session
+    // JWTs are signed with the same key.
+    const foreign = jwt.sign(
+      { purpose: "tenant_invitation", profile: { email: GATED_EMAIL } },
+      process.env.JWT_PRIVATE_KEY || "",
+      { expiresIn: 60 }
+    );
+    await expect(
+      completePendingOAuthRegistration(foreign, CODE)
+    ).rejects.toThrow(/pending registration/i);
+  });
+
+  test("a pending tenant invitation replaces the invitation code", async () => {
+    // Being invited into an organisation is authorisation enough — the same
+    // rule the magic-link sign-up follows.
+    await createTenantInvitation({
+      tenantId: TEST_ORGANISATION_1.id,
+      email: INVITED_EMAIL,
+      role: "member",
+      status: "pending",
+    });
+
+    profileResponse = {
+      id: "ms-oid-invited",
+      userPrincipalName: INVITED_EMAIL,
+    };
+
+    const result = await OAuthAuth.handleCallback(
+      "microsoft",
+      "code-invited",
+      "v-invited"
+    );
+
+    expect(result.status).toBe("authenticated");
+    if (result.status !== "authenticated") return;
+    expect(result.user.email).toBe(INVITED_EMAIL);
+
+    const memberships = await getDb()
+      .select({ tenantId: tenantMembers.tenantId })
+      .from(tenantMembers)
+      .where(eq(tenantMembers.userId, result.user.id));
+    expect(memberships.map((m) => m.tenantId)).toContain(
+      TEST_ORGANISATION_1.id
+    );
   });
 });

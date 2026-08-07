@@ -32,6 +32,7 @@ defineServer({
   verifyEmailUrl: string,
   resetPasswordUrl: string,
   oauthCallbackUrl: string,
+  oauthInvitationCodeUrl: string, // page asking a new social-login user for an invitation code
 
   // Custom routes
   customHonoApps: [{          // Public (no auth)

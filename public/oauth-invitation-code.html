@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Einladungscode</title>
+    <link rel="icon" href="/favicon.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="min-h-screen flex items-center justify-center px-6 py-12">
+      <div class="w-full max-w-md">
+
+        <!-- Loading -->
+        <div id="loading" class="card p-8">
+          <div class="text-center mb-8">
+            <img class="mx-auto w-48 mb-6" src="/favicon.png" alt="Logo" />
+            <h1 class="text-2xl font-bold text-primary mb-2">Einen Moment…</h1>
+          </div>
+          <div class="flex justify-center items-center py-8">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
+        <!-- Invitation code form -->
+        <div id="form-card" class="card p-8 hidden">
+          <div class="text-center mb-8">
+            <img class="mx-auto w-48 mb-6" src="/favicon.png" alt="Logo" />
+            <h1 class="text-2xl font-bold text-primary mb-2">Einladungscode benötigt</h1>
+            <p class="text-muted">
+              Die Anmeldung mit <strong id="email"></strong> hat funktioniert, aber
+              für dieses Konto liegt noch keine Einladung vor. Bitte geben Sie
+              Ihren Einladungscode ein, um die Registrierung abzuschließen.
+            </p>
+          </div>
+
+          <form id="form" class="space-y-4">
+            <input
+              id="code"
+              name="code"
+              type="text"
+              autocomplete="one-time-code"
+              class="input"
+              placeholder="Einladungscode"
+              required
+            />
+            <button id="submit" type="submit" class="btn btn-primary w-full">
+              Registrierung abschließen
+            </button>
+          </form>
+
+          <p class="text-muted text-sm mt-6 text-center">
+            Kein Code? Bitten Sie eine Administratorin oder einen Administrator
+            Ihrer Organisation um eine Einladung.
+          </p>
+        </div>
+
+        <!-- Error -->
+        <div id="error" class="card p-8 hidden">
+          <div class="text-center">
+            <img class="mx-auto w-48 mb-6" src="/favicon.png" alt="Logo" />
+            <div class="icon-circle error">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </div>
+            <h1 class="text-2xl font-bold text-primary mb-2">Registrierung nicht möglich</h1>
+            <p class="text-muted mb-4" id="error-text">Ein Fehler ist aufgetreten.</p>
+            <button onclick="window.location.href='/login.html'" class="btn btn-inline btn-secondary">
+              Zur Anmeldung
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script>
+      function showEl(id) { document.getElementById(id).classList.remove('hidden'); }
+      function hideEl(id) { document.getElementById(id).classList.add('hidden'); }
+
+      function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => {
+          toast.style.animation = 'slideDown 0.3s ease-out reverse';
+          setTimeout(() => { if (container.contains(toast)) container.removeChild(toast); }, 300);
+        }, type === 'success' ? 2500 : 4000);
+      }
+
+      function fail(message) {
+        hideEl('loading');
+        hideEl('form-card');
+        showEl('error');
+        document.getElementById('error-text').textContent = message;
+      }
+
+      // The social login verified the identity but did not create an account:
+      // this instance requires an invitation code. The verified profile lives in
+      // a short-lived HttpOnly cookie set by the callback — this page only asks
+      // for the code and posts it back.
+      (async () => {
+        try {
+          const response = await fetch('/api/v1/user/oauth/pending-registration', {
+            credentials: 'include',
+          });
+          if (!response.ok) {
+            fail('Die Anmeldung ist abgelaufen. Bitte melden Sie sich erneut an.');
+            return;
+          }
+          const pending = await response.json();
+          document.getElementById('email').textContent = pending.email;
+          hideEl('loading');
+          showEl('form-card');
+        } catch {
+          fail('Der Server ist nicht erreichbar. Bitte später erneut versuchen.');
+        }
+      })();
+
+      document.getElementById('form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = document.getElementById('submit');
+        button.disabled = true;
+
+        try {
+          const response = await fetch('/api/v1/user/oauth/complete-registration', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invitationCode: document.getElementById('code').value.trim(),
+            }),
+          });
+
+          if (response.status === 401) {
+            fail('Die Anmeldung ist abgelaufen. Bitte melden Sie sich erneut an.');
+            return;
+          }
+
+          if (!response.ok) {
+            // A wrong code stays retryable — the pending registration is kept.
+            showToast('Der Einladungscode ist ungültig.', 'error');
+            button.disabled = false;
+            return;
+          }
+
+          const result = await response.json();
+          showToast('Registrierung erfolgreich', 'success');
+          setTimeout(() => {
+            window.location.href = result.redirect || '/static/app/';
+          }, 1000);
+        } catch {
+          showToast('Der Server ist nicht erreichbar.', 'error');
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -105,6 +105,53 @@ The following endpoints are available for user authentication and registration:
   to the target from the login transaction.
   **Query:** `?code=...&state=...` (or `?error=...` when the user cancels).
   Failures redirect to `loginUrl?error=oauth_unavailable|oauth_cancelled|oauth_failed`.
+  When the address is unknown **and** the instance requires an invitation code,
+  no account is created — see "Social sign-up with a required invitation code".
+
+- **GET `/api/v1/user/oauth/pending-registration`**  
+  The identity behind a social sign-up that is waiting for an invitation code,
+  read from the `oauth_pending_registration` cookie:
+  `{ "email", "provider", "firstname", "surname" }`. `401` when there is none
+  (or it expired).
+
+- **POST `/api/v1/user/oauth/complete-registration`**  
+  Second attempt of that sign-up, now with a code. Creates the account for the
+  identity in the cookie and sets the normal auth cookies.
+  **Body:** `{ "invitationCode": "..." }`
+  **Response:** `{ "user": {...}, "redirect": "/where/to/go" }`
+  `400` for a missing/unknown code (retryable — the pending registration is
+  kept), `401` when the pending registration is gone.
+
+### Social sign-up with a required invitation code
+
+A verified Microsoft / Google identity proves *who* somebody is, not that they
+are allowed to use the instance. So when general invitation codes are active
+(`invitation_codes` with `is_active = true`) and a social login arrives for an
+address that has **no account and no pending tenant invitation**, the callback
+does **not** create a user. Instead:
+
+1. the verified profile is signed into a short-lived token (15 min, purpose
+   `oauth_pending_registration`) and pinned in an HttpOnly cookie of the same
+   name — so the provider round-trip does not have to be repeated, and the token
+   never appears in a URL;
+2. the browser is redirected to `oauthInvitationCodeUrl`
+   (`defineServer`, default `/oauth-invitation-code.html`);
+3. that page reads the identity from `GET /user/oauth/pending-registration`,
+   asks for the invitation code and posts it to
+   `POST /user/oauth/complete-registration`, which validates the code, creates
+   the account and signs the user in — landing on the `redirectUrl` the login
+   was started with.
+
+A pending tenant invitation for the address counts as authorisation on its own
+and skips the whole detour (same rule as the magic-link sign-up). If the code
+carries a `tenant_id`, the new account joins that tenant — as its **owner** when
+the tenant has no members yet, as a member otherwise, exactly like
+`LocalAuth.register`.
+
+The pending-registration token grants nothing by itself: it only states that
+this server verified this identity minutes ago. Creating the account still
+requires a valid invitation code, and a wrong code can be retried until the
+token expires.
 
 ### Social login and existing accounts
 
@@ -122,7 +169,8 @@ An OAuth identity is resolved in this order:
    Resolving by `email + provider` instead would try to insert a second row for
    an existing address, which the unique index rejects.
 3. otherwise the address is registered on the spot (with `emailVerified: true`,
-   pending organisation invitations accepted and the post-register actions run).
+   pending organisation invitations accepted and the post-register actions run)
+   — unless the instance requires an invitation code, see above.
 
 The `provider` column keeps recording how the account was originally created
 and gates nothing. A profile without a subject id is rejected.
@@ -149,6 +197,10 @@ password until one is set via password reset.
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | enables "Sign in with Google" |
 | `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | enables "Sign in with Microsoft" |
 | `MICROSOFT_TENANT_ID` | optional Entra directory (tenant GUID or `organizations`); defaults to `common` |
+
+`defineServer` options: `oauthCallbackUrl` (where a successful login lands by
+default) and `oauthInvitationCodeUrl` (the page that asks a brand-new user for
+an invitation code, default `/oauth-invitation-code.html`).
 
 Redirect URI to register with the provider:
 `<baseUrl><basePath>/user/auth/<provider>/callback`
