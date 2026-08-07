@@ -24,16 +24,20 @@
  *   <baseUrl><basePath>/user/auth/<provider>/callback
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import jwt from "jsonwebtoken";
 import { getDb } from "../db/db-connection";
 import { eq } from "drizzle-orm";
-import { users } from "../db/db-schema";
-import { generateUserSessionJwt } from "./index";
+import { tenantMembers, users } from "../db/db-schema";
+import { checkGeneralInvitationCode, generateUserSessionJwt } from "./index";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { postRegisterActions } from "./actions";
 import {
+  checkIfInvitationCodeIsNeededToRegister,
   getPendingInvitationsForEmail,
   acceptAllPendingInvitationsForTenantMember,
 } from "../usermanagement/invitations";
+import { addTenantMember } from "../usermanagement/tenants";
+import { updateUser } from "../usermanagement/user";
 import log from "../log";
 import { normalizeEmail } from "../utils/email";
 
@@ -326,8 +330,8 @@ async function syncOAuthEmail(
  * A changed address is synced onto the account on a best-effort basis, see
  * `syncOAuthEmail`.
  */
-async function findOrCreateOAuthUser(profile: OAuthProfile) {
-  const { id, provider, firstname = "", surname = "" } = profile;
+async function findOAuthUser(profile: OAuthProfile) {
+  const { id, provider } = profile;
   // Directories hand out whatever capitalisation the address was entered with
   // (Entra in particular preserves it), so the raw value cannot be used for
   // lookup or insert — step 2 of the resolution order above would miss the
@@ -340,26 +344,42 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
     ? [byExternalId]
     : await getDb().select().from(users).where(eq(users.email, email));
 
-  if (existingUser[0]) {
-    const updatedUser = await getDb()
-      .update(users)
-      .set({
-        extUserId: id,
-        emailVerified: true,
-      })
-      .where(eq(users.id, existingUser[0].id))
-      .returning();
+  if (!existingUser[0]) return undefined;
 
-    if (!byExternalId) {
-      log.info(
-        `Linked ${provider} login to existing ${existingUser[0].provider} account ${existingUser[0].id}`
-      );
-    }
+  const updatedUser = await getDb()
+    .update(users)
+    .set({
+      extUserId: id,
+      emailVerified: true,
+    })
+    .where(eq(users.id, existingUser[0].id))
+    .returning();
 
-    return (await syncOAuthEmail(existingUser[0], email)) ?? updatedUser[0];
+  if (!byExternalId) {
+    log.info(
+      `Linked ${provider} login to existing ${existingUser[0].provider} account ${existingUser[0].id}`
+    );
   }
 
-  // No account for this address yet → register one.
+  return (await syncOAuthEmail(existingUser[0], email)) ?? updatedUser[0];
+}
+
+/**
+ * Register a brand-new account for a verified social identity.
+ *
+ * `tenantIdFromInvitationCode` is the tenant a redeemed general invitation code
+ * points at (if any). It is joined exactly like `LocalAuth.register` does: the
+ * very first member of an empty tenant becomes its owner, everyone after that a
+ * member.
+ */
+async function createOAuthUser(
+  profile: OAuthProfile,
+  tenantIdFromInvitationCode: string | null = null,
+  meta?: { invitationCode?: string }
+) {
+  const { id, provider, firstname = "", surname = "" } = profile;
+  const email = normalizeEmail(profile.email);
+
   const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);
 
   const newUser = await getDb()
@@ -382,6 +402,22 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
 
   log.info(`New user registered via ${provider}: ${newUser[0].id}`);
 
+  if (tenantIdFromInvitationCode) {
+    const members = await getDb()
+      .select()
+      .from(tenantMembers)
+      .where(eq(tenantMembers.tenantId, tenantIdFromInvitationCode));
+
+    await addTenantMember(
+      tenantIdFromInvitationCode,
+      newUser[0].id,
+      members[0] ? "member" : "owner"
+    );
+    await updateUser(newUser[0].id, {
+      lastTenantId: tenantIdFromInvitationCode,
+    });
+  }
+
   // Accept pending organisation invitations, exactly like the magic-link
   // sign-up does — otherwise an invited user lands in no tenant at all.
   for (const tenantId of invitedInTenantIds) {
@@ -389,11 +425,144 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
   }
 
   for (const action of postRegisterActions) {
-    await action(newUser[0].id, newUser[0].email);
+    await action(newUser[0].id, newUser[0].email, meta);
   }
 
   return newUser[0];
 }
+
+/* ── Pending registration (invitation code required) ──────────────────────
+ *
+ * When the instance gates sign-ups behind general invitation codes, a social
+ * login by an unknown address must not silently create an account: the identity
+ * is verified, but nobody has authorised this person to use the instance. The
+ * provider round-trip is nevertheless complete and must not be repeated, so the
+ * verified profile is parked in a short-lived signed token ("pending
+ * registration"). The frontend asks for an invitation code and posts it back
+ * together with that token — the second attempt the user asked for.
+ *
+ * The token carries no privileges of its own: it only proves that *this* server
+ * verified *this* identity a few minutes ago. Creating the account still
+ * requires a valid invitation code.
+ */
+
+const PENDING_REGISTRATION_PURPOSE = "oauth_pending_registration";
+
+/** Cookie holding the pending registration. */
+export const OAUTH_PENDING_REGISTRATION_COOKIE = "oauth_pending_registration";
+
+/** How long the user has to produce an invitation code. */
+export const OAUTH_PENDING_REGISTRATION_TTL_SECONDS = 15 * 60;
+
+const getPendingRegistrationKey = () => process.env.JWT_PRIVATE_KEY || "";
+
+export type OAuthPendingRegistration = {
+  profile: OAuthProfile;
+  /** Where to send the user after the account was created. */
+  redirect: string;
+};
+
+/** Sign the verified profile into a short-lived token. */
+export const createPendingRegistrationToken = (
+  registration: OAuthPendingRegistration
+): string =>
+  jwt.sign(
+    {
+      purpose: PENDING_REGISTRATION_PURPOSE,
+      profile: registration.profile,
+      redirect: registration.redirect,
+    },
+    getPendingRegistrationKey(),
+    { expiresIn: OAUTH_PENDING_REGISTRATION_TTL_SECONDS }
+  );
+
+/**
+ * Counterpart of `createPendingRegistrationToken`. Throws for anything that is
+ * not a currently valid pending registration — an expired token, a token of
+ * another purpose (a session JWT, an invitation token, …) or a forged one.
+ */
+export const verifyPendingRegistrationToken = (
+  token: string
+): OAuthPendingRegistration => {
+  const decoded = jwt.verify(token, getPendingRegistrationKey()) as
+    | {
+        purpose?: string;
+        profile?: OAuthProfile;
+        redirect?: string;
+      }
+    | string;
+
+  if (
+    !decoded ||
+    typeof decoded === "string" ||
+    decoded.purpose !== PENDING_REGISTRATION_PURPOSE ||
+    !decoded.profile?.email ||
+    !decoded.profile?.id ||
+    !isOAuthProvider(decoded.profile?.provider ?? "")
+  ) {
+    throw new Error("Invalid pending registration token");
+  }
+
+  return {
+    profile: decoded.profile,
+    redirect: sanitizeOAuthRedirect(decoded.redirect, "/"),
+  };
+};
+
+/**
+ * Does this address need a general invitation code before an account may be
+ * created for it? A pending tenant invitation counts as authorisation on its
+ * own — same rule as the magic-link sign-up.
+ */
+const needsInvitationCodeToRegister = async (email: string) => {
+  const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);
+  if (invitedInTenantIds.length > 0) return false;
+  return await checkIfInvitationCodeIsNeededToRegister();
+};
+
+/**
+ * Second attempt of a social sign-up: the user has come back with an invitation
+ * code. The identity is taken from the pending-registration token (never from
+ * the request body — the client must not be able to name the account it gets).
+ *
+ * Races are handled by re-resolving the account first: if the same person
+ * finished a sign-up in another tab meanwhile, they are simply logged in.
+ */
+export const completePendingOAuthRegistration = async (
+  pendingRegistrationToken: string,
+  invitationCode: string | undefined
+) => {
+  const { profile, redirect } = verifyPendingRegistrationToken(
+    pendingRegistrationToken
+  );
+
+  const existing = await findOAuthUser(profile);
+  if (existing) {
+    const { token, expiresAt } = await generateUserSessionJwt(existing);
+    return { token, expiresAt, user: existing, redirect };
+  }
+
+  const email = normalizeEmail(profile.email);
+
+  // The gate may have been lifted in the meantime (last code deactivated, or an
+  // invitation for this address created) — then no code is demanded any more.
+  let setTenantId: string | null = null;
+  if (await needsInvitationCodeToRegister(email)) {
+    // `checkGeneralInvitationCode` throws a string for a missing / unknown
+    // code; normalise it so callers only have to deal with Errors.
+    try {
+      setTenantId = (await checkGeneralInvitationCode(invitationCode))
+        .setTenantId;
+    } catch (err) {
+      throw new Error(typeof err === "string" ? err : String(err));
+    }
+  }
+
+  const user = await createOAuthUser(profile, setTenantId, { invitationCode });
+  const { token, expiresAt } = await generateUserSessionJwt(user);
+
+  return { token, expiresAt, user, redirect };
+};
 
 /* ── Provider calls ──────────────────────────────────────────────────────── */
 
@@ -492,27 +661,76 @@ async function fetchOAuthProfile(
   };
 }
 
+/**
+ * Outcome of a social login callback.
+ *
+ * `invitation_code_required` is not an error: the identity is verified, the
+ * instance simply gates sign-ups behind an invitation code and this address has
+ * none. The caller is expected to ask for a code and hand it, together with
+ * `pendingRegistrationToken`, to `completePendingOAuthRegistration`.
+ */
+export type OAuthCallbackResult =
+  | {
+      status: "authenticated";
+      token: string;
+      expiresAt: Awaited<ReturnType<typeof generateUserSessionJwt>>["expiresAt"];
+      user: NonNullable<Awaited<ReturnType<typeof findOAuthUser>>>;
+    }
+  | {
+      status: "invitation_code_required";
+      pendingRegistrationToken: string;
+      email: string;
+      provider: OAuthProvider;
+    };
+
 export const OAuthAuth = {
   /**
    * Finish a login: code → access token → profile → framework session.
    * The returned token is a normal, revocable user session JWT.
+   *
+   * When the account does not exist yet and the instance requires an invitation
+   * code, **no account is created**. The verified identity is returned as a
+   * pending registration instead, see `OAuthCallbackResult`.
    */
   async handleCallback(
     provider: OAuthProvider,
     code: string,
-    codeVerifier?: string
-  ) {
+    codeVerifier?: string,
+    /** Where to send the user once the account exists (kept in the token). */
+    redirect = "/"
+  ): Promise<OAuthCallbackResult> {
     const accessToken = await exchangeCodeForToken(provider, code, codeVerifier);
     const profile = await fetchOAuthProfile(provider, accessToken);
 
-    const user = await findOrCreateOAuthUser(profile);
+    const existing = await findOAuthUser(profile);
+
+    if (!existing) {
+      const email = normalizeEmail(profile.email);
+
+      if (await needsInvitationCodeToRegister(email)) {
+        log.info(
+          `${provider} login by unknown address ${email}: invitation code required before an account is created`
+        );
+        return {
+          status: "invitation_code_required",
+          pendingRegistrationToken: createPendingRegistrationToken({
+            profile,
+            redirect,
+          }),
+          email,
+          provider,
+        };
+      }
+    }
+
+    const user = existing ?? (await createOAuthUser(profile));
     if (!user) {
       throw new Error("Failed to find or create user");
     }
 
     const { token, expiresAt } = await generateUserSessionJwt(user);
 
-    return { token, expiresAt, user };
+    return { status: "authenticated", token, expiresAt, user };
   },
 
   /** Backwards-compatible wrappers around `handleCallback`. */

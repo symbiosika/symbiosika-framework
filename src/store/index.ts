@@ -31,6 +31,10 @@ export const _GLOBAL_SERVER_CONFIG = {
   verifyEmailUrl: "/verify-email.html",
   resetPasswordUrl: "/reset-password.html",
   oauthCallbackUrl: "/oauth-callback.html",
+  // Page that asks a brand-new social-login user for an invitation code when
+  // the instance requires one. The social login redirects here instead of
+  // creating an account. Override per app.
+  oauthInvitationCodeUrl: "/oauth-invitation-code.html",
   // Landing page (relative to baseUrl) an existing user is redirected to after
   // accepting a tenant invitation via the emailed link. Override per app.
   invitationAcceptRedirectUrl: "/",
@@ -174,6 +178,10 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
   }
   if (config.resetPasswordUrl) {
     _GLOBAL_SERVER_CONFIG.resetPasswordUrl = config.resetPasswordUrl;
+  }
+  if (config.oauthInvitationCodeUrl) {
+    _GLOBAL_SERVER_CONFIG.oauthInvitationCodeUrl =
+      config.oauthInvitationCodeUrl;
   }
   if (config.oauthCallbackUrl) {
     _GLOBAL_SERVER_CONFIG.oauthCallbackUrl = config.oauthCallbackUrl;

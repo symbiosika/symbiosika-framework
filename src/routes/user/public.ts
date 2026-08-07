@@ -22,7 +22,11 @@ import { verifyApiTokenAndGetJwt } from "../../lib/auth/token-auth";
 import {
   OAUTH_LOGIN_TX_COOKIE,
   OAUTH_LOGIN_TX_TTL_SECONDS,
+  OAUTH_PENDING_REGISTRATION_COOKIE,
+  OAUTH_PENDING_REGISTRATION_TTL_SECONDS,
   OAuthAuth,
+  completePendingOAuthRegistration,
+  verifyPendingRegistrationToken,
   createOAuthCodeChallenge,
   createOAuthRandomToken,
   decodeOAuthTransaction,
@@ -866,8 +870,34 @@ export function definePublicUserRoutes(
         const result = await OAuthAuth.handleCallback(
           provider,
           code,
-          transaction.verifier
+          transaction.verifier,
+          transaction.redirect
         );
+
+        // The identity is verified, but this instance gates sign-ups behind an
+        // invitation code and this address has none: no account was created.
+        // Park the verified profile in a short-lived HttpOnly cookie and send
+        // the user to the page that asks for a code — the token stays out of
+        // the URL (and thus out of history, logs and referrers), exactly like
+        // the session token does.
+        if (result.status === "invitation_code_required") {
+          setCookie(
+            c,
+            OAUTH_PENDING_REGISTRATION_COOKIE,
+            result.pendingRegistrationToken,
+            {
+              httpOnly: true,
+              secure: isSecureContext(),
+              sameSite: "Lax",
+              path: "/",
+              maxAge: OAUTH_PENDING_REGISTRATION_TTL_SECONDS,
+            }
+          );
+
+          return c.redirect(
+            `${_GLOBAL_SERVER_CONFIG.oauthInvitationCodeUrl}?provider=${provider}`
+          );
+        }
 
         setAuthCookies(c, result.token);
 
@@ -876,6 +906,146 @@ export function definePublicUserRoutes(
         log.error(`${provider} login failed: ${err}`);
         return c.redirect(oauthLoginError("oauth_failed"));
       }
+    }
+  );
+
+  /**
+   * The identity behind a pending social sign-up, so the invitation-code page
+   * can greet the user by address instead of asking them to type it again.
+   * Reads the HttpOnly cookie set by the callback; nothing else identifies the
+   * caller, and no account exists yet.
+   */
+  app.get(
+    API_BASE_PATH + "/user/oauth/pending-registration",
+    describeRoute({
+      tags: ["user"],
+      summary: "Identity of a social sign-up awaiting an invitation code",
+      responses: {
+        200: {
+          description: "Successful response",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({
+                  email: v.string(),
+                  provider: v.string(),
+                  firstname: v.string(),
+                  surname: v.string(),
+                })
+              ),
+            },
+          },
+        },
+        401: { description: "No pending registration (or it expired)" },
+      },
+    }),
+    async (c) => {
+      const token = getCookie(c, OAUTH_PENDING_REGISTRATION_COOKIE);
+      if (!token) {
+        throw new HTTPException(401, { message: "No pending registration" });
+      }
+
+      try {
+        const { profile } = verifyPendingRegistrationToken(token);
+        return c.json({
+          email: profile.email,
+          provider: profile.provider,
+          firstname: profile.firstname ?? "",
+          surname: profile.surname ?? "",
+        });
+      } catch {
+        // Expired or tampered with: the user has to start the login again.
+        throw new HTTPException(401, {
+          message: "Pending registration expired",
+        });
+      }
+    }
+  );
+
+  /**
+   * Second attempt of a social sign-up, now with an invitation code. Creates
+   * the account for the identity parked in the pending-registration cookie and
+   * signs the user in with the same auth cookies as every other login flow.
+   */
+  app.post(
+    API_BASE_PATH + "/user/oauth/complete-registration",
+    describeRoute({
+      tags: ["user"],
+      summary: "Finish a social sign-up with an invitation code",
+      responses: {
+        200: {
+          description: "Successful response",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({
+                  user: usersRestrictedSelectSchema,
+                  redirect: v.string(),
+                })
+              ),
+            },
+          },
+        },
+        400: { description: "Missing or unknown invitation code" },
+        401: { description: "No pending registration (or it expired)" },
+      },
+    }),
+    validator(
+      "json",
+      v.object({
+        invitationCode: v.optional(v.string()),
+      })
+    ),
+    async (c) => {
+      const pendingRegistrationToken = getCookie(
+        c,
+        OAUTH_PENDING_REGISTRATION_COOKIE
+      );
+      if (!pendingRegistrationToken) {
+        throw new HTTPException(401, { message: "No pending registration" });
+      }
+
+      // A wrong code must be retryable, so the cookie is only dropped once the
+      // account exists (below) — it is short-lived and useless on its own.
+      let result;
+      try {
+        result = await completePendingOAuthRegistration(
+          pendingRegistrationToken,
+          c.req.valid("json").invitationCode
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // Only the code can be wrong here; anything about the token itself
+        // means the user has to start over.
+        if (message.toLowerCase().includes("pending registration")) {
+          deleteCookie(c, OAUTH_PENDING_REGISTRATION_COOKIE, {
+            path: "/",
+            secure: isSecureContext(),
+            sameSite: "Lax",
+          });
+          throw new HTTPException(401, { message });
+        }
+        log.info(`Social sign-up rejected: ${message}`);
+        throw new HTTPException(400, { message });
+      }
+
+      deleteCookie(c, OAUTH_PENDING_REGISTRATION_COOKIE, {
+        path: "/",
+        secure: isSecureContext(),
+        sameSite: "Lax",
+      });
+
+      setAuthCookies(c, result.token);
+
+      return c.json({
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          firstname: result.user.firstname,
+          surname: result.user.surname,
+        },
+        redirect: result.redirect,
+      });
     }
   );
 }
