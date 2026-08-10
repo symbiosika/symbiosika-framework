@@ -48,13 +48,17 @@ const getTurndown = (): TurndownService => {
 };
 
 /**
- * One block's rendered markdown text (html → markdown), trimmed.
+ * One block's rendered markdown text (html → markdown), trimmed. This is the
+ * PROJECTION an API/MCP reader sees of a block — exported because the edit path
+ * matches against it when the stored html cannot carry a match itself.
  *
  * Turndown escapes square brackets (`[[X]]` → `\[\[X\]\]`), which would hide a
  * page reference from the link extraction and show the backslashes to anyone
  * reading the page through the API — so wikilink markers are restored.
  */
-const renderBlockText = (block: Pick<MaterializeBlock, "type" | "content">): string =>
+export const renderBlockText = (
+  block: Pick<MaterializeBlock, "type" | "content">
+): string =>
   block.type === "html"
     ? unescapeWikiLinkMarkers(getTurndown().turndown(block.content)).trim()
     : block.content.trim();

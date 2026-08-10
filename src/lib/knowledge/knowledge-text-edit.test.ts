@@ -137,7 +137,7 @@ describe("Knowledge Text Edit (string replacement)", () => {
     expect(blocks[1]?.content).toBe("Body with a correction inside.");
   });
 
-  it("rejects a non-empty replacement that spans block boundaries", async () => {
+  it("applies a non-empty replacement that spans block boundaries", async () => {
     const page = await createPage("");
     await syncKnowledgeTextBlocks(
       page.id,
@@ -149,13 +149,43 @@ describe("Knowledge Text Edit (string replacement)", () => {
     );
 
     // this string only exists in the materialized text across the block gap
-    await expect(
-      editKnowledgeTextContent(
-        page.id,
-        { oldString: "end of first\n\nstart of second", newString: "x" },
-        ctx
-      )
-    ).rejects.toThrow("spans multiple blocks");
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: "end of first\n\nstart of second", newString: "x" },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe("x");
+
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks.map((b) => b.content)).toEqual(["x"]);
+  });
+
+  it("replaces several paragraphs at once with new multi-paragraph text", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "markdown", content: "Einleitung bleibt." },
+        { type: "markdown", content: "Alter Absatz A." },
+        { type: "markdown", content: "Alter Absatz B." },
+        { type: "markdown", content: "Schluss bleibt." },
+      ],
+      ctx
+    );
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      {
+        oldString: "Alter Absatz A.\n\nAlter Absatz B.",
+        newString: "Neuer Absatz.",
+      },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe(
+      "Einleitung bleibt.\n\nNeuer Absatz.\n\nSchluss bleibt."
+    );
   });
 
   it("drops a block that an edit empties instead of leaving a placeholder", async () => {
@@ -511,7 +541,7 @@ describe("Knowledge Text Edit (string replacement)", () => {
     expect(result.content).toBe("Pflege und Betreuung für Träger");
   });
 
-  it("refuses a replacement with line breaks in an html block", async () => {
+  it("writes a replacement with line breaks as a markdown block", async () => {
     const page = await createPage("");
     await syncKnowledgeTextBlocks(
       page.id,
@@ -519,47 +549,53 @@ describe("Knowledge Text Edit (string replacement)", () => {
       ctx
     );
 
-    await expect(
-      editKnowledgeTextContent(
-        page.id,
-        {
-          oldString: "Siehe auch die Nachbarseiten.",
-          newString: "Siehe auch:\n- [[04 Historie]]\n- [[01 Pflegemarkt]]",
-        },
-        ctx
-      )
-    ).rejects.toThrow("line breaks");
+    const result = await editKnowledgeTextContent(
+      page.id,
+      {
+        oldString: "Siehe auch die Nachbarseiten.",
+        newString: "Siehe auch:\n\n- [[04 Historie]]\n- [[01 Pflegemarkt]]",
+      },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe(
+      "Siehe auch:\n\n- [[04 Historie]]\n- [[01 Pflegemarkt]]"
+    );
 
-    // nothing was written
+    // html cannot carry the list, so the block is stored as markdown
     const blocks = await getKnowledgeTextBlocks(page.id, ctx);
-    expect(blocks[0]!.content).toBe("<p>Siehe auch die Nachbarseiten.</p>");
+    expect(blocks[0]!.type).toBe("markdown");
+
+    const links = await getKnowledgeTextLinks(page.id, ctx);
+    expect(links.map((l) => l.targetTitle).sort()).toEqual([
+      "01 Pflegemarkt",
+      "04 Historie",
+    ]);
   });
 
-  it("refuses a replacement an html block cannot carry, leaving the page intact", async () => {
+  it("keeps an html block as html when the replacement fits in it", async () => {
     const page = await createPage("");
-    const before = "<p>Wir betreuen Kunden im Pflegemarkt.</p>";
     await syncKnowledgeTextBlocks(
       page.id,
-      [{ type: "html", content: before }],
+      [{ type: "html", content: "<p>Wir betreuen Kunden im Pflegemarkt.</p>" }],
       ctx
     );
 
-    // markdown emphasis would be stored as literal asterisks and read back
-    // escaped ("\*\*Pflegemarkt\*\*") — the round-trip check catches it
-    await expect(
-      editKnowledgeTextContent(
-        page.id,
-        { oldString: "im Pflegemarkt", newString: "im **Pflegemarkt**" },
-        ctx
-      )
-    ).rejects.toThrow("read back as written");
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: "im Pflegemarkt", newString: "im Bildungsmarkt" },
+      ctx
+    );
+    expect(result.content).toBe("Wir betreuen Kunden im Bildungsmarkt.");
 
     const blocks = await getKnowledgeTextBlocks(page.id, ctx);
-    expect(blocks.length).toBe(1);
-    expect(blocks[0]!.content).toBe(before);
+    expect(blocks[0]!.type).toBe("html");
+    expect(blocks[0]!.content).toBe(
+      "<p>Wir betreuen Kunden im Bildungsmarkt.</p>"
+    );
   });
 
-  it("still refuses a spanning deletion that cuts into an html block", async () => {
+  it("trims an html block that a spanning deletion cuts into", async () => {
     const page = await createPage("");
     await syncKnowledgeTextBlocks(
       page.id,
@@ -570,13 +606,102 @@ describe("Knowledge Text Edit (string replacement)", () => {
       ctx
     );
 
-    await expect(
-      editKnowledgeTextContent(
-        page.id,
-        { oldString: "erster Block\n\nAnfang bleibt,", newString: "" },
-        ctx
-      )
-    ).rejects.toThrow("spans multiple blocks");
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: "erster Block\n\nAnfang bleibt,", newString: "" },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe("Ende geht weg.");
+  });
+
+  it("edits text the projection formats (bold, heading, list)", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "html", content: "<h2>Abrechnung und Preise</h2>" },
+        {
+          type: "html",
+          content:
+            "<p>Der <strong>Listenpreis</strong> beträgt 10 EUR pro Monat.</p>",
+        },
+      ],
+      ctx
+    );
+
+    // the agent copies oldString verbatim out of read_page_content, where the
+    // bold word reads as **Listenpreis** — invisible in the stored html
+    const view = await readKnowledgeTextContent(page.id, ctx);
+    expect(view.content).toBe(
+      "## Abrechnung und Preise\n\n" +
+        "Der **Listenpreis** beträgt 10 EUR pro Monat."
+    );
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      {
+        oldString: "Der **Listenpreis** beträgt 10 EUR pro Monat.",
+        newString: "Der **Listenpreis** beträgt 12 EUR pro Monat.",
+      },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe(
+      "## Abrechnung und Preise\n\n" +
+        "Der **Listenpreis** beträgt 12 EUR pro Monat."
+    );
+
+    // only the edited block changed format; the heading block is untouched
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks[0]!.content).toBe("<h2>Abrechnung und Preise</h2>");
+    expect(blocks[1]!.type).toBe("markdown");
+  });
+
+  it("edits a heading stored as an html block", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "html", content: "<h2>Alte Überschrift</h2>" },
+        { type: "html", content: "<p>Text darunter.</p>" },
+      ],
+      ctx
+    );
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: "## Alte Überschrift", newString: "## Neue Überschrift" },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe("## Neue Überschrift\n\nText darunter.");
+  });
+
+  it("edits one item of a list stored as an html block", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        {
+          type: "html",
+          content: "<ul><li>Punkt eins</li><li>Punkt zwei</li></ul>",
+        },
+      ],
+      ctx
+    );
+
+    // plain text inside a list item still matches the stored html directly
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: "Punkt zwei", newString: "Punkt drei" },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toContain("Punkt drei");
+
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks[0]!.type).toBe("html");
   });
 
   it("rejects empty or identical strings", async () => {
