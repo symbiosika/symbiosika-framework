@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/serve-static";
 import { join } from "node:path";
 import {
+  isExcludedFromPrivateStatic,
   isExcludedFromPublicStatic,
   prepareStaticExclusions,
 } from "./static-exclude";
@@ -29,6 +30,66 @@ describe("prepareStaticExclusions", () => {
 
   it("treats an absent configuration as no exclusions", () => {
     expect(prepareStaticExclusions(undefined)).toEqual([]);
+  });
+});
+
+/**
+ * The private mount's counterpart. Same matching, other prefix: what the public
+ * side reaches under `/bundle`, the private side reaches under `/static/bundle`.
+ * The entries stay relative to the mount, so a deployment writes `["app"]` and
+ * not `["static", "app"]`.
+ */
+describe("isExcludedFromPrivateStatic", () => {
+  it("keeps the whole mount behind the login when nothing is configured", () => {
+    expect(isExcludedFromPrivateStatic("/static/app/index.html", [])).toBe(
+      false
+    );
+  });
+
+  it("opens the subtree and its root", () => {
+    const p = prepared("app");
+    expect(isExcludedFromPrivateStatic("/static/app", p)).toBe(true);
+    expect(isExcludedFromPrivateStatic("/static/app/", p)).toBe(true);
+    expect(isExcludedFromPrivateStatic("/static/app/index.html", p)).toBe(true);
+    expect(isExcludedFromPrivateStatic("/static/app/assets/x.js", p)).toBe(true);
+  });
+
+  it("leaves the rest of the private folder protected", () => {
+    const p = prepared("app");
+    for (const path of [
+      "/static/",
+      "/static/internal/report.pdf",
+      "/static/app-internal/x",
+      "/static/apps/x",
+    ]) {
+      expect(isExcludedFromPrivateStatic(path, p)).toBe(false);
+    }
+  });
+
+  /*
+   * The same alias tricks as on the public side — the private mount strips a
+   * literal "/static", without a segment boundary, and the handler decodes and
+   * resolves the path before the filesystem lookup. An opened subtree must not
+   * be reachable under a name that resolves *outside* it, and a protected file
+   * must not be reachable under a name that resolves *into* it.
+   */
+  it("sees through the /static rewrite and its missing boundary", () => {
+    const p = prepared("app");
+    expect(isExcludedFromPrivateStatic("/staticapp/index.html", p)).toBe(true);
+    expect(isExcludedFromPrivateStatic("/static/%61pp/index.html", p)).toBe(
+      true
+    );
+    expect(isExcludedFromPrivateStatic("/static/x/../app/index.html", p)).toBe(
+      true
+    );
+  });
+
+  it("does not open a protected file that only looks like it is inside", () => {
+    const p = prepared("app");
+    // resolves to /internal/secret.pdf, i.e. outside the opened subtree
+    expect(
+      isExcludedFromPrivateStatic("/static/app/../internal/secret.pdf", p)
+    ).toBe(false);
   });
 });
 
@@ -197,6 +258,104 @@ describe("in front of hono's static middleware", () => {
     for (const path of ["/login.html", "/public/login.html"]) {
       const res = await app.request(`http://x${path}`);
       expect({ path, status: res.status }).toEqual({ path, status: 200 });
+    }
+  });
+});
+
+/**
+ * The private mount with an opened subtree, wired exactly like `defineServer`
+ * does: the exclusion decides whether the auth middleware runs at all, and the
+ * static handler behind it is the same in both cases.
+ *
+ * What must hold: the opened bundle is served to an anonymous request under every
+ * alias that resolves into it, and everything else still redirects to the login —
+ * including a path that only looks like it is inside the bundle.
+ */
+describe("in front of the private static mount", () => {
+  const FILES: Record<string, string> = {
+    "/root/app/index.html": "<p>spa</p>",
+    "/root/app/assets/app.js": "console.log(1)",
+    "/root/internal/secret.pdf": "%PDF",
+  };
+
+  const LOGIN = "/login.html";
+
+  const mount = (exclude: string[]) => {
+    const app = new Hono();
+    const exclusions = prepareStaticExclusions(exclude);
+
+    app.use(
+      "/static/*",
+      async (c, next) => {
+        if (isExcludedFromPrivateStatic(c.req.path, exclusions)) return next();
+        // stands in for authOrRedirectToLogin with no session present
+        return c.redirect(LOGIN);
+      },
+      serveStatic({
+        root: "/root",
+        rewriteRequestPath: (path) => path.replace(/^\/static/, "/"),
+        join,
+        getContent: async (path) => FILES[path] ?? null,
+        isDir: (path) => {
+          const dir = path.replace(/\/+$/, "");
+          return Object.keys(FILES).some((file) => file.startsWith(dir + "/"));
+        },
+      })
+    );
+    return app;
+  };
+
+  const BUNDLE_PATHS = [
+    "/static/app/index.html",
+    "/static/app/",
+    "/static/app",
+    "/static/app/assets/app.js",
+    "/static/%61pp/index.html",
+    "/static/./app/index.html",
+    "/static/x/../app/index.html",
+  ];
+
+  it("redirects anonymous requests for the bundle without the exclusion", async () => {
+    const app = mount([]);
+    for (const path of BUNDLE_PATHS) {
+      const res = await app.request(`http://x${path}`);
+      expect({ path, status: res.status }).toEqual({ path, status: 302 });
+    }
+  });
+
+  it("serves the opened bundle to an anonymous request", async () => {
+    const app = mount(["app"]);
+    for (const path of BUNDLE_PATHS) {
+      const res = await app.request(`http://x${path}`);
+      expect({ path, status: res.status }).toEqual({ path, status: 200 });
+    }
+  });
+
+  /*
+   * The rewrite's missing segment boundary — "/staticapp/x" becoming "/app/x" —
+   * is the one public-side alias that has no private-side counterpart: the mount
+   * is registered for "/static/*", so a path that does not start with that
+   * prefix never reaches this middleware at all. `isExcludedFromPrivateStatic`
+   * still classifies it, which costs nothing and keeps the matcher correct if the
+   * mount pattern is ever widened.
+   */
+  it("does not reach the mount at all without the /static/ prefix", async () => {
+    for (const exclude of [[], ["app"]]) {
+      const res = await mount(exclude).request("http://x/staticapp/index.html");
+      expect({ exclude, status: res.status }).toEqual({ exclude, status: 404 });
+    }
+  });
+
+  it("keeps the rest of the private folder behind the login", async () => {
+    const app = mount(["app"]);
+    for (const path of [
+      "/static/internal/secret.pdf",
+      // resolves out of the bundle again — the alias must not smuggle it out
+      "/static/app/../internal/secret.pdf",
+    ]) {
+      const res = await app.request(`http://x${path}`);
+      expect({ path, status: res.status }).toEqual({ path, status: 302 });
+      expect(res.headers.get("location")).toBe(LOGIN);
     }
   });
 });

@@ -115,9 +115,111 @@ export async function checkUserPermission(c: Context, next: Function) {
 }
 
 /**
+ * Is this request a WebSocket handshake?
+ *
+ * `Upgrade` is a forbidden header name in browsers: page JavaScript cannot set
+ * it on a fetch/XHR, only the WebSocket constructor produces it. That is what
+ * makes it usable as the gate for accepting a session token from the query
+ * string — a normal API call cannot pretend to be an upgrade.
+ */
+const isWebSocketUpgrade = (c: Context): boolean =>
+  (c.req.header("Upgrade") ?? "").toLowerCase() === "websocket";
+
+/**
+ * Does this string have the shape of a JWT?
+ *
+ * Used to tell the two kinds of credential in `?token=` apart: a session JWT has
+ * three base64url segments, an API token is a `nanoid` and never contains a dot.
+ * The distinction has to be made *before* either path runs — resolving an API
+ * token hits the database, and verifying a JWT needs the value to be one — so
+ * the shape is checked rather than the outcome.
+ */
+const looksLikeJwt = (value: string): boolean =>
+  value.split(".").length === 3;
+
+/** The origin of a URL-ish string, or undefined if it is not parseable. */
+const originOf = (value: string | undefined): string | undefined => {
+  if (!value) return undefined;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return undefined;
+  }
+};
+
+/** The host (name + port) of a URL-ish string. */
+const hostOf = (value: string | undefined): string | undefined => {
+  if (!value) return undefined;
+  try {
+    return new URL(value).host;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Reject a WebSocket handshake started by another site (CSWSH).
+ *
+ * A handshake is not subject to the same-origin policy: any page can call
+ * `new WebSocket("wss://our-host/…")`, and the browser attaches our cookies to
+ * it. The CORS middleware does not help — it governs `fetch`/XHR, not upgrades.
+ * So a foreign page could otherwise open an authenticated socket and read
+ * whatever it relays. `SameSite=Lax` blocks the cookie today, but that is one
+ * browser default carrying the whole defence; this makes it explicit.
+ *
+ * The rules:
+ *  - **No `Origin` header** → allowed. Only browsers send one; a CLI or
+ *    server-to-server client (which cannot be tricked into an attack by a web
+ *    page) sends none, and rejecting those would break every non-browser
+ *    consumer.
+ *  - **Same host as the request itself** → allowed. Compared against the
+ *    request's own host rather than only `baseUrl`, so a deployment reachable
+ *    under several hostnames keeps working. The comparison is on host, not on
+ *    the full origin, because behind a TLS-terminating proxy the request arrives
+ *    as plain `http` while the browser reports an `https` origin — comparing
+ *    schemes would reject every real deployment. A scheme mismatch is not a
+ *    threat here anyway: mixed-content rules already stop an `https` page from
+ *    opening a `ws://` socket.
+ *  - **Listed in `allowedOrigins` / equal to `baseUrl`** → allowed, for a
+ *    deliberately cross-origin frontend.
+ *  - **Anything else** → rejected.
+ *
+ * A `*` in `allowedOrigins` deliberately does **not** satisfy this check. A
+ * wildcard is a statement about public, CORS-governed reads; it is not consent
+ * for arbitrary sites to open sockets that carry someone's session. Nothing
+ * regresses by being strict here: a cross-site browser handshake cannot get the
+ * cookie anyway, and non-browser clients send no `Origin`.
+ */
+const isAcceptableWebSocketOrigin = (c: Context): boolean => {
+  const origin = c.req.header("Origin");
+  if (!origin) return true;
+
+  const requestHost = hostOf(c.req.url);
+  if (requestHost && hostOf(origin) === requestHost) return true;
+
+  if (origin === originOf(_GLOBAL_SERVER_CONFIG.baseUrl)) return true;
+
+  return _GLOBAL_SERVER_CONFIG.allowedOrigins.some(
+    (allowed) => allowed !== "*" && origin === originOf(allowed)
+  );
+};
+
+/**
  * HONO Middleware to check the JWT token
  */
 export const checkToken = async (c: Context) => {
+  if (isWebSocketUpgrade(c) && !isAcceptableWebSocketOrigin(c)) {
+    // Checked before any credential is looked at: the point is that this
+    // handshake must not be authenticated at all, no matter what it carries.
+    throw new Error(
+      `WebSocket handshake from a foreign origin: ${c.req.header("Origin")}`
+    );
+  }
+
+  return await checkTokenCredentials(c);
+};
+
+const checkTokenCredentials = async (c: Context) => {
   if (_GLOBAL_SERVER_CONFIG.authType === "hanko") {
     const { usersEmail, usersId } = await verifyHankoToken(c);
     return {
@@ -136,8 +238,21 @@ export const checkToken = async (c: Context) => {
 
     let jwtToken = "";
 
-    // check if there is a "token=xxx" set in the URL request
-    if (token || xApiKey) {
+    if (token && isWebSocketUpgrade(c) && looksLikeJwt(token)) {
+      // A browser cannot set headers on a WebSocket handshake — `new WebSocket()`
+      // takes a URL and nothing else — so a client that authenticates with a
+      // bearer token (an SPA embedded in Microsoft Teams, where the session
+      // cookie is cross-site and never sent) has no way to open a socket other
+      // than putting its session token in the query string.
+      //
+      // Narrow on purpose, in two directions. Only on an upgrade request, so
+      // this cannot become a general "session in the URL" mode — URLs end up in
+      // proxy logs, browser history and referrers, and a plain GET is far easier
+      // to leak than a handshake. And only for something shaped like a JWT, so
+      // an API token in `?token=` keeps being resolved the way it always was,
+      // sockets included.
+      jwtToken = token;
+    } else if (token || xApiKey) {
       const tokenToUse: string = token || xApiKey || "";
       // try to generate a JWT token from the token string
       const temporaryJwt = await generateTemporaryJwtFromToken(tokenToUse);

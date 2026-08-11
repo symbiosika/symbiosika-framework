@@ -141,6 +141,23 @@ export interface ServerSpecificConfig {
    * nothing are ignored rather than matching everything.
    */
   staticPublicExclude?: string[];
+  /**
+   * Path prefixes inside the **private** static folder that are served without
+   * the login redirect.
+   *
+   * For bundles that authenticate themselves rather than relying on the session
+   * cookie — an SPA embedded in a host application (Microsoft Teams, an iframe
+   * on another site) cannot receive a cross-site cookie on the document load,
+   * so it would be redirected to the login page before its own code ever runs.
+   * Listing its folder here hands out the bundle; every API route it calls stays
+   * authenticated as before.
+   *
+   * Only for content that carries no secrets. Matched on whole path segments,
+   * relative to the mount: `["app"]` opens `/static/app` and everything below
+   * it, but not `/static/app-internal`. Entries that normalise to nothing are
+   * ignored rather than matching everything.
+   */
+  staticPrivateExclude?: string[];
 
   // Registration Flow
   customPreRegisterCustomVerifications?: CustomPreRegisterVerification[];
