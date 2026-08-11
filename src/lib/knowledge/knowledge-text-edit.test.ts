@@ -595,6 +595,54 @@ describe("Knowledge Text Edit (string replacement)", () => {
     );
   });
 
+  it("replaces every spanning occurrence with replaceAll", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "markdown", content: "alpha" },
+        { type: "markdown", content: "beta" },
+        { type: "markdown", content: "alpha" },
+        { type: "markdown", content: "beta" },
+      ],
+      ctx
+    );
+
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: "alpha\n\nbeta", newString: "gamma", replaceAll: true },
+      ctx
+    );
+    expect(result.replacements).toBe(2);
+    expect(result.content).toBe("gamma\n\ngamma");
+  });
+
+  it("stops after replacing when newString contains oldString", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "markdown", content: "eins" },
+        { type: "markdown", content: "zwei" },
+      ],
+      ctx
+    );
+
+    // the scan resumes behind what was just written, so a newString that
+    // contains oldString is not rewritten over and over
+    const result = await editKnowledgeTextContent(
+      page.id,
+      {
+        oldString: "eins\n\nzwei",
+        newString: "eins\n\nzwei\n\ndrei",
+        replaceAll: true,
+      },
+      ctx
+    );
+    expect(result.replacements).toBe(1);
+    expect(result.content).toBe("eins\n\nzwei\n\ndrei");
+  });
+
   it("trims an html block that a spanning deletion cuts into", async () => {
     const page = await createPage("");
     await syncKnowledgeTextBlocks(
@@ -613,6 +661,35 @@ describe("Knowledge Text Edit (string replacement)", () => {
     );
     expect(result.replacements).toBe(1);
     expect(result.content).toBe("Ende geht weg.");
+  });
+
+  it("flattens rich formatting only in the block an edit reaches into", async () => {
+    const page = await createPage("");
+    await syncKnowledgeTextBlocks(
+      page.id,
+      [
+        { type: "markdown", content: "Vorher" },
+        { type: "html", content: "<p>Anfang <mark>wichtig</mark> Ende</p>" },
+        { type: "html", content: "<p>Unberührt <mark>bleibt</mark> bunt</p>" },
+      ],
+      ctx
+    );
+
+    // The deletion cuts into the second block, so what survives comes out of
+    // its projection: html-only markup (here a highlight) that Turndown cannot
+    // express is lost for THAT block. The alternative was refusing the edit.
+    const result = await editKnowledgeTextContent(
+      page.id,
+      { oldString: "Vorher\n\nAnfang wichtig", newString: "" },
+      ctx
+    );
+    expect(result.content).toBe("Ende\n\nUnberührt bleibt bunt");
+
+    const blocks = await getKnowledgeTextBlocks(page.id, ctx);
+    expect(blocks[0]!.type).toBe("markdown");
+    // the untouched block keeps its html verbatim, highlight included
+    expect(blocks[1]!.type).toBe("html");
+    expect(blocks[1]!.content).toBe("<p>Unberührt <mark>bleibt</mark> bunt</p>");
   });
 
   it("edits text the projection formats (bold, heading, list)", async () => {
