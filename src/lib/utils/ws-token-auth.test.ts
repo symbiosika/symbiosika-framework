@@ -1,6 +1,7 @@
-import { describe, test, expect, beforeAll } from "bun:test";
+import { describe, test, expect, beforeAll, afterEach } from "bun:test";
 import { Hono } from "hono";
 import type { SFContextVariables } from "../../types";
+import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import {
   initTests,
   TEST_ORG1_USER_1,
@@ -106,6 +107,102 @@ describe("WebSocket auth via query token", () => {
     const response = await app.request(
       `/socket?token=${encodeURIComponent(apiToken)}`
     );
+
+    expect(response.status).toBe(200);
+  });
+});
+
+/**
+ * A handshake started by another site must not be authenticated (CSWSH).
+ *
+ * The credential is irrelevant here — a foreign page cannot read our bearer
+ * token, but it *can* make the browser attach our cookies to a socket it opens.
+ * CORS does not cover upgrades, so this is the check that covers it.
+ *
+ * `app.request()` builds requests against `http://localhost`, which is therefore
+ * the request's own origin in these tests.
+ */
+describe("WebSocket origin check", () => {
+  const OWN_ORIGIN = "http://localhost";
+  const originalAllowed = [..._GLOBAL_SERVER_CONFIG.allowedOrigins];
+  const originalBaseUrl = _GLOBAL_SERVER_CONFIG.baseUrl;
+
+  beforeAll(async () => {
+    const { user1Token } = await initTests();
+    sessionToken = user1Token;
+  });
+
+  afterEach(() => {
+    _GLOBAL_SERVER_CONFIG.allowedOrigins = [...originalAllowed];
+    _GLOBAL_SERVER_CONFIG.baseUrl = originalBaseUrl;
+  });
+
+  const handshake = (headers: Record<string, string>) =>
+    app.request("/socket", {
+      headers: { ...WS_HEADERS, Authorization: `Bearer ${sessionToken}`, ...headers },
+    });
+
+  test("a same-origin handshake is allowed", async () => {
+    expect((await handshake({ Origin: OWN_ORIGIN })).status).toBe(200);
+  });
+
+  test("the same host over https is allowed (TLS-terminating proxy)", async () => {
+    // The request reaches the server as plain http while the browser reports an
+    // https origin. Comparing schemes would reject every real deployment.
+    expect((await handshake({ Origin: "https://localhost" })).status).toBe(200);
+  });
+
+  test("a lookalike host is still rejected", async () => {
+    expect(
+      (await handshake({ Origin: "https://localhost.evil.example.com" })).status
+    ).toBe(401);
+  });
+
+  test("a handshake without an Origin header is allowed", async () => {
+    // CLI and server-to-server clients send none, and they cannot be tricked
+    // into an attack by a web page.
+    expect((await handshake({})).status).toBe(200);
+  });
+
+  test("a handshake from another site is rejected", async () => {
+    expect((await handshake({ Origin: "https://evil.example.com" })).status).toBe(
+      401
+    );
+  });
+
+  test("a configured allowed origin is accepted", async () => {
+    _GLOBAL_SERVER_CONFIG.allowedOrigins = ["https://frontend.example.com"];
+    expect(
+      (await handshake({ Origin: "https://frontend.example.com" })).status
+    ).toBe(200);
+  });
+
+  test("the configured baseUrl is accepted", async () => {
+    _GLOBAL_SERVER_CONFIG.baseUrl = "https://wiki.example.com";
+    expect((await handshake({ Origin: "https://wiki.example.com" })).status).toBe(
+      200
+    );
+  });
+
+  test("a wildcard in allowedOrigins does not open the handshake", async () => {
+    // A wildcard is consent for public, CORS-governed reads — not for arbitrary
+    // sites to open sockets carrying someone else's session.
+    _GLOBAL_SERVER_CONFIG.allowedOrigins = ["*"];
+    expect((await handshake({ Origin: "https://evil.example.com" })).status).toBe(
+      401
+    );
+  });
+
+  test("a foreign origin on a normal request is left to CORS", async () => {
+    // Only handshakes are checked here. A plain request from another origin is
+    // governed by the CORS middleware, which is a separate mechanism with its
+    // own configuration — duplicating it here would mean two sources of truth.
+    const response = await app.request("/socket", {
+      headers: {
+        Origin: "https://evil.example.com",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+    });
 
     expect(response.status).toBe(200);
   });
