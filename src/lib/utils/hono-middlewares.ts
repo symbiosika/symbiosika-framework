@@ -126,6 +126,18 @@ const isWebSocketUpgrade = (c: Context): boolean =>
   (c.req.header("Upgrade") ?? "").toLowerCase() === "websocket";
 
 /**
+ * Does this string have the shape of a JWT?
+ *
+ * Used to tell the two kinds of credential in `?token=` apart: a session JWT has
+ * three base64url segments, an API token is a `nanoid` and never contains a dot.
+ * The distinction has to be made *before* either path runs — resolving an API
+ * token hits the database, and verifying a JWT needs the value to be one — so
+ * the shape is checked rather than the outcome.
+ */
+const looksLikeJwt = (value: string): boolean =>
+  value.split(".").length === 3;
+
+/**
  * HONO Middleware to check the JWT token
  */
 export const checkToken = async (c: Context) => {
@@ -147,18 +159,19 @@ export const checkToken = async (c: Context) => {
 
     let jwtToken = "";
 
-    if (token && isWebSocketUpgrade(c)) {
+    if (token && isWebSocketUpgrade(c) && looksLikeJwt(token)) {
       // A browser cannot set headers on a WebSocket handshake — `new WebSocket()`
       // takes a URL and nothing else — so a client that authenticates with a
       // bearer token (an SPA embedded in Microsoft Teams, where the session
       // cookie is cross-site and never sent) has no way to open a socket other
       // than putting its session token in the query string.
       //
-      // Accepted for the upgrade request only. Everywhere else `?token=` keeps
-      // meaning "service token" and a session JWT is rejected, so this cannot
-      // become a general "session in the URL" mode: URLs end up in proxy logs,
-      // browser history and referrers, and a plain GET is far easier to leak
-      // than a handshake.
+      // Narrow on purpose, in two directions. Only on an upgrade request, so
+      // this cannot become a general "session in the URL" mode — URLs end up in
+      // proxy logs, browser history and referrers, and a plain GET is far easier
+      // to leak than a handshake. And only for something shaped like a JWT, so
+      // an API token in `?token=` keeps being resolved the way it always was,
+      // sockets included.
       jwtToken = token;
     } else if (token || xApiKey) {
       const tokenToUse: string = token || xApiKey || "";

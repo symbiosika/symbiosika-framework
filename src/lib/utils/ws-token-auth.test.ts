@@ -1,7 +1,12 @@
 import { describe, test, expect, beforeAll } from "bun:test";
 import { Hono } from "hono";
 import type { SFContextVariables } from "../../types";
-import { initTests } from "../../test/init.test";
+import {
+  initTests,
+  TEST_ORG1_USER_1,
+  TEST_ORGANISATION_1,
+} from "../../test/init.test";
+import { createApiToken } from "../auth/token-auth";
 import { authAndSetUsersInfo } from "./hono-middlewares";
 
 /**
@@ -25,11 +30,20 @@ app.get("/socket", authAndSetUsersInfo, (c) =>
 const WS_HEADERS = { Upgrade: "websocket", Connection: "Upgrade" };
 
 let sessionToken: string;
+let apiToken: string;
 
 describe("WebSocket auth via query token", () => {
   beforeAll(async () => {
     const { user1Token } = await initTests();
     sessionToken = user1Token;
+
+    const created = await createApiToken({
+      name: "ws-token-auth-test",
+      userId: TEST_ORG1_USER_1.id,
+      tenantId: TEST_ORGANISATION_1.id,
+      scopes: ["knowledge:read"],
+    });
+    apiToken = created.token;
   });
 
   test("a session token in the query authenticates a WebSocket handshake", async () => {
@@ -70,6 +84,28 @@ describe("WebSocket auth via query token", () => {
     const response = await app.request("/socket", {
       headers: { ...WS_HEADERS, Authorization: `Bearer ${sessionToken}` },
     });
+
+    expect(response.status).toBe(200);
+  });
+
+  test("an API token in the query keeps working on a handshake", async () => {
+    // The pre-existing meaning of `?token=`: a service token, resolved against
+    // the database. Sockets have always been able to use it, and the session-JWT
+    // branch must not take that away — hence the shape check in front of it (an
+    // API token is a nanoid and contains no dot).
+    const response = await app.request(
+      `/socket?token=${encodeURIComponent(apiToken)}`,
+      { headers: WS_HEADERS }
+    );
+
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as any).userId).toBe(TEST_ORG1_USER_1.id);
+  });
+
+  test("an API token in the query keeps working without an upgrade", async () => {
+    const response = await app.request(
+      `/socket?token=${encodeURIComponent(apiToken)}`
+    );
 
     expect(response.status).toBe(200);
   });
