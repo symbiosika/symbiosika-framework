@@ -27,6 +27,7 @@ import { validateAllEnvVariables } from "./lib/utils/env-validate";
 import { globalErrorHandler } from "./lib/utils/global-error-handler";
 import { withRequestPathGuard } from "./lib/utils/request-path-guard";
 import {
+  isExcludedFromPrivateStatic,
   isExcludedFromPublicStatic,
   prepareStaticExclusions,
 } from "./lib/utils/static-exclude";
@@ -424,9 +425,34 @@ export const defineServer = (config: ServerSpecificConfig) => {
        */
       const staticPrivateDataPath = config.staticPrivateDataPath ?? "./static";
       log.debug(`Static private data path:", ${staticPrivateDataPath}`);
+
+      /**
+       * Subtrees of that folder the deployment hands out without a login (see
+       * `staticPrivateExclude`) — for bundles that authenticate themselves with
+       * a bearer token and would otherwise be redirected away before their own
+       * code runs. Resolved once here; the guard only compares.
+       */
+      const staticPrivateExclusions = prepareStaticExclusions(
+        config.staticPrivateExclude
+      );
+      if (staticPrivateExclusions.length > 0) {
+        log.debug(
+          `Static private exclusions (served without login): ${staticPrivateExclusions
+            .map((segments) => "/static/" + segments.join("/"))
+            .join(", ")}`
+        );
+      }
+
       app.use(
         "/static/*",
-        authOrRedirectToLogin,
+        async (c, next) => {
+          // The auth middleware is skipped for excluded subtrees; the static
+          // handler behind it still only serves what is on disk.
+          if (isExcludedFromPrivateStatic(c.req.path, staticPrivateExclusions)) {
+            return next();
+          }
+          return authOrRedirectToLogin(c, next);
+        },
         serveStatic({
           root: staticPrivateDataPath,
           rewriteRequestPath: (path) => path.replace(/^\/static/, "/"),

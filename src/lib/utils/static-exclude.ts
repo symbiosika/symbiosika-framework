@@ -26,6 +26,10 @@
 const stripPublicPrefix = (path: string): string =>
   path.replace(/^\/public/, "/");
 
+/** Mirrors the `rewriteRequestPath` of the private static mount. */
+const stripPrivatePrefix = (path: string): string =>
+  path.replace(/^\/static/, "/");
+
 /**
  * Reduce a request path to the segments the static handler will look up.
  *
@@ -33,8 +37,11 @@ const stripPublicPrefix = (path: string): string =>
  * path as-is rather than throwing, because an undecodable path still has to be
  * classified — and it is classified on what it literally says.
  */
-const resolveSegments = (path: string): string[] => {
-  let decoded = stripPublicPrefix(path);
+const resolveSegments = (
+  path: string,
+  stripPrefix: (path: string) => string
+): string[] => {
+  let decoded = stripPrefix(path);
   try {
     decoded = decodeURIComponent(decoded);
   } catch {
@@ -78,10 +85,31 @@ export const prepareStaticExclusions = (
 export const isExcludedFromPublicStatic = (
   path: string,
   prepared: string[][]
+): boolean => matches(path, prepared, stripPublicPrefix);
+
+/**
+ * Counterpart for the **private** static mount: is this request path inside one
+ * of the subtrees the deployment declared as reachable without a login?
+ *
+ * Same matching rules as above, only the prefix the static handler strips
+ * differs (`/static` instead of `/public`). Used to let a deployment hand out a
+ * single bundle — e.g. an SPA that authenticates itself with a bearer token
+ * instead of the session cookie — while the rest of the folder stays behind the
+ * login redirect.
+ */
+export const isExcludedFromPrivateStatic = (
+  path: string,
+  prepared: string[][]
+): boolean => matches(path, prepared, stripPrivatePrefix);
+
+const matches = (
+  path: string,
+  prepared: string[][],
+  stripPrefix: (path: string) => string
 ): boolean => {
   if (prepared.length === 0) return false;
 
-  const segments = resolveSegments(path);
+  const segments = resolveSegments(path, stripPrefix);
   return prepared.some(
     (needle) =>
       segments.length >= needle.length &&

@@ -115,6 +115,17 @@ export async function checkUserPermission(c: Context, next: Function) {
 }
 
 /**
+ * Is this request a WebSocket handshake?
+ *
+ * `Upgrade` is a forbidden header name in browsers: page JavaScript cannot set
+ * it on a fetch/XHR, only the WebSocket constructor produces it. That is what
+ * makes it usable as the gate for accepting a session token from the query
+ * string — a normal API call cannot pretend to be an upgrade.
+ */
+const isWebSocketUpgrade = (c: Context): boolean =>
+  (c.req.header("Upgrade") ?? "").toLowerCase() === "websocket";
+
+/**
  * HONO Middleware to check the JWT token
  */
 export const checkToken = async (c: Context) => {
@@ -136,8 +147,20 @@ export const checkToken = async (c: Context) => {
 
     let jwtToken = "";
 
-    // check if there is a "token=xxx" set in the URL request
-    if (token || xApiKey) {
+    if (token && isWebSocketUpgrade(c)) {
+      // A browser cannot set headers on a WebSocket handshake — `new WebSocket()`
+      // takes a URL and nothing else — so a client that authenticates with a
+      // bearer token (an SPA embedded in Microsoft Teams, where the session
+      // cookie is cross-site and never sent) has no way to open a socket other
+      // than putting its session token in the query string.
+      //
+      // Accepted for the upgrade request only. Everywhere else `?token=` keeps
+      // meaning "service token" and a session JWT is rejected, so this cannot
+      // become a general "session in the URL" mode: URLs end up in proxy logs,
+      // browser history and referrers, and a plain GET is far easier to leak
+      // than a handshake.
+      jwtToken = token;
+    } else if (token || xApiKey) {
       const tokenToUse: string = token || xApiKey || "";
       // try to generate a JWT token from the token string
       const temporaryJwt = await generateTemporaryJwtFromToken(tokenToUse);
