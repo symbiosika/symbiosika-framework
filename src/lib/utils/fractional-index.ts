@@ -103,6 +103,19 @@ export const generateNKeysBetween = (
 };
 
 /**
+ * Longest key tolerated before a list is re-keyed from scratch.
+ *
+ * Keys only ever grow: appending means "between the last key and the end of the
+ * list", which adds a character roughly every four items, so a list appended to
+ * N times carries keys of ~N/4 characters. Unbounded growth first bloats the
+ * index and then breaks writes outright once the column's limit is reached — a
+ * page of ~257 blocks used to produce a 65-character key and could no longer be
+ * saved at all (see `rebalanceBlockPositions` in the app for the repair of such
+ * pages).
+ */
+export const MAX_KEY_LENGTH_BEFORE_REBALANCE = 32;
+
+/**
  * Assign positions to an ordered list of items, reusing existing keys where
  * the relative order still holds so an unchanged list produces zero writes.
  *
@@ -112,6 +125,14 @@ export const generateNKeysBetween = (
  * An existing key is kept iff it is strictly greater than the previously
  * assigned key; otherwise a fresh key is generated between the previous key
  * and the nearest following reusable key (so kept keys are never jumped over).
+ *
+ * The "zero writes for an unchanged list" property holds until the keys grow
+ * past `MAX_KEY_LENGTH_BEFORE_REBALANCE`. At that point the whole list is
+ * re-keyed compactly (`generateNKeysBetween` needs 3 characters for a thousand
+ * items), so the caller writes every row once and growth restarts from a small
+ * base. Callers must therefore tolerate every position changing at once —
+ * against a unique index that means moving the rows via a temporary key,
+ * because a permutation cannot be applied row by row.
  */
 export const assignPositions = (
   items: { position?: string | null }[]
@@ -144,5 +165,13 @@ export const assignPositions = (
     result.push(key);
     last = key;
   }
+
+  // The list has been appended to / reordered often enough that its keys are
+  // getting long — rewrite all of them compactly instead of carrying the growth
+  // forward forever.
+  if (result.some((key) => key.length > MAX_KEY_LENGTH_BEFORE_REBALANCE)) {
+    return generateNKeysBetween(null, null, items.length);
+  }
+
   return result;
 };

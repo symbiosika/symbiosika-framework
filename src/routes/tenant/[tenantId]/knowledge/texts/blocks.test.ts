@@ -4,10 +4,14 @@ import defineRoutes from ".";
 import { initTests, TEST_ORGANISATION_1 } from "../../../../../test/init.test";
 import { Hono } from "hono";
 import type { SFContextVariables } from "../../../../../types";
+import { eq } from "drizzle-orm";
 import {
   createDatabaseClient,
+  getDb,
   waitForDbConnection,
 } from "../../../../../lib/db/db-connection";
+import { knowledgeTextBlock } from "../../../../../lib/db/schema/knowledge";
+import { MAX_KEY_LENGTH_BEFORE_REBALANCE } from "../../../../../lib/utils/fractional-index";
 
 let app = new Hono<{ Variables: SFContextVariables }>();
 let TEST_USER_1_TOKEN: string;
@@ -156,6 +160,117 @@ describe("Knowledge Text Blocks API", () => {
     expect(convertResponse.jsonResponse.blocks[0].content).toBe(
       "# Legacy page\n\nwith old content"
     );
+  });
+
+  /**
+   * The ordering keys grow by ~1 character per 4 appended blocks. While the
+   * column was varchar(64) that made a page of ~257 blocks permanently
+   * unsaveable: the INSERT was rejected and the route answered 400 on every
+   * further save. The column is `text` now and long keys are compacted on save.
+   */
+  test("PUT blocks saves a page far beyond the old 256-block ceiling", async () => {
+    const createResponse = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "",
+        title: "Blocks API Large Page",
+      }
+    );
+    expect(createResponse.status).toBe(200);
+    const largePageId = createResponse.jsonResponse.id;
+
+    const blocks = Array.from({ length: 300 }, (_, i) => ({
+      type: "markdown" as const,
+      content: `Absatz ${i}`,
+    }));
+    const response = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${largePageId}/blocks`,
+      TEST_USER_1_TOKEN,
+      { blocks }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.jsonResponse.blocks.length).toBe(300);
+    expect(response.jsonResponse.changes.inserted).toBe(300);
+    // order survived, and the keys stayed compact
+    expect(response.jsonResponse.blocks[0].content).toBe("Absatz 0");
+    expect(response.jsonResponse.blocks[299].content).toBe("Absatz 299");
+    const longest = Math.max(
+      ...response.jsonResponse.blocks.map((b: { position: string }) => b.position.length)
+    );
+    expect(longest).toBeLessThanOrEqual(MAX_KEY_LENGTH_BEFORE_REBALANCE);
+  });
+
+  /**
+   * A page that already carries long keys (saved before the fix) must re-key
+   * itself on the next save. That rewrites every row at once — which only works
+   * because the update goes through temporary keys; applied directly, the rows
+   * would collide on the unique (page, position) index.
+   */
+  test("PUT blocks re-keys a page whose stored keys are over-long", async () => {
+    const createResponse = await testFetcher.post(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts`,
+      TEST_USER_1_TOKEN,
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        text: "",
+        title: "Blocks API Long Keys Page",
+      }
+    );
+    const longKeyPageId = createResponse.jsonResponse.id;
+
+    const initial = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${longKeyPageId}/blocks`,
+      TEST_USER_1_TOKEN,
+      {
+        blocks: [
+          { type: "markdown" as const, content: "erster" },
+          { type: "markdown" as const, content: "zweiter" },
+          { type: "markdown" as const, content: "dritter" },
+        ],
+      }
+    );
+    expect(initial.status).toBe(200);
+    const ids = initial.jsonResponse.blocks.map((b: { id: string }) => b.id);
+
+    // simulate the pre-fix state: keys grown past the rebalance threshold
+    for (let i = 0; i < ids.length; i++) {
+      await getDb()
+        .update(knowledgeTextBlock)
+        .set({ position: "z".repeat(40) + String.fromCharCode(98 + i) })
+        .where(eq(knowledgeTextBlock.id, ids[i]!));
+    }
+
+    // a normal save: same blocks, one edited
+    const response = await testFetcher.put(
+      app,
+      `/api/tenant/${TEST_ORGANISATION_1.id}/knowledge/texts/${longKeyPageId}/blocks`,
+      TEST_USER_1_TOKEN,
+      {
+        blocks: [
+          { id: ids[0], type: "markdown" as const, content: "erster" },
+          { id: ids[1], type: "markdown" as const, content: "zweiter, editiert" },
+          { id: ids[2], type: "markdown" as const, content: "dritter" },
+        ],
+      }
+    );
+
+    expect(response.status).toBe(200);
+    // same blocks in the same order, now on compact keys
+    expect(response.jsonResponse.blocks.map((b: { id: string }) => b.id)).toEqual(ids);
+    expect(response.jsonResponse.blocks[1].content).toBe("zweiter, editiert");
+    for (const block of response.jsonResponse.blocks as { position: string }[]) {
+      expect(block.position.length).toBeLessThanOrEqual(
+        MAX_KEY_LENGTH_BEFORE_REBALANCE
+      );
+      expect(/^[a-z]+$/.test(block.position)).toBe(true);
+    }
   });
 
   test("History endpoint includes block snapshots", async () => {

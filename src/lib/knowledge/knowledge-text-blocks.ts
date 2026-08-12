@@ -221,6 +221,8 @@ export const syncKnowledgeTextBlocks = async (
     type: "markdown" | "html";
     position: string;
     meta: Record<string, unknown>;
+    /** the row has to move — it needs the temporary-key pass (see below) */
+    positionChanged: boolean;
   }[] = [];
 
   const seenIds = new Set<string>();
@@ -254,6 +256,7 @@ export const syncKnowledgeTextBlocks = async (
         type: input.type,
         position,
         meta: input.meta ?? {},
+        positionChanged: current.position !== position,
       });
     }
   });
@@ -281,11 +284,41 @@ export const syncKnowledgeTextBlocks = async (
     );
 
     await db.transaction(async (trx) => {
+      // Serialise concurrent saves of this page. Positions are unique per page,
+      // so two overlapping saves race on the same keys — including the
+      // temporary ones below. Locking the page row makes the second save wait
+      // for the first instead of failing on the unique index.
+      await trx
+        .select({ id: knowledgeText.id })
+        .from(knowledgeText)
+        .where(eq(knowledgeText.id, knowledgeTextId))
+        .for("update");
+
       if (deleteIds.length > 0) {
         await trx
           .delete(knowledgeTextBlock)
           .where(inArray(knowledgeTextBlock.id, deleteIds));
       }
+
+      // Move every row that changes position onto a temporary key first.
+      // `knowledge_text_block_page_position_idx` is a plain (non-deferrable)
+      // unique index, so it is checked per row: a permutation — two blocks
+      // swapping, or a full re-key after assignPositions compacts the list —
+      // cannot be applied directly, because the first row would land on a key
+      // its neighbour still holds. `~` is outside the key alphabet (^[a-z]+$)
+      // so a temporary key can never collide with a real one, and the random
+      // token keeps two overlapping transactions from picking the same temps.
+      const moved = updates.filter((update) => update.positionChanged);
+      if (moved.length > 0) {
+        const token = Math.random().toString(36).slice(2, 8);
+        for (let i = 0; i < moved.length; i++) {
+          await trx
+            .update(knowledgeTextBlock)
+            .set({ position: `~${token}-${i}` })
+            .where(eq(knowledgeTextBlock.id, moved[i]!.id));
+        }
+      }
+
       // apply position updates before inserts so the unique
       // (page, position) index never sees a transient collision
       for (const update of updates) {
