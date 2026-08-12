@@ -3,6 +3,7 @@ import {
   generateKeyBetween,
   generateNKeysBetween,
   assignPositions,
+  MAX_KEY_LENGTH_BEFORE_REBALANCE,
 } from "./fractional-index";
 
 describe("generateKeyBetween", () => {
@@ -155,5 +156,50 @@ describe("assignPositions", () => {
 
   it("handles an empty list", () => {
     expect(assignPositions([])).toEqual([]);
+  });
+
+  /**
+   * Appending grows the keys by ~1 character per 4 items. Left alone that ends
+   * in a write failure once the column's limit is reached (a 257-block page
+   * produced a 65-character key and could no longer be saved), so the list is
+   * re-keyed compactly once the keys get long.
+   */
+  it("rebalances a list whose keys have grown long", () => {
+    const long = ["z".repeat(40) + "b", "z".repeat(40) + "c"];
+    const keys = assignPositions(long.map((position) => ({ position })));
+
+    expect(keys.length).toBe(2);
+    expect(keys).not.toEqual(long); // every row is rewritten
+    for (const key of keys) {
+      expect(key.length).toBeLessThanOrEqual(MAX_KEY_LENGTH_BEFORE_REBALANCE);
+      expect(/^[a-z]+$/.test(key)).toBe(true);
+    }
+    expect(keys[0]! < keys[1]!).toBe(true);
+  });
+
+  it("keeps appended keys bounded over many rounds", () => {
+    // 600 appends: without the rebalance the last key would be ~150 chars
+    let keys: string[] = [];
+    for (let i = 0; i < 600; i++) {
+      keys = assignPositions([
+        ...keys.map((position) => ({ position })),
+        {} as { position?: string | null },
+      ]);
+    }
+    expect(keys.length).toBe(600);
+    expect(Math.max(...keys.map((k) => k.length))).toBeLessThanOrEqual(
+      MAX_KEY_LENGTH_BEFORE_REBALANCE
+    );
+    expect(new Set(keys).size).toBe(600);
+    for (let i = 1; i < keys.length; i++) {
+      expect(keys[i - 1]! < keys[i]!).toBe(true);
+    }
+  });
+
+  it("does not rebalance a list with short keys", () => {
+    const existing = ["f", "n", "u"];
+    expect(assignPositions(existing.map((position) => ({ position })))).toEqual(
+      existing
+    );
   });
 });

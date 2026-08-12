@@ -288,6 +288,13 @@
       "when": 1785870658160,
       "tag": "0040_case_insensitive_email_uniqueness",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1786538624641,
+      "tag": "0041_faulty_whizzer",
+      "breakpoints": true
     }
   ]
 }

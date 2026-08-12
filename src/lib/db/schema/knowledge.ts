@@ -108,8 +108,11 @@ export const knowledgeText = pgBaseTable(
       .notNull()
       .default("text"),
     // fractional-index key for manual ordering among sibling pages in the
-    // wiki tree; null = unsorted (falls back to title sort)
-    position: varchar("position", { length: 64 }),
+    // wiki tree; null = unsorted (falls back to title sort).
+    // `text`, not a bounded varchar: keys grow by ~1 character per 4 inserts,
+    // and a length limit turns that growth into a hard write failure once it is
+    // reached (see MAX_KEY_LENGTH_BEFORE_REBALANCE, which keeps them short).
+    position: text("position"),
     // --- AI page summary (the "docstring" of a page) ---
     // A short (1-2 sentence) description of the page, delivered in every
     // list-type response (tree, search, recent-changes, ...) so an agent can
@@ -417,8 +420,10 @@ export const knowledgeTextBlock = pgBaseTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     type: knowledgeBlockTypeEnum("type").notNull().default("markdown"),
     content: text("content").notNull().default(""),
-    // fractional-index key; unique per page, lexicographic order = block order
-    position: varchar("position", { length: 64 }).notNull(),
+    // fractional-index key; unique per page, lexicographic order = block order.
+    // `text` rather than a bounded varchar — see knowledgeText.position above:
+    // a 64-character cap made pages of ~257 blocks permanently unsaveable.
+    position: text("position").notNull(),
     // editor props per block, e.g. { language: "ts" } for code blocks
     meta: jsonb("meta").notNull().default("{}"),
     createdAt: timestamp("created_at", { mode: "string" })
