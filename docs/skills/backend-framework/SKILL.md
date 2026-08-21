@@ -43,6 +43,7 @@ defineServer({
     baseRoute: string,
     app: (app: SymbiosikaFrameworkHonoApp) => void,
   }],
+  mcpServers: McpServerDefinition[],  // MCP endpoints at the domain root (see MCP section)
 
   // Database
   customDbSchema: Record<string, any>,
@@ -216,6 +217,35 @@ customHonoAppsWithAuth: [{
   },
 }]
 ```
+
+### MCP Servers (Model Context Protocol)
+
+Declared via `mcpServers` in `defineServer()`; the framework mounts each at the
+DOMAIN ROOT (default `/mcp`, NOT under basePath) and handles auth (OAuth2 access
+tokens with audience check, API tokens, session JWTs), RFC 9728 discovery
+(`/.well-known/oauth-protected-resource`) and CORS. See docs/framework/20_MCP_Server.md.
+
+```typescript
+import type { McpServerDefinition, McpToolDefinition } from "@framework/types";
+
+mcpServers: [{
+  path: "/mcp",
+  name: "my-app-mcp",
+  scopesSupported: ["user:read"],
+  // string OR async resolver (e.g. per-tenant instructions from the DB)
+  instructions: async (ctx) => loadInstructions(ctx.tenantId),
+  // array OR async resolver (e.g. tools filtered by user permissions)
+  tools: async (ctx) => filterByPermissions(ALL_TOOLS, ctx),
+  resources: [...],  // optional, e.g. MCP-Apps HTML views
+}]
+```
+
+Tool handlers get `(args, ctx)` where `ctx` = `{ usersId, usersEmail, tenantId,
+scopes, tokenKind, fetchApi }`. `inputSchema` is a valibot schema (validated,
+converted to JSON Schema). `ctx.fetchApi(path)` calls this app's own HTTP API
+in-process as the calling user — the preferred way to reach business logic so
+route-level permission checks apply. Resolvers run per request (stateless), so
+dynamic tool lists and per-tenant instructions need no extra plumbing.
 
 ## Email
 

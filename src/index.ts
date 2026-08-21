@@ -42,6 +42,7 @@ import { definePublicUserRoutes } from "./routes/user/public";
 import { defineSecuredUserRoutes } from "./routes/user/protected";
 import { defineUserSettingsRoutes } from "./routes/user/settings";
 import { defineOAuth2Routes } from "./lib/oauth2";
+import { defineMcpRoutes } from "./lib/mcp";
 import { defineFilesRoutes } from "./routes/tenant/[tenantId]/files";
 
 import aiKnowledgeRoutes from "./routes/tenant/[tenantId]/knowledge";
@@ -227,6 +228,15 @@ export const defineServer = (config: ServerSpecificConfig) => {
       registerPostConnectionAction(action);
     });
   }
+
+  /**
+   * MCP servers (Model Context Protocol endpoints at the domain root).
+   * Registered BEFORE the global CORS middleware on purpose: cors()
+   * short-circuits OPTIONS preflights, and MCP clients are cross-origin web
+   * apps that are not in `allowedOrigins` — the MCP paths carry their own,
+   * permissive CORS policy.
+   */
+  defineMcpRoutes(app, config.mcpServers);
 
   /**
    * Adds CORS Middleware
