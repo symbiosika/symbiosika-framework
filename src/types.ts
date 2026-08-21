@@ -9,9 +9,18 @@ import type {
   PostProcessor,
   PostProcessorResolver,
 } from "./lib/knowledge/parsing/post-processors";
+import type { McpServerDefinition } from "./lib/mcp/types";
 
 export type { SyncItem };
 export type { JobHandlerRegister };
+export type {
+  McpServerDefinition,
+  McpToolDefinition,
+  McpResourceDefinition,
+  McpRequestContext,
+  McpToolResult,
+  McpContentBlock,
+} from "./lib/mcp/types";
 export { HTTPException } from "hono/http-exception";
 export type { ProcessedWhatsAppMessage };
 
@@ -124,6 +133,17 @@ export interface ServerSpecificConfig {
     baseRoute: string;
     app: (app: Hono<{ Variables: SFContextVariables }>) => void;
   }[];
+  /**
+   * MCP servers this app exposes (Model Context Protocol over Streamable
+   * HTTP). Each entry is mounted at the DOMAIN ROOT (default `/mcp`), with
+   * authentication (OAuth2 access tokens incl. audience check, API tokens),
+   * RFC 9728 discovery and CORS handled by the framework. `instructions`,
+   * `tools` and `resources` may be resolver functions and are re-resolved on
+   * every request — so instructions can live in the database per tenant and
+   * the tool list can depend on the calling user's permissions.
+   * See ./lib/mcp/types.ts.
+   */
+  mcpServers?: McpServerDefinition[];
   customDbSchema?: any; // Drizzle Schema
   customCollectionPermissions?: PermissionDefinitionPerTable;
   staticPrivateDataPath?: string;
