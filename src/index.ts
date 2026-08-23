@@ -35,6 +35,8 @@ import {
 import {
   registerPostRegisterAction,
   registerPreRegisterCustomVerification,
+  registerPostEmailChangeAction,
+  registerPreEmailChangeVerification,
 } from "./lib/auth/actions";
 import { registerPostConnectionAction } from "./lib/connections/actions";
 // Routes
@@ -216,6 +218,22 @@ export const defineServer = (config: ServerSpecificConfig) => {
   if (config.customPostRegisterActions) {
     config.customPostRegisterActions.forEach((action) => {
       registerPostRegisterAction(action);
+    });
+  }
+
+  /**
+   * Register the hooks of the e-mail change flow
+   * Verifications can refuse a requested address, actions observe a confirmed
+   * change (see lib/auth/email-change.ts).
+   */
+  if (config.customPreEmailChangeVerifications) {
+    config.customPreEmailChangeVerifications.forEach((verification) => {
+      registerPreEmailChangeVerification(verification);
+    });
+  }
+  if (config.customPostEmailChangeActions) {
+    config.customPostEmailChangeActions.forEach((action) => {
+      registerPostEmailChangeAction(action);
     });
   }
 
