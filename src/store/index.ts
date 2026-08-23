@@ -11,6 +11,8 @@ import {
   stdTemplatePasswordResetWelcome,
   stdTemplateVerifyEmail,
   stdTemplateEmailLoginCode,
+  stdTemplateVerifyEmailChange,
+  stdTemplateEmailChangeNotice,
 } from "./email-templates";
 import { defaultOAuthViews } from "../lib/oauth2/views";
 
@@ -29,6 +31,7 @@ export const _GLOBAL_SERVER_CONFIG = {
   loginUrl: "/login.html",
   magicLoginVerifyUrl: "/magic-login-verify.html",
   verifyEmailUrl: "/verify-email.html",
+  verifyEmailChangeUrl: "/change-email.html",
   resetPasswordUrl: "/reset-password.html",
   oauthCallbackUrl: "/oauth-callback.html",
   // Page that asks a brand-new social-login user for an invitation code when
@@ -40,6 +43,9 @@ export const _GLOBAL_SERVER_CONFIG = {
   invitationAcceptRedirectUrl: "/",
   jwtExpiresAfter: 60 * 60 * 24 * 30, // 30 days
   magicLinkTtl: 60 * 15, // 15 minutes
+  // Confirmation links for an e-mail change land in a mailbox the user may
+  // first have to open elsewhere, so they live longer than a magic link.
+  emailChangeTtl: 60 * 60, // 1 hour
   useConsoleLogger: true,
   useLicenseSystem: false,
   publicKey: "",
@@ -52,6 +58,8 @@ export const _GLOBAL_SERVER_CONFIG = {
     inviteToOrganizationWhenUserExists:
       stdTemplateInviteToOrganizationWhenUserExists,
     emailLoginCode: stdTemplateEmailLoginCode,
+    verifyEmailChange: stdTemplateVerifyEmailChange,
+    emailChangeNotice: stdTemplateEmailChangeNotice,
     custom: {} as Record<string, EmailTemplateFunction>,
   },
   useWhatsApp: false,
@@ -120,6 +128,9 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
   if (config.magicLinkTtl) {
     _GLOBAL_SERVER_CONFIG.magicLinkTtl = config.magicLinkTtl;
   }
+  if (config.emailChangeTtl) {
+    _GLOBAL_SERVER_CONFIG.emailChangeTtl = config.emailChangeTtl;
+  }
 
   _GLOBAL_SERVER_CONFIG.useLicenseSystem = config.useLicenseSystem ?? false;
   _GLOBAL_SERVER_CONFIG.publicKey = config.publicKey ?? "";
@@ -159,6 +170,14 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
     _GLOBAL_SERVER_CONFIG.emailTemplates.emailLoginCode =
       config.emailTemplates.emailLoginCode;
   }
+  if (config.emailTemplates?.verifyEmailChange) {
+    _GLOBAL_SERVER_CONFIG.emailTemplates.verifyEmailChange =
+      config.emailTemplates.verifyEmailChange;
+  }
+  if (config.emailTemplates?.emailChangeNotice) {
+    _GLOBAL_SERVER_CONFIG.emailTemplates.emailChangeNotice =
+      config.emailTemplates.emailChangeNotice;
+  }
   if (config.emailTemplates?.custom) {
     _GLOBAL_SERVER_CONFIG.emailTemplates.custom = {
       ..._GLOBAL_SERVER_CONFIG.emailTemplates.custom,
@@ -175,6 +194,9 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
   }
   if (config.verifyEmailUrl) {
     _GLOBAL_SERVER_CONFIG.verifyEmailUrl = config.verifyEmailUrl;
+  }
+  if (config.verifyEmailChangeUrl) {
+    _GLOBAL_SERVER_CONFIG.verifyEmailChangeUrl = config.verifyEmailChangeUrl;
   }
   if (config.resetPasswordUrl) {
     _GLOBAL_SERVER_CONFIG.resetPasswordUrl = config.resetPasswordUrl;

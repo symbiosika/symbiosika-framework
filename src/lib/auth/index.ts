@@ -270,6 +270,45 @@ const changePassword = async (
 };
 
 /**
+ * Does the account have a local password set?
+ *
+ * Users created through a social login, a passkey or the magic-link flow have
+ * none, so flows that ask for a password confirmation (e.g. the e-mail change)
+ * must not demand one from them.
+ */
+export const userHasPassword = async (userId: string): Promise<boolean> => {
+  const rows = await getDb()
+    .select({ password: users.password })
+    .from(users)
+    .where(eq(users.id, userId));
+  const password = rows[0]?.password;
+  return !!password && password.length > 0;
+};
+
+/**
+ * Verify a plaintext password against the stored hash of an account.
+ *
+ * Unlike `LocalAuth.authorize` this keys on the user id (not the address) and
+ * returns a boolean instead of throwing, so it can be used as a step-up check
+ * inside an already authenticated request. It also does not trigger the
+ * "resend verification mail" side effect of the login path.
+ */
+export const verifyUserPassword = async (
+  userId: string,
+  password: string
+): Promise<boolean> => {
+  const rows = await getDb()
+    .select({ password: users.password })
+    .from(users)
+    .where(eq(users.id, userId));
+  const stored = rows[0]?.password;
+  if (!stored) {
+    return false;
+  }
+  return await Bun.password.verify(password, stored);
+};
+
+/**
  * Check if a general invitation code is valid
  * This will check if there are any general invitation codes and if the provided code is valid
  * If the code is valid, it will return the tenantId to set if a tenant is provided

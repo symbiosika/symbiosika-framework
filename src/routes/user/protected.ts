@@ -36,7 +36,11 @@ import {
   getTeamsByUser,
 } from "../../lib/usermanagement/teams";
 import * as v from "valibot";
-import { LocalAuth } from "../../lib/auth";
+import {
+  LocalAuth,
+  userHasPassword,
+  verifyUserPassword,
+} from "../../lib/auth";
 import { describeRoute } from "hono-openapi";
 import { resolver, validator } from "hono-openapi";
 import {
@@ -58,6 +62,11 @@ import {
 import { validateScope } from "../../lib/utils/validate-scope";
 import { availableScopes } from "../../lib/auth/available-scopes";
 import { sendValidationPin, validatePhoneNumber } from "../../lib/auth/phone";
+import {
+  cancelEmailChangeRequest,
+  getPendingEmailChangeRequest,
+  requestEmailChange,
+} from "../../lib/auth/email-change";
 import {
   isPasskeysEnabledForLocalAuth,
   passkeyRegistrationOptions,
@@ -340,6 +349,160 @@ export function defineSecuredUserRoutes(
           message: "Error creating tenant: " + err,
         });
       }
+    }
+  );
+
+  /**
+   * Request a change of the own email address.
+   *
+   * Nothing is written to the account here: the new address first has to be
+   * proven by clicking the link that is mailed to it (see the public
+   * /user/email-change/* routes). The old address gets a heads-up mail.
+   */
+  app.post(
+    API_BASE_PATH + "/user/me/email-change",
+    authAndSetUsersInfo,
+    describeRoute({
+      tags: ["user"],
+      summary: "Request a change of the own email address",
+      description:
+        "Creates a pending email change and sends a confirmation link to the new address. The address is only stored once that link is confirmed.",
+      responses: {
+        200: {
+          description: "Successful response",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({
+                  success: v.boolean(),
+                  newEmail: v.string(),
+                  expiresAt: v.string(),
+                })
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("user:write"),
+    validator(
+      "json",
+      v.object({
+        newEmail: v.pipe(v.string(), v.email()),
+        // Optional confirmation of the current password. Enforced whenever the
+        // account has one, so a stolen session alone cannot move the account
+        // to an attacker's mailbox.
+        password: v.optional(v.string()),
+      })
+    ),
+    async (c) => {
+      const userId = c.get("usersId");
+      const { newEmail, password } = c.req.valid("json");
+
+      const user = await getUserById(userId);
+      if (!user) {
+        throw new HTTPException(404, { message: "User not found" });
+      }
+
+      // Password holders must re-authenticate. Accounts without a local
+      // password (social login, passkey-only, magic-link-only) cannot, so for
+      // them possession of the new mailbox is the only proof – which is
+      // exactly what the confirmation link establishes.
+      if (await userHasPassword(userId)) {
+        if (!password) {
+          throw new HTTPException(400, {
+            message: "Password is required to change the email address",
+          });
+        }
+        const valid = await verifyUserPassword(userId, password);
+        if (!valid) {
+          throw new HTTPException(401, { message: "Invalid password" });
+        }
+      }
+
+      try {
+        const request = await requestEmailChange(userId, newEmail);
+        return c.json({
+          success: true,
+          newEmail: request.newEmail,
+          expiresAt: request.expiresAt,
+        });
+      } catch (err) {
+        // The messages thrown by requestEmailChange are user-facing by design
+        // (invalid address, unchanged address, address already in use).
+        throw new HTTPException(400, { message: err + "" });
+      }
+    }
+  );
+
+  /**
+   * Get the own pending email change request (if any)
+   */
+  app.get(
+    API_BASE_PATH + "/user/me/email-change",
+    authAndSetUsersInfo,
+    describeRoute({
+      tags: ["user"],
+      summary: "Get the own pending email change request",
+      responses: {
+        200: {
+          description: "Successful response",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({
+                  pending: v.boolean(),
+                  newEmail: v.optional(v.string()),
+                  expiresAt: v.optional(v.string()),
+                  createdAt: v.optional(v.string()),
+                })
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("user:read"),
+    async (c) => {
+      const request = await getPendingEmailChangeRequest(c.get("usersId"));
+      if (!request) {
+        return c.json({ pending: false });
+      }
+      return c.json({
+        pending: true,
+        newEmail: request.newEmail,
+        expiresAt: request.expiresAt,
+        createdAt: request.createdAt,
+      });
+    }
+  );
+
+  /**
+   * Cancel the own pending email change request
+   */
+  app.delete(
+    API_BASE_PATH + "/user/me/email-change",
+    authAndSetUsersInfo,
+    describeRoute({
+      tags: ["user"],
+      summary: "Cancel the own pending email change request",
+      responses: {
+        200: {
+          description: "Successful response",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({ success: v.boolean(), cancelled: v.number() })
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("user:write"),
+    async (c) => {
+      const cancelled = await cancelEmailChangeRequest(c.get("usersId"));
+      return c.json({ success: true, cancelled });
     }
   );
 

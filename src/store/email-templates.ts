@@ -9,6 +9,20 @@ function truncateSubject(subject: string, maxLength: number = 100): string {
   return subject.substring(0, maxLength - 3) + "...";
 }
 
+/**
+ * Escape a value that is interpolated into the HTML body of a mail. The e-mail
+ * change templates embed an address the user typed themselves, so it must not
+ * be able to smuggle markup into the message.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // HTML email wrapper to unify style and structure for all emails
 function htmlEmailWrapper({
   appName,
@@ -213,6 +227,100 @@ export const stdTemplateVerifyEmail: EmailTemplateFunction = async (data) => {
       buttonText: "Verify Email / E-Mail bestätigen",
     }),
     subject: `Verify your email for ${data.appName} / E-Mail-Bestätigung für ${data.appName}`,
+  };
+};
+
+/**
+ * Confirmation mail for an e-mail *change*. Goes to the NEW address: clicking
+ * the link is the proof that the requester actually owns that mailbox, and
+ * only then is the address written to the account.
+ */
+export const stdTemplateVerifyEmailChange: EmailTemplateFunction = async (
+  data
+) => {
+  const newEmail = escapeHtml(data.newEmail ?? "");
+  const newEmailHtml = newEmail
+    ? `<p style="text-align: center; font-weight: bold;">${newEmail}</p>`
+    : "";
+
+  const englishContent = `
+    <h2>Confirm your new email address</h2>
+    <p>Hello,</p>
+    <p>You've requested to change the email address of your ${data.appName} account to:</p>
+    ${newEmailHtml}
+    <p>Click the button below to confirm this address. Your account keeps its current address until you do.</p>
+    <p>If you didn't request this change, you can safely ignore this email.</p>
+    <p>Best regards,<br>The ${data.appName} Team</p>
+  `;
+
+  const germanContent = `
+    <h2>Bestätigen Sie Ihre neue E-Mail-Adresse</h2>
+    <p>Hallo,</p>
+    <p>Sie haben angefordert, die E-Mail-Adresse Ihres ${data.appName}-Kontos zu ändern auf:</p>
+    ${newEmailHtml}
+    <p>Klicken Sie auf den Button unten, um diese Adresse zu bestätigen. Bis dahin bleibt Ihre bisherige Adresse unverändert.</p>
+    <p>Falls Sie diese Änderung nicht angefordert haben, können Sie diese E-Mail ignorieren.</p>
+    <p>Viele Grüße,<br>Ihr ${data.appName}-Team</p>
+  `;
+
+  return {
+    html: htmlEmailWrapper({
+      appName: data.appName,
+      logoUrl: data.logoUrl,
+      englishContent,
+      germanContent,
+      buttonLink: data.link,
+      buttonText: "Confirm new email / Neue E-Mail bestätigen",
+    }),
+    subject: truncateSubject(
+      `Confirm your new email address for ${data.appName} / Neue E-Mail-Adresse für ${data.appName} bestätigen`
+    ),
+  };
+};
+
+/**
+ * Heads-up mail for an e-mail change. Goes to the OLD (still active) address so
+ * the legitimate owner notices a change they did not start. It deliberately
+ * carries no confirmation link — only the new mailbox can confirm.
+ */
+export const stdTemplateEmailChangeNotice: EmailTemplateFunction = async (
+  data
+) => {
+  const newEmail = escapeHtml(data.newEmail ?? "");
+  const newEmailHtml = newEmail
+    ? `<p style="text-align: center; font-weight: bold;">${newEmail}</p>`
+    : "";
+
+  const englishContent = `
+    <h2>An email change was requested</h2>
+    <p>Hello,</p>
+    <p>Someone requested to change the email address of your ${data.appName} account to:</p>
+    ${newEmailHtml}
+    <p>The change only takes effect once that new address is confirmed. Until then you can keep using this address.</p>
+    <p>If this wasn't you, please sign in and cancel the request, and change your password.</p>
+    <p>Best regards,<br>The ${data.appName} Team</p>
+  `;
+
+  const germanContent = `
+    <h2>Änderung der E-Mail-Adresse angefordert</h2>
+    <p>Hallo,</p>
+    <p>Es wurde angefordert, die E-Mail-Adresse Ihres ${data.appName}-Kontos zu ändern auf:</p>
+    ${newEmailHtml}
+    <p>Die Änderung wird erst wirksam, wenn die neue Adresse bestätigt wurde. Bis dahin können Sie diese Adresse weiter verwenden.</p>
+    <p>Falls Sie das nicht waren, melden Sie sich bitte an, brechen Sie die Anfrage ab und ändern Sie Ihr Passwort.</p>
+    <p>Viele Grüße,<br>Ihr ${data.appName}-Team</p>
+  `;
+
+  return {
+    html: htmlEmailWrapper({
+      appName: data.appName,
+      logoUrl: data.logoUrl,
+      englishContent,
+      germanContent,
+    }),
+    subject: truncateSubject(
+      `Email change requested for ${data.appName} / E-Mail-Änderung für ${data.appName} angefordert`
+    ),
   };
 };
 
