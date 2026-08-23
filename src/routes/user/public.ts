@@ -15,6 +15,10 @@ import { usersRestrictedSelectSchema } from "../../lib/db/db-schema";
 import { RESPONSES } from "../../lib/responses";
 import { verifyPasswordResetToken } from "../../lib/auth/magic-link";
 import {
+  confirmEmailChange,
+  getEmailChangeRequestByToken,
+} from "../../lib/auth/email-change";
+import {
   checkIfInvitationCodeIsNeededToRegister,
   acceptInvitationByToken,
 } from "../../lib/usermanagement/invitations";
@@ -381,6 +385,93 @@ export function definePublicUserRoutes(
         return c.json(r);
       } catch (err) {
         throw new HTTPException(401, { message: "Invalid token: " + err });
+      }
+    }
+  );
+
+  /**
+   * Details of a pending email change, addressed by the token from the
+   * confirmation mail.
+   *
+   * Read-only on purpose: the confirmation page calls this first so it can
+   * show WHICH address is about to become the account's, and only the explicit
+   * click on the button below fires the POST that actually applies it. Mail
+   * security scanners that pre-open links therefore cannot switch an address
+   * behind the user's back.
+   *
+   * Public by design: the link lands in the new mailbox and is typically
+   * opened in a browser with no session (same trust model as a magic link).
+   */
+  app.get(
+    API_BASE_PATH + "/user/email-change/info",
+    describeRoute({
+      tags: ["user"],
+      summary: "Get the details of a pending email change by token",
+      responses: {
+        200: {
+          description: "Successful response",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({
+                  newEmail: v.string(),
+                  oldEmail: v.string(),
+                  expiresAt: v.string(),
+                })
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validator("query", v.object({ token: v.string() })),
+    async (c) => {
+      const { token } = c.req.valid("query");
+      try {
+        const request = await getEmailChangeRequestByToken(token);
+        return c.json({
+          newEmail: request.newEmail,
+          oldEmail: request.oldEmail,
+          expiresAt: request.expiresAt,
+        });
+      } catch (err) {
+        throw new HTTPException(401, { message: err + "" });
+      }
+    }
+  );
+
+  /**
+   * Confirm a pending email change. This is the step that finally writes the
+   * new address to the account, so it is a POST triggered by an explicit click
+   * on the confirmation page — never by merely opening the emailed link.
+   */
+  app.post(
+    API_BASE_PATH + "/user/email-change/confirm",
+    describeRoute({
+      tags: ["user"],
+      summary: "Confirm a pending email change",
+      responses: {
+        200: {
+          description: "Successful response",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({ success: v.boolean(), email: v.string() })
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validator("json", v.object({ token: v.string() })),
+    async (c) => {
+      const { token } = c.req.valid("json");
+      try {
+        const result = await confirmEmailChange(token);
+        return c.json({ success: true, email: result.newEmail });
+      } catch (err) {
+        log.error("Error confirming email change: " + err);
+        throw new HTTPException(401, { message: err + "" });
       }
     }
   );

@@ -18,6 +18,7 @@ import * as oauthCodes from "./schema/oauth-codes";
 import * as oauthRefreshTokens from "./schema/oauth-refresh-tokens";
 import * as oauthConsents from "./schema/oauth-consents";
 import * as emailLoginCodes from "./schema/email-login-codes";
+import * as emailChangeRequests from "./schema/email-change-requests";
 import * as userSettings from "./schema/user-settings";
 import * as tenantSettings from "./schema/tenant-settings";
 
@@ -38,6 +39,7 @@ export * from "./schema/oauth-codes";
 export * from "./schema/oauth-refresh-tokens";
 export * from "./schema/oauth-consents";
 export * from "./schema/email-login-codes";
+export * from "./schema/email-change-requests";
 export * from "./schema/user-settings";
 export * from "./schema/tenant-settings";
 
@@ -58,6 +60,7 @@ const baseDbSchema = {
   ...oauthRefreshTokens,
   ...oauthConsents,
   ...emailLoginCodes,
+  ...emailChangeRequests,
   ...userSettings,
   ...tenantSettings,
 };

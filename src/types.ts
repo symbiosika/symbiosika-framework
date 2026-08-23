@@ -53,6 +53,10 @@ export type EmailTemplateFunction = (data: {
   link?: string;
   /** One-time login code (OTP), e.g. for the OAuth email-login flow. */
   code?: string;
+  /** Target address of a pending e-mail change (change flow only). */
+  newEmail?: string;
+  /** Current address of the account in a pending e-mail change. */
+  oldEmail?: string;
   user?: UserInfo;
   tenant?: {
     id: string;
@@ -74,6 +78,9 @@ export interface ServerSpecificConfig {
   loginUrl?: string;
   magicLoginVerifyUrl?: string;
   verifyEmailUrl?: string;
+  // Page that confirms a pending e-mail *change* of an existing account.
+  // Defaults to "/change-email.html".
+  verifyEmailChangeUrl?: string;
   resetPasswordUrl?: string;
   oauthCallbackUrl?: string;
   // Page a brand-new social-login user is sent to when the instance requires an
@@ -88,6 +95,10 @@ export interface ServerSpecificConfig {
   // TTL for magic-link tokens (login, email verification, password reset),
   // in seconds. Default 900 (15m).
   magicLinkTtl?: number;
+  // TTL for e-mail change confirmation tokens, in seconds. Longer than
+  // `magicLinkTtl` by default (3600 = 1h) because the link is sent to a
+  // mailbox the user may not have open in the current browser session.
+  emailChangeTtl?: number;
 
   // OAuth2 / OIDC Authorization Server (opt-in).
   // When enabled, the app acts as an OAuth2/OIDC provider so third-party
@@ -271,6 +282,10 @@ export interface ServerSpecificConfig {
     inviteToOrganization?: EmailTemplateFunction;
     inviteToOrganizationWhenUserExists?: EmailTemplateFunction;
     emailLoginCode?: EmailTemplateFunction;
+    /** Confirmation mail sent to the NEW address of a pending e-mail change. */
+    verifyEmailChange?: EmailTemplateFunction;
+    /** Heads-up mail sent to the OLD address when a change was requested. */
+    emailChangeNotice?: EmailTemplateFunction;
     custom?: Record<string, EmailTemplateFunction>;
   };
 }

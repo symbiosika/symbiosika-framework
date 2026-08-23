@@ -51,6 +51,21 @@ The following endpoints are available for user authentication and registration:
   Verify a user's email address using a token.
   **Query:** `?token=...`
 
+- **GET `/api/v1/user/email-change/info?token=...`**  
+  Read the details of a pending email change (which address is about to become
+  the account's) **without** applying it. Used by the confirmation page.
+  **Query:** `?token=...`
+
+- **POST `/api/v1/user/email-change/confirm`**  
+  Confirm a pending email change. This is the step that finally writes the new
+  address to the account.
+  **Body:**
+  ```json
+  {
+    "token": "..."
+  }
+  ```
+
 - **POST `/api/v1/user/forgot-password`**  
   Request a password reset email.
   **Body:**
@@ -237,6 +252,25 @@ These endpoints allow authenticated users to manage their own account and member
   }
   ```
 
+- **POST `/api/v1/user/me/email-change`**  
+  Request a change of the own email address. Nothing is written to the account
+  yet — see "Changing the email address" below.
+  **Body:**
+  ```json
+  {
+    "newEmail": "new@example.com",
+    "password": "currentPassword"
+  }
+  ```
+  `password` is required whenever the account has a local password.
+
+- **GET `/api/v1/user/me/email-change`**  
+  Get the own pending email change request (`{ "pending": false }` when there
+  is none).
+
+- **DELETE `/api/v1/user/me/email-change`**  
+  Cancel the own pending email change request.
+
 - **POST `/api/v1/user/profile-image`**  
   Upload or update the user's profile image.
   **Body:**
@@ -319,6 +353,41 @@ These endpoints allow authenticated users to manage their own account and member
 - **GET `/api/v1/user/validate-phone?pin=...`**  
   Validate phone number with a PIN.
   **Query:** `?pin=123456`
+
+---
+
+### Changing the email address
+
+The email address is a user's identity (login, invitations, password reset all
+key on it), so it is never written straight from an API call. A change is a
+two-step flow, mirroring the magic-link trust model:
+
+1. `POST /api/v1/user/me/email-change` parks the request in
+   `base_email_change_requests`. `users.email` stays untouched. A confirmation
+   link is mailed to the **new** address, and a heads-up mail (without a link)
+   to the **old** one, so a hijacked session cannot silently move the account.
+2. The link opens the confirmation page (`/change-email.html`, configurable via
+   `verifyEmailChangeUrl`). The page first calls
+   `GET /api/v1/user/email-change/info` to show which address is about to be
+   confirmed and only applies the change on an explicit click, via
+   `POST /api/v1/user/email-change/confirm`. Merely opening the link — which
+   corporate mail scanners do automatically — changes nothing.
+3. On confirmation `users.email` is updated and `emailVerified` is set: reading
+   mail at the new address is the verification.
+
+Guarantees:
+
+- Only the SHA-256 hash of the confirmation token is stored.
+- Single-use token, TTL from `emailChangeTtl` (default 1 hour).
+- One open request per user; a new request supersedes the previous one.
+- The target address is checked for availability when requesting *and* again
+  when confirming (two accounts may race for the same address).
+- A request is rejected when the account's address changed in the meantime, so
+  a stale link cannot revert a newer state.
+
+Email templates: `verifyEmailChange` (to the new address, carries the link) and
+`emailChangeNotice` (to the old address). Both can be overridden through
+`emailTemplates` in `defineServer`.
 
 ---
 
@@ -457,6 +526,11 @@ The user management works out of the box. You may want to configure the followin
 
 - **Database:**  
   All user, organization, and team data is stored in the connected database. Initialization happens automatically when the framework starts.
+
+- **Email change:**  
+  `verifyEmailChangeUrl` (default `/change-email.html`) points at the page that
+  confirms a pending address change, `emailChangeTtl` (default 3600 s) sets how
+  long a confirmation link stays valid.
 
 - **Customization:**  
   You can extend the default routes or add your own middlewares if you have special requirements.
