@@ -195,6 +195,19 @@ export interface ServerSpecificConfig {
   customPostRegisterActions?: CustomPostRegisterAction[];
   customPostConnectionActions?: CustomPostConnectionAction[];
 
+  // Email change flow
+  /**
+   * Checks that run before an e-mail change request is created. An app can
+   * refuse a change its own rules forbid (e.g. a staff address that must not
+   * become a private one); the returned `message` is shown to the user.
+   */
+  customPreEmailChangeVerifications?: CustomPreEmailChangeVerification[];
+  /**
+   * Actions that run after a confirmed change has been written to the account.
+   * The typical use is an app-level audit trail ("who changed what, when").
+   */
+  customPostEmailChangeActions?: CustomPostEmailChangeAction[];
+
   // Knowledge post processors
   /**
    * Post processors registered at server start. They run after a document is
@@ -320,6 +333,43 @@ export type CustomPostRegisterAction = (
     customRegisterData?: Record<string, any>;
     [key: string]: any;
   }
+) => Promise<void>;
+
+/** What an e-mail change hook is told about the change. */
+export type EmailChangeContext = {
+  userId: string;
+  /** The address on the account right now. */
+  oldEmail: string;
+  /** The requested (pre-verification) resp. applied (post-action) address. */
+  newEmail: string;
+};
+
+/**
+ * Custom verification that runs BEFORE an e-mail change request is created.
+ *
+ * The framework only knows the technical rules (address well-formed, not the
+ * current one, not taken). Everything else is app knowledge: which addresses a
+ * particular account may move to at all. Returning `success: false` refuses
+ * the request and `message` is passed to the user unchanged, so write it for
+ * the person reading it.
+ *
+ * Runs on the request, not on the confirmation: refusing early means no
+ * confirmation mail is ever sent to an address that could not be used anyway.
+ */
+export type CustomPreEmailChangeVerification = (
+  context: EmailChangeContext
+) => Promise<{ success: boolean; message?: string }>;
+
+/**
+ * Custom action that runs AFTER a confirmed change was written to the account.
+ *
+ * At this point the change is a fact — `users.email` already holds the new
+ * address. An action that throws therefore cannot undo anything, so its error
+ * is logged and swallowed instead of failing the request the user is waiting
+ * on. Keep actions to bookkeeping (audit log, downstream sync, notification).
+ */
+export type CustomPostEmailChangeAction = (
+  context: EmailChangeContext
 ) => Promise<void>;
 
 /**

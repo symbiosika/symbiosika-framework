@@ -389,6 +389,42 @@ Email templates: `verifyEmailChange` (to the new address, carries the link) and
 `emailChangeNotice` (to the old address). Both can be overridden through
 `emailTemplates` in `defineServer`.
 
+#### App-specific rules and bookkeeping
+
+The framework only judges the technical side of a new address. Two hooks in
+`defineServer` let an app add its own:
+
+```ts
+defineServer({
+  // Refuse a requested address. Runs BEFORE the request row is created, so no
+  // confirmation mail goes to an address the app would not accept anyway.
+  // The message is shown to the user unchanged.
+  customPreEmailChangeVerifications: [
+    async ({ userId, oldEmail, newEmail }) => {
+      if (isStaffAddress(oldEmail) && !isStaffAddress(newEmail)) {
+        return {
+          success: false,
+          message: "A staff address cannot be changed to a private one.",
+        };
+      }
+      return { success: true };
+    },
+  ],
+  // Observe a confirmed change (audit log, downstream sync, notification).
+  // Runs AFTER `users.email` was written; an action that throws is logged and
+  // swallowed, because the change is already a fact.
+  customPostEmailChangeActions: [
+    async ({ userId, oldEmail, newEmail }) => {
+      await writeAuditEntry(userId, oldEmail, newEmail);
+    },
+  ],
+})
+```
+
+Both lists are also reachable at runtime via
+`registerPreEmailChangeVerification` / `registerPostEmailChangeAction`
+(`lib/auth/actions.ts`), the same way the register hooks work.
+
 ---
 
 ## Organization, Team, and Invitation Endpoints

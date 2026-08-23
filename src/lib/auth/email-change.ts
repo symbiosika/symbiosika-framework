@@ -36,6 +36,10 @@ import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { smtpService } from "../email";
 import { normalizeEmail } from "../utils/email";
 import log from "../log";
+import {
+  postEmailChangeActions,
+  preEmailChangeVerifications,
+} from "./actions";
 
 const DEFAULT_TTL_SECONDS = 60 * 60;
 
@@ -192,6 +196,21 @@ export const requestEmailChange = async (
 
   if (await isEmailTaken(newEmail, userId)) {
     throw new Error("This email address is already in use");
+  }
+
+  // App-level rules on top of the technical ones. Deliberately BEFORE the
+  // request row and the mail: an address the app would refuse anyway must not
+  // receive a confirmation link. The message is written for the user, so it is
+  // thrown unchanged (the routes turn it into a 400 with that text).
+  for (const verification of preEmailChangeVerifications) {
+    const result = await verification({
+      userId,
+      oldEmail: normalizeEmail(user.email),
+      newEmail,
+    });
+    if (!result.success) {
+      throw new Error(result.message ?? "This email address cannot be used");
+    }
   }
 
   await pruneStaleRequests(userId);
@@ -430,6 +449,22 @@ export const confirmEmailChange = async (
     );
 
   log.info(`Email changed for user ${user.id}`);
+
+  // Observers of the completed change (audit log, downstream sync). The
+  // address is already written at this point, so a failing action must not
+  // turn a successful change into an error for the user — unlike the
+  // pre-verifications above, these errors are logged and swallowed.
+  for (const action of postEmailChangeActions) {
+    try {
+      await action({
+        userId: user.id,
+        oldEmail: request.oldEmail,
+        newEmail: request.newEmail,
+      });
+    } catch (err) {
+      log.error("Error in post-email-change action: " + err);
+    }
+  }
 
   return {
     userId: user.id,
