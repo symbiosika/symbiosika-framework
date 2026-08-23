@@ -84,6 +84,30 @@ export const getUserByEmail = async (rawEmail: string, tenantId?: string) => {
 };
 
 /**
+ * Derive the numeric mirror of a phone number (`phone_number_as_number`).
+ *
+ * The numeric form is what the WhatsApp delivery and the reverse lookup
+ * (`getUserIdByPhoneNumber`) work with, and a unique index makes it the
+ * de-duplication key for phone numbers. The derivation is deliberately kept
+ * byte for byte as it always was: numbers stored by earlier versions have to
+ * keep mapping to the same value, otherwise the same input would suddenly
+ * stop matching a row written before.
+ *
+ * Returns `null` when there is no number, or when the input yields no parsable
+ * digits at all — the raw string still goes into `phone_number`, but a `NaN`
+ * must never reach the bigint column (it fails the insert).
+ */
+const toPhoneNumberAsNumber = (
+  phoneNumber: string | null | undefined
+): number | null => {
+  if (!phoneNumber) return null;
+
+  // phoneNumber is a string like "+49 158 997779997"
+  const parsed = parseInt(phoneNumber.replace(/\s+/g, "").replace("+", ""));
+  return Number.isSafeInteger(parsed) ? parsed : null;
+};
+
+/**
  * Update a user
  * will also convert the phone number to a number
  */
@@ -91,44 +115,43 @@ export const updateUser = async (
   userId: string,
   data: Partial<UsersInsert>
 ) => {
-  let phoneNumberAsNumber: number | undefined;
-
-  // phoneNumber is a string like "+49 158 997779997"
-
-  if (data.phoneNumber) {
-    phoneNumberAsNumber = parseInt(
-      data.phoneNumber.replace(/\s+/g, "").replace("+", "")
-    );
-  }
-
   // get actual user
   const user = await getUserById(userId);
   if (!user) {
     throw new Error("User not found");
   }
 
-  // check if phone number has changed
-  let phoneNumberChanged = false;
-  if (user.phoneNumberAsNumber !== phoneNumberAsNumber) {
-    phoneNumberChanged = true;
+  const patch: Partial<UsersInsert> = { ...data };
+
+  // An update may carry a new address (profile edit, admin correction);
+  // it has to land in the same canonical form as every insert, otherwise
+  // the row would stop being findable by its own login.
+  if (data.email !== undefined) {
+    patch.email = normalizeEmail(data.email);
   }
 
-  await getDb()
-    .update(users)
-    .set({
-      ...data,
-      // An update may carry a new address (profile edit, admin correction);
-      // it has to land in the same canonical form as every insert, otherwise
-      // the row would stop being findable by its own login.
-      ...(data.email !== undefined
-        ? { email: normalizeEmail(data.email) }
-        : {}),
-      phoneNumberAsNumber,
-      phoneNumberVerified: phoneNumberChanged
-        ? false
-        : user.phoneNumberVerified,
-    })
-    .where(eq(users.id, userId));
+  /**
+   * The two derived phone columns are only touched when the patch actually
+   * carries a phone number. A patch without `phoneNumber` says nothing about
+   * it, so saving a name or an e-mail address must leave both alone —
+   * otherwise every unrelated update would silently invalidate a phone number
+   * the user has already verified by PIN.
+   *
+   * When the patch DOES carry one, both columns follow it: an explicit `null`
+   * clears the numeric mirror as well (a stale mirror would keep routing the
+   * verification PIN to the removed number and keep blocking it for everyone
+   * else via `unique_phone_number_as_number`), and a number that differs from
+   * the stored one revokes the verification.
+   */
+  if (data.phoneNumber !== undefined) {
+    const phoneNumberAsNumber = toPhoneNumberAsNumber(data.phoneNumber);
+    patch.phoneNumberAsNumber = phoneNumberAsNumber;
+    if (phoneNumberAsNumber !== user.phoneNumberAsNumber) {
+      patch.phoneNumberVerified = false;
+    }
+  }
+
+  await getDb().update(users).set(patch).where(eq(users.id, userId));
 };
 
 /**
