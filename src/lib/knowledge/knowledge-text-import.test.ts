@@ -7,6 +7,7 @@ import {
 import { getKnowledgeTextBlocks } from "./knowledge-text-blocks";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
 import { registerPostProcessor } from "./parsing/post-processors";
+import { setTenantEmbeddingEnabled } from "./knowledge-embedding-settings";
 
 const ctx = { tenantId: TEST_ORGANISATION_1.id };
 
@@ -108,13 +109,21 @@ describe("Knowledge Text Import", () => {
     );
   });
 
-  it("import with embeddingEnabled never fails without a provider", async () => {
-    const result = await importMarkdownAsKnowledgeText(
-      { title: `Embed Import ${crypto.randomUUID()}`, text: "# Doc\n\ncontent" },
-      { ...ctx, embeddingEnabled: true }
-    );
-    expect(result.knowledgeText.embeddingEnabled).toBe(true);
-    // without MISTRAL_API_KEY the sync is skipped gracefully
+  it("import picks up the organisation-wide embedding switch", async () => {
+    await setTenantEmbeddingEnabled(ctx.tenantId, true);
+    try {
+      const result = await importMarkdownAsKnowledgeText(
+        {
+          title: `Embed Import ${crypto.randomUUID()}`,
+          text: "# Doc\n\ncontent",
+        },
+        ctx
+      );
+      expect(result.knowledgeText.embeddingEnabled).toBe(true);
+      // without MISTRAL_API_KEY the sync is skipped gracefully
+    } finally {
+      await setTenantEmbeddingEnabled(ctx.tenantId, false);
+    }
   });
 
   it("supports wiki hierarchy via parentId", async () => {

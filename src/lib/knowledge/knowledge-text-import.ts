@@ -23,13 +23,13 @@ import { urlToMarkdown } from "./parsing/url";
 import { applyPostProcessors } from "./parsing/post-processors";
 import {
   createKnowledgeText,
-  updateKnowledgeText,
   getKnowledgeTextById,
 } from "./knowledge-texts";
 import {
   syncKnowledgeTextBlocks,
   type KnowledgeTextBlockInput,
 } from "./knowledge-text-blocks";
+import { syncKnowledgeTextEmbeddingSafe } from "./knowledge-text-embedding";
 import type {
   KnowledgeTextSelect,
   KnowledgeTextBlockSelect,
@@ -44,8 +44,6 @@ export type ImportKnowledgeTextOptions = {
   parentId?: string;
   /** override the derived title (file name / page title) */
   title?: string;
-  /** mirror the page into the RAG pipeline after import */
-  embeddingEnabled?: boolean;
   /** split the markdown at top-level headings into blocks (default true) */
   splitIntoBlocks?: boolean;
   /** extra meta merged into the page meta */
@@ -217,8 +215,10 @@ export const importMarkdownAsKnowledgeText = async (
     processorMeta = processed.meta;
   }
 
-  // create first WITHOUT the embedding flag so the page is embedded exactly
-  // once, after its final content (blocks) is in place
+  // embed only AFTER the final content (blocks) is in place, so the page is
+  // embedded exactly once — and with block provenance. Whether it is embedded
+  // at all is the organisation-wide setting's call (see
+  // knowledge-embedding-settings.ts), not the importer's.
   const page = await createKnowledgeText({
     tenantId: options.tenantId,
     userId: options.userId,
@@ -238,7 +238,7 @@ export const importMarkdownAsKnowledgeText = async (
       ...(data.sourceUri ? { sourceUri: data.sourceUri } : {}),
       ...(hasExtraction ? { parserExtraction: data.parserMetadata } : {}),
     },
-  });
+  }, { skipEmbeddingSync: true });
 
   let blocks: KnowledgeTextBlockSelect[] = [];
   if (options.splitIntoBlocks !== false) {
@@ -254,18 +254,11 @@ export const importMarkdownAsKnowledgeText = async (
     blocks = synced.blocks;
   }
 
-  let finalPage = options.splitIntoBlocks !== false ? undefined : page;
-  if (options.embeddingEnabled) {
-    // one embedding sync over the final content
-    finalPage = await updateKnowledgeText(
-      page.id,
-      { embeddingEnabled: true },
-      context
-    );
-  }
-  if (!finalPage) {
-    finalPage = await getKnowledgeTextById(page.id, context);
-  }
+  // one embedding sync over the final content (no-op when the organisation has
+  // embedding switched off, or when the block sync above already did it)
+  await syncKnowledgeTextEmbeddingSafe(page.id, options.tenantId);
+
+  const finalPage = await getKnowledgeTextById(page.id, context);
 
   return { knowledgeText: finalPage, blocks };
 };

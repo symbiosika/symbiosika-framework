@@ -47,7 +47,6 @@ export type UpsertKnowledgeTextFromSourceInput = {
   workspaceId?: string;
   tenantWide?: boolean;
   parentId?: string;
-  embeddingEnabled?: boolean;
   /**
    * Additional meta key/value constraints used to find the existing page
    * and (on insert) stored on the new page — scope by sync config so two
@@ -120,7 +119,6 @@ export const upsertKnowledgeTextFromSource = async (
       parentId: data.parentId,
       title: data.title,
       text: data.text,
-      embeddingEnabled: data.embeddingEnabled ?? false,
       meta: {
         ...(data.meta ?? {}),
         ...(data.matchScope ?? {}),

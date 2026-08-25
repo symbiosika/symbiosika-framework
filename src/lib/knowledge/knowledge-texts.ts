@@ -24,6 +24,7 @@ import { teamMembers } from "../db/schema/users";
 import { checkTenantKnowledgeWriteAccess } from "../usermanagement/tenants";
 import { checkTeamKnowledgeWriteAccess } from "../usermanagement/teams";
 import { syncKnowledgeTextEmbeddingSafe } from "./knowledge-text-embedding";
+import { getTenantEmbeddingEnabledSafe } from "./knowledge-embedding-settings";
 import {
   syncKnowledgeTextLinks,
   resolvePhantomLinks,
@@ -154,7 +155,15 @@ export const checkKnowledgeTextWritePermission = async (
  */
 export const createKnowledgeText = async (
   data: KnowledgeTextInsert,
-  options?: { source?: WebhookEventSource }
+  options?: {
+    source?: WebhookEventSource;
+    /**
+     * Skip the initial embedding sync. Used by the importer, which fills the
+     * page with blocks right after creating it and then embeds the final
+     * content exactly once (with block provenance).
+     */
+    skipEmbeddingSync?: boolean;
+  }
 ) => {
   data = sanitizeKnowledgeTextData(data);
 
@@ -200,6 +209,14 @@ export const createKnowledgeText = async (
     }),
   };
 
+  // embeddingEnabled is DERIVED from the organisation-wide setting, never
+  // chosen per page. Whatever a caller (REST, UI, MCP, import, source sync)
+  // sends is overwritten here, so every page of a tenant is treated alike.
+  data = {
+    ...data,
+    embeddingEnabled: await getTenantEmbeddingEnabledSafe(data.tenantId),
+  };
+
   const e = await getDb()
     .insert(knowledgeText)
     .values(data)
@@ -220,7 +237,7 @@ export const createKnowledgeText = async (
 
   // initial embedding sync for pages created with embedding already on
   let resultPage = e[0];
-  if (e[0].embeddingEnabled) {
+  if (e[0].embeddingEnabled && !options?.skipEmbeddingSync) {
     const syncResult = await syncKnowledgeTextEmbeddingSafe(
       e[0].id,
       e[0].tenantId
@@ -618,6 +635,15 @@ export const updateKnowledgeText = async (
   // inheritance, so it is dropped here and only ever written by
   // knowledge-text-public.ts. Callers change `publicMode` instead.
   delete updateData.publicEffective;
+
+  // Same for embeddingEnabled: derived from the organisation-wide setting, so
+  // a per-page value in the request body is ignored and the row is brought in
+  // line with the setting on every update.
+  updateData.embeddingEnabled = await getTenantEmbeddingEnabledSafe(
+    context.tenantId,
+    currentEntry.embeddingEnabled
+  );
+
   if (context.userId) {
     updateData.updatedBy = context.userId;
   } else {

@@ -25,6 +25,10 @@ import { resolver, validator } from "hono-openapi";
 import { isTenantAdmin, isTenantMember } from "../..";
 import { validateScope } from "../../../../lib/utils/validate-scope";
 import { enqueueReEmbedding } from "../../../../lib/knowledge/re-embed";
+import {
+  getKnowledgeEmbeddingSettings,
+  setTenantEmbeddingEnabled,
+} from "../../../../lib/knowledge/knowledge-embedding-settings";
 
 const similaritySearchValidation = v.object({
   tenantId: v.string(),
@@ -38,6 +42,19 @@ const similaritySearchValidation = v.object({
   filterWorkspaceIds: v.optional(v.array(v.string())),
   filterName: v.optional(v.array(v.string())),
   fullDocument: v.optional(v.boolean()),
+});
+
+
+const embeddingProviderStatusSchema = v.object({
+  provider: v.string(),
+  configured: v.boolean(),
+  model: v.nullable(v.string()),
+  requiredEnvVar: v.nullable(v.string()),
+});
+
+const embeddingSettingsSchema = v.object({
+  enabled: v.boolean(),
+  provider: embeddingProviderStatusSchema,
 });
 
 export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH: string) {
@@ -136,6 +153,82 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
     async (c) => {
       const { tenantId } = c.req.valid("param");
       return c.json(await enqueueReEmbedding(tenantId));
+    }
+  );
+
+  /**
+   * GET the organisation-wide embedding switch + the deployment's embedding
+   * provider status. Readable by any tenant member so the UI can explain why
+   * nothing is indexed when no API key is configured.
+   */
+  app.get(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/embedding-settings",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary:
+        "Organisation-wide embedding switch and embedding provider status",
+      responses: {
+        200: {
+          description: "Current setting + provider status",
+          content: {
+            "application/json": {
+              schema: resolver(embeddingSettingsSchema),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:read"),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantMember,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      return c.json(await getKnowledgeEmbeddingSettings(tenantId));
+    }
+  );
+
+  /**
+   * Switch embedding on/off for the WHOLE organisation. Admin only.
+   *
+   * There is no per-page switch: this flips the derived flag on every page of
+   * the tenant. Switching off also drops the existing RAG mirrors; switching on
+   * marks the pages, and their vectors are produced by the regular sync the
+   * next time each page is saved.
+   */
+  app.put(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/embedding-settings",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Enable or disable embedding for all pages of an organisation",
+      responses: {
+        200: {
+          description: "The stored setting, provider status and what changed",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({
+                  ...embeddingSettingsSchema.entries,
+                  pagesUpdated: v.number(),
+                  mirrorsRemoved: v.number(),
+                })
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator("json", v.object({ enabled: v.boolean() })),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantAdmin,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      const { enabled } = c.req.valid("json");
+      return c.json(await setTenantEmbeddingEnabled(tenantId, enabled));
     }
   );
 }

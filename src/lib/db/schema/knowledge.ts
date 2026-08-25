@@ -193,6 +193,13 @@ export const knowledgeText = pgBaseTable(
     publicEffective: boolean("public_effective").notNull().default(false),
     // opt-in: mirror this page into the RAG pipeline (knowledge_entry +
     // knowledge_chunks) so it shows up in similarity search
+    /**
+     * DERIVED — mirrored from the organisation-wide embedding setting
+     * (`tenant_settings.knowledgeEmbedding`, see
+     * lib/knowledge/knowledge-embedding-settings.ts). Never set this per page
+     * from a request body: every write path overwrites it with the tenant's
+     * value, and the embedding sync re-checks it.
+     */
     embeddingEnabled: boolean("embedding_enabled").notNull().default(false),
     // link to the knowledge_entry created by the embedding sync, so re-syncs
     // replace chunks in place and page deletion can clean the entry up

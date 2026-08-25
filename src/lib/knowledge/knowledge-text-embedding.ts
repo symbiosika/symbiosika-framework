@@ -1,7 +1,13 @@
 /**
  * Optional embedding sync for knowledgeText wiki pages.
  *
- * Pages with `embeddingEnabled = true` are mirrored into the RAG pipeline
+ * Whether a page is mirrored is decided by the ORGANISATION-wide embedding
+ * setting (see `knowledge-embedding-settings.ts`), never per page. This module
+ * resolves that setting itself and reconciles the derived
+ * `knowledge_text.embedding_enabled` flag, so every sync — from a REST write,
+ * the block editor, an import or a source sync — lands on the same answer.
+ *
+ * Pages of a tenant with embedding switched on are mirrored into the RAG pipeline
  * (knowledge_entry + knowledge_chunks) so they show up in similarity search.
  * The sync goes through `upsertKnowledgeFromText` with the stable source
  * identifier `knowledge-text:<pageId>`, so re-syncs replace the chunks of
@@ -23,6 +29,7 @@ import {
   type KnowledgeTextMeta,
 } from "../db/schema/knowledge";
 import { upsertKnowledgeFromText } from "./upsert-knowledge";
+import { getTenantEmbeddingEnabled } from "./knowledge-embedding-settings";
 import { materializeBlocksTextWithSpans } from "./materialize-blocks";
 import type { BlockSpan } from "./block-provenance";
 import log from "../log";
@@ -134,8 +141,20 @@ export const syncKnowledgeTextEmbedding = async (
 
   const meta = (page.meta ?? {}) as KnowledgeTextMeta;
 
+  // The organisation setting is the single source of truth. Reconcile the
+  // derived per-page flag whenever a page still carries an outdated value
+  // (e.g. a page created before the setting was switched on).
+  const embeddingEnabled = await getTenantEmbeddingEnabled(tenantId);
+  if (page.embeddingEnabled !== embeddingEnabled) {
+    await getDb()
+      .update(knowledgeText)
+      .set({ embeddingEnabled })
+      .where(eq(knowledgeText.id, page.id));
+    page.embeddingEnabled = embeddingEnabled;
+  }
+
   // Disabled or nothing to embed → make sure no stale entry lingers
-  if (!page.embeddingEnabled || page.text.trim().length === 0) {
+  if (!embeddingEnabled || page.text.trim().length === 0) {
     const removed = await removeKnowledgeTextEmbedding(page);
     return {
       synced: false,

@@ -262,6 +262,58 @@ The system will automatically include the relevant knowledge for the assistant.
 
 ---
 
+## Embedding Wiki Pages (organisation-wide switch)
+
+Wiki pages (`knowledge_text`) are mirrored into the RAG pipeline — one
+`knowledge_entry` plus its chunks per page — so they can be found by semantic
+and hybrid search. Whether that happens is a **per-organisation** decision, not
+a per-page one:
+
+- The switch lives in `tenant_settings` under the key `knowledgeEmbedding`
+  (`valueJson: { "enabled": true | false }`). Missing row → **disabled**.
+- `knowledge_text.embedding_enabled` is **derived** from it. Every write path —
+  REST API, web UI, MCP, file/URL import, source sync — overwrites the column
+  with the organisation's value, and the embedding sync re-checks it. A per-page
+  `embeddingEnabled` in a request body is ignored on purpose.
+
+### Endpoints
+
+- **Read the switch + provider status** (any tenant member)
+
+  `GET /api/v1/tenant/:tenantId/knowledge/embedding-settings`
+
+  ```json
+  {
+    "enabled": false,
+    "provider": {
+      "provider": "mistral",
+      "configured": false,
+      "model": null,
+      "requiredEnvVar": "MISTRAL_API_KEY"
+    }
+  }
+  ```
+
+  `configured: false` means the deployment has no API key for the configured
+  `EMBEDDING_PROVIDER` — nothing will be indexed until the operator sets it.
+  The organisation settings UI shows this next to the switch.
+
+- **Flip the switch** (tenant admins/owners only)
+
+  `PUT /api/v1/tenant/:tenantId/knowledge/embedding-settings`
+  `{ "enabled": true }` →
+  `{ enabled, provider, pagesUpdated, mirrorsRemoved }`
+
+  - **on** → the derived flag is set on every page of the tenant in one
+    statement (`pagesUpdated`). The vectors themselves are produced by the
+    regular sync the next time each page is saved — embedding a whole wiki
+    inside one request would be a long-running, paid operation.
+  - **off** → the RAG mirrors are deleted right away (`mirrorsRemoved`; chunks
+    follow via the FK cascade) and the stored content hashes are cleared, so
+    the content really disappears from semantic search.
+
+---
+
 ## Summary
 
 - The framework provides a built-in, structured knowledge base.

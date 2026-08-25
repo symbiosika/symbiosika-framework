@@ -651,6 +651,24 @@ export {
   enqueueReEmbedding,
 } from "./lib/knowledge/re-embed";
 export { getConfiguredEmbeddingModelId } from "./lib/knowledge/embedding";
+
+/**
+ * Export the organisation-wide embedding switch (there is no per-page one).
+ */
+export {
+  KNOWLEDGE_EMBEDDING_SETTING_KEY,
+  getTenantEmbeddingEnabled,
+  getTenantEmbeddingEnabledSafe,
+  getEmbeddingProviderStatus,
+  getKnowledgeEmbeddingSettings,
+  setTenantEmbeddingEnabled,
+} from "./lib/knowledge/knowledge-embedding-settings";
+export type {
+  KnowledgeEmbeddingSetting,
+  KnowledgeEmbeddingSettingsState,
+  EmbeddingProviderStatus,
+  SetKnowledgeEmbeddingResult,
+} from "./lib/knowledge/knowledge-embedding-settings";
 export {
   getKnowledgeTenantConfig,
   setKnowledgeTenantConfig,
