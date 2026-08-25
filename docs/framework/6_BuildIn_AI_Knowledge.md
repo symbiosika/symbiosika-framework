@@ -285,6 +285,7 @@ a per-page one:
   ```json
   {
     "enabled": false,
+    "pendingPages": 0,
     "provider": {
       "provider": "mistral",
       "configured": false,
@@ -293,6 +294,9 @@ a per-page one:
     }
   }
   ```
+
+  `pendingPages` counts the pages that are marked for embedding but have no
+  vectors yet — the backlog the backfill below works off.
 
   `configured: false` means the deployment has no API key for the configured
   `EMBEDDING_PROVIDER` — nothing will be indexed until the operator sets it.
@@ -311,6 +315,21 @@ a per-page one:
   - **off** → the RAG mirrors are deleted right away (`mirrorsRemoved`; chunks
     follow via the FK cascade) and the stored content hashes are cleared, so
     the content really disappears from semantic search.
+
+- **Backfill the pages that have no vectors yet** (tenant admins/owners only)
+
+  `POST /api/v1/tenant/:tenantId/knowledge/embedding-backfill` →
+  `{ enqueued, pendingPages, alreadyQueued }`
+
+  Creates one `knowledge:text-embedding` job per page that is marked but not
+  mirrored, and returns as soon as they are queued — not when the wiki is
+  indexed. The queue drains its due jobs sequentially, so a large wiki trickles
+  through the embedding provider instead of hitting it all at once.
+
+  Idempotent: pages with a queued or running job are skipped (`alreadyQueued`),
+  so the endpoint can be called again after a partial run. The job body is the
+  ordinary `syncKnowledgeTextEmbedding`, which re-checks the organisation
+  setting — a page that no longer qualifies is skipped rather than embedded.
 
 ---
 

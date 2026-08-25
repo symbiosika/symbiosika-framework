@@ -29,6 +29,7 @@ import {
   getKnowledgeEmbeddingSettings,
   setTenantEmbeddingEnabled,
 } from "../../../../lib/knowledge/knowledge-embedding-settings";
+import { enqueueKnowledgeTextEmbeddingBackfill } from "../../../../lib/knowledge/knowledge-text-embedding-backfill";
 
 const similaritySearchValidation = v.object({
   tenantId: v.string(),
@@ -55,6 +56,7 @@ const embeddingProviderStatusSchema = v.object({
 const embeddingSettingsSchema = v.object({
   enabled: v.boolean(),
   provider: embeddingProviderStatusSchema,
+  pendingPages: v.number(),
 });
 
 export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH: string) {
@@ -229,6 +231,46 @@ export default function defineRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_P
       const { tenantId } = c.req.valid("param");
       const { enabled } = c.req.valid("json");
       return c.json(await setTenantEmbeddingEnabled(tenantId, enabled));
+    }
+  );
+
+  /**
+   * Backfill: enqueue one embedding job per page that is marked for embedding
+   * but has no vectors yet. Admin only, idempotent — pages with a queued or
+   * running job are skipped, so pressing it again after a partial run only
+   * picks up what is left. The queue drains sequentially, so a large wiki
+   * trickles through the embedding provider instead of hitting it at once.
+   */
+  app.post(
+    API_BASE_PATH + "/tenant/:tenantId/knowledge/embedding-backfill",
+    authAndSetUsersInfo,
+    checkUserPermission,
+    describeRoute({
+      tags: ["knowledge"],
+      summary: "Enqueue embedding jobs for pages that have no vectors yet",
+      responses: {
+        200: {
+          description: "Enqueue result",
+          content: {
+            "application/json": {
+              schema: resolver(
+                v.object({
+                  enqueued: v.number(),
+                  pendingPages: v.number(),
+                  alreadyQueued: v.number(),
+                })
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validateScope("knowledge:write"),
+    validator("param", v.object({ tenantId: v.string() })),
+    isTenantAdmin,
+    async (c) => {
+      const { tenantId } = c.req.valid("param");
+      return c.json(await enqueueKnowledgeTextEmbeddingBackfill(tenantId));
     }
   );
 }

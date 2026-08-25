@@ -25,6 +25,7 @@ import {
 } from "../ai/types";
 import { isEmbeddingProviderConfigured } from "../ai/providers";
 import { getConfiguredEmbeddingModelId } from "./embedding";
+import { countKnowledgeTextsNeedingEmbedding } from "./knowledge-text-embedding-backfill";
 import log from "../log";
 
 /** `tenant_settings.key` the organisation-wide embedding switch is stored under. */
@@ -112,14 +113,20 @@ export const getEmbeddingProviderStatus = (): EmbeddingProviderStatus => {
 
 export type KnowledgeEmbeddingSettingsState = KnowledgeEmbeddingSetting & {
   provider: EmbeddingProviderStatus;
+  /**
+   * Pages that are marked for embedding but have no vectors yet — what the
+   * backfill would work off. 0 while the switch is off.
+   */
+  pendingPages: number;
 };
 
-/** The switch plus the provider status, as the settings UI needs it. */
+/** The switch, the provider status and the backfill backlog, for the UI. */
 export const getKnowledgeEmbeddingSettings = async (
   tenantId: string
 ): Promise<KnowledgeEmbeddingSettingsState> => ({
   enabled: await getTenantEmbeddingEnabled(tenantId),
   provider: getEmbeddingProviderStatus(),
+  pendingPages: await countKnowledgeTextsNeedingEmbedding(tenantId),
 });
 
 export type SetKnowledgeEmbeddingResult = KnowledgeEmbeddingSettingsState & {
@@ -192,6 +199,7 @@ export const setTenantEmbeddingEnabled = async (
   return {
     enabled,
     provider: getEmbeddingProviderStatus(),
+    pendingPages: await countKnowledgeTextsNeedingEmbedding(tenantId),
     pagesUpdated: flipped.length,
     mirrorsRemoved,
   };
