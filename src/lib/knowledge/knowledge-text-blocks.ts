@@ -365,10 +365,18 @@ export const syncKnowledgeTextBlocks = async (
         text: newText,
       })
     );
+  }
 
-    if (page.embeddingEnabled && !options?.skipEmbeddingSync) {
-      await syncKnowledgeTextEmbeddingSafe(knowledgeTextId, page.tenantId);
-    }
+  // Embedding sync. Runs on every content change, and ALSO when nothing changed
+  // but the page has no RAG mirror yet — that is what lets simply re-opening
+  // and saving a page index it after the organisation switched embedding on.
+  // `embeddingEnabled` on the row is derived from that organisation setting.
+  const needsEmbeddingSync =
+    !options?.skipEmbeddingSync &&
+    (page.embeddingEnabled || !!page.knowledgeEntryId) &&
+    (!nothingToDo || !page.knowledgeEntryId);
+  if (needsEmbeddingSync) {
+    await syncKnowledgeTextEmbeddingSafe(knowledgeTextId, page.tenantId);
   }
 
   const finalPage = await getKnowledgeTextById(knowledgeTextId, context);

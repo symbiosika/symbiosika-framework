@@ -262,6 +262,77 @@ The system will automatically include the relevant knowledge for the assistant.
 
 ---
 
+## Embedding Wiki Pages (organisation-wide switch)
+
+Wiki pages (`knowledge_text`) are mirrored into the RAG pipeline — one
+`knowledge_entry` plus its chunks per page — so they can be found by semantic
+and hybrid search. Whether that happens is a **per-organisation** decision, not
+a per-page one:
+
+- The switch lives in `tenant_settings` under the key `knowledgeEmbedding`
+  (`valueJson: { "enabled": true | false }`). Missing row → **disabled**.
+- `knowledge_text.embedding_enabled` is **derived** from it. Every write path —
+  REST API, web UI, MCP, file/URL import, source sync — overwrites the column
+  with the organisation's value, and the embedding sync re-checks it. A per-page
+  `embeddingEnabled` in a request body is ignored on purpose.
+
+### Endpoints
+
+- **Read the switch + provider status** (any tenant member)
+
+  `GET /api/v1/tenant/:tenantId/knowledge/embedding-settings`
+
+  ```json
+  {
+    "enabled": false,
+    "pendingPages": 0,
+    "provider": {
+      "provider": "mistral",
+      "configured": false,
+      "model": null,
+      "requiredEnvVar": "MISTRAL_API_KEY"
+    }
+  }
+  ```
+
+  `pendingPages` counts the pages that are marked for embedding but have no
+  vectors yet — the backlog the backfill below works off.
+
+  `configured: false` means the deployment has no API key for the configured
+  `EMBEDDING_PROVIDER` — nothing will be indexed until the operator sets it.
+  The organisation settings UI shows this next to the switch.
+
+- **Flip the switch** (tenant admins/owners only)
+
+  `PUT /api/v1/tenant/:tenantId/knowledge/embedding-settings`
+  `{ "enabled": true }` →
+  `{ enabled, provider, pagesUpdated, mirrorsRemoved }`
+
+  - **on** → the derived flag is set on every page of the tenant in one
+    statement (`pagesUpdated`). The vectors themselves are produced by the
+    regular sync the next time each page is saved — embedding a whole wiki
+    inside one request would be a long-running, paid operation.
+  - **off** → the RAG mirrors are deleted right away (`mirrorsRemoved`; chunks
+    follow via the FK cascade) and the stored content hashes are cleared, so
+    the content really disappears from semantic search.
+
+- **Backfill the pages that have no vectors yet** (tenant admins/owners only)
+
+  `POST /api/v1/tenant/:tenantId/knowledge/embedding-backfill` →
+  `{ enqueued, pendingPages, alreadyQueued }`
+
+  Creates one `knowledge:text-embedding` job per page that is marked but not
+  mirrored, and returns as soon as they are queued — not when the wiki is
+  indexed. The queue drains its due jobs sequentially, so a large wiki trickles
+  through the embedding provider instead of hitting it all at once.
+
+  Idempotent: pages with a queued or running job are skipped (`alreadyQueued`),
+  so the endpoint can be called again after a partial run. The job body is the
+  ordinary `syncKnowledgeTextEmbedding`, which re-checks the organisation
+  setting — a page that no longer qualifies is skipped rather than embedded.
+
+---
+
 ## Summary
 
 - The framework provides a built-in, structured knowledge base.

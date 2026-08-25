@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
   syncKnowledgeTextEmbedding,
@@ -14,6 +14,7 @@ import {
 import { syncKnowledgeTextBlocks } from "./knowledge-text-blocks";
 import { getDb } from "../db/db-connection";
 import { knowledgeEntry, knowledgeChunks } from "../db/schema/knowledge";
+import { setTenantEmbeddingEnabled } from "./knowledge-embedding-settings";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
 
 const ctx = { tenantId: TEST_ORGANISATION_1.id };
@@ -21,6 +22,13 @@ const ctx = { tenantId: TEST_ORGANISATION_1.id };
 // The full sync path needs a real embedding provider (same pattern as
 // add-knowledge.test.ts, which runs in CI where MISTRAL_API_KEY is set)
 const hasEmbeddingProvider = !!process.env.MISTRAL_API_KEY;
+
+/**
+ * Embedding is an ORGANISATION-wide switch — there is no per-page flag, so the
+ * tests flip the tenant setting instead of passing `embeddingEnabled`.
+ */
+const setEmbedding = (enabled: boolean) =>
+  setTenantEmbeddingEnabled(TEST_ORGANISATION_1.id, enabled);
 
 const createPage = async (overrides?: Record<string, unknown>) =>
   await createKnowledgeText({
@@ -36,6 +44,7 @@ describe("Knowledge Text Embedding (no provider required)", () => {
   });
 
   it("does nothing for a page with embedding disabled", async () => {
+    await setEmbedding(false);
     const page = await createPage({ text: "some content" });
     const result = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
     expect(result.synced).toBe(false);
@@ -44,10 +53,48 @@ describe("Knowledge Text Embedding (no provider required)", () => {
   });
 
   it("does nothing for an enabled page with empty text", async () => {
-    const page = await createPage({ text: "", embeddingEnabled: true });
-    const result = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
-    expect(result.synced).toBe(false);
-    expect(result.removed).toBe(false);
+    await setEmbedding(true);
+    try {
+      const page = await createPage({ text: "" });
+      const result = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
+      expect(result.synced).toBe(false);
+      expect(result.removed).toBe(false);
+    } finally {
+      await setEmbedding(false);
+    }
+  });
+
+  it("ignores a per-page embeddingEnabled sent by a caller", async () => {
+    await setEmbedding(false);
+    // the organisation switch is off → the request body must not win
+    const page = await createPage({
+      text: "content",
+      embeddingEnabled: true,
+    });
+    expect(page.embeddingEnabled).toBe(false);
+
+    const updated = await updateKnowledgeText(
+      page.id,
+      { embeddingEnabled: true },
+      ctx
+    );
+    expect(updated.embeddingEnabled).toBe(false);
+  });
+
+  it("reconciles the derived flag when the organisation switch changes", async () => {
+    await setEmbedding(false);
+    const page = await createPage({ text: "content" });
+    expect(page.embeddingEnabled).toBe(false);
+
+    try {
+      await setEmbedding(true);
+      const fresh = await getKnowledgeTextById(page.id, ctx);
+      expect(fresh.embeddingEnabled).toBe(true);
+    } finally {
+      await setEmbedding(false);
+    }
+    const off = await getKnowledgeTextById(page.id, ctx);
+    expect(off.embeddingEnabled).toBe(false);
   });
 
   it("throws for an unknown page and the safe variant swallows it", async () => {
@@ -60,6 +107,7 @@ describe("Knowledge Text Embedding (no provider required)", () => {
   });
 
   it("block saves on a page without embedding do not fail", async () => {
+    await setEmbedding(false);
     const page = await createPage();
     const result = await syncKnowledgeTextBlocks(
       page.id,
@@ -76,17 +124,19 @@ describe("Knowledge Text Embedding (no provider required)", () => {
   it("creating an embedding-enabled page never fails, with or without a provider", async () => {
     // the initial sync on create is best-effort: without a provider it
     // logs and the page is still created; with a provider (CI) it embeds
-    const page = await createPage({
-      text: "content that would be embedded",
-      embeddingEnabled: true,
-    });
-    expect(page.id).toBeDefined();
-    if (hasEmbeddingProvider) {
-      expect(page.knowledgeEntryId).not.toBeNull();
-    } else {
-      expect(page.knowledgeEntryId).toBeNull();
+    await setEmbedding(true);
+    try {
+      const page = await createPage({ text: "content that would be embedded" });
+      expect(page.id).toBeDefined();
+      if (hasEmbeddingProvider) {
+        expect(page.knowledgeEntryId).not.toBeNull();
+      } else {
+        expect(page.knowledgeEntryId).toBeNull();
+      }
+    } finally {
+      await setEmbedding(false);
     }
-  });
+  }, 30000);
 });
 
 describe.skipIf(!hasEmbeddingProvider)(
@@ -94,12 +144,16 @@ describe.skipIf(!hasEmbeddingProvider)(
   () => {
     beforeAll(async () => {
       await initTests();
+      await setEmbedding(true);
     });
 
-    it("embeds a page directly on create when embeddingEnabled is set", async () => {
+    afterAll(async () => {
+      await setEmbedding(false);
+    });
+
+    it("embeds a page directly on create when the organisation has embedding on", async () => {
       const page = await createPage({
         text: "Pages created with embedding on are synced immediately.",
-        embeddingEnabled: true,
       });
       // create already ran the initial sync
       expect(page.knowledgeEntryId).toBeDefined();
@@ -107,11 +161,12 @@ describe.skipIf(!hasEmbeddingProvider)(
     }, 30000);
 
     it("creates a knowledge entry on first sync and links it", async () => {
+      await setEmbedding(false);
       const page = await createPage({
         text: "This wiki page explains our vacation policy in detail.",
-        embeddingEnabled: false,
       });
-      await updateKnowledgeText(page.id, { embeddingEnabled: true }, ctx);
+      // switching the organisation on marks the page; the sync then embeds it
+      await setEmbedding(true);
 
       const result = await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
       expect(result.knowledgeEntryId).toBeDefined();
@@ -129,10 +184,9 @@ describe.skipIf(!hasEmbeddingProvider)(
     }, 30000);
 
     it("skips unchanged content and re-syncs in place on change", async () => {
-      // create already runs the initial sync (embeddingEnabled is set)
+      // create already runs the initial sync (the organisation has it on)
       const page = await createPage({
         text: "Original content for the change detection test.",
-        embeddingEnabled: true,
       });
       expect(page.knowledgeEntryId).not.toBeNull();
       const entryId = page.knowledgeEntryId!;
@@ -160,20 +214,16 @@ describe.skipIf(!hasEmbeddingProvider)(
       expect(chunks[0]?.text).toContain("Completely new content");
     }, 60000);
 
-    it("removes the entry when embedding is disabled", async () => {
-      // create already runs the initial sync (embeddingEnabled is set)
+    it("removes the mirrors when the organisation switches embedding off", async () => {
+      // create already runs the initial sync (the organisation has it on)
       const page = await createPage({
         text: "Content that will be un-embedded.",
-        embeddingEnabled: true,
       });
       expect(page.knowledgeEntryId).not.toBeNull();
       const entryId = page.knowledgeEntryId!;
 
-      await updateKnowledgeText(
-        page.id,
-        { embeddingEnabled: false },
-        ctx
-      );
+      await setEmbedding(false);
+      await setEmbedding(true); // restore for the remaining tests
 
       const fresh = await getKnowledgeTextById(page.id, ctx);
       expect(fresh.knowledgeEntryId).toBeNull();
@@ -186,10 +236,9 @@ describe.skipIf(!hasEmbeddingProvider)(
     }, 30000);
 
     it("removes the entry when the page is deleted", async () => {
-      // create already runs the initial sync (embeddingEnabled is set)
+      // create already runs the initial sync (the organisation has it on)
       const page = await createPage({
         text: "Content of a page that will be deleted.",
-        embeddingEnabled: true,
       });
       expect(page.knowledgeEntryId).not.toBeNull();
       const entryId = page.knowledgeEntryId!;

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "bun:test";
 import { searchKnowledgeTexts } from "./knowledge-text-search";
 import { createKnowledgeText } from "./knowledge-texts";
+import { setTenantEmbeddingEnabled } from "./knowledge-embedding-settings";
 import { syncKnowledgeTextEmbedding } from "./knowledge-text-embedding";
 import { initTests, TEST_ORGANISATION_1 } from "../../test/init.test";
 
@@ -124,11 +125,12 @@ describe.skipIf(!hasEmbeddingProvider)(
     beforeAll(async () => {
       await initTests();
 
+      // embedding is an organisation-wide switch, not a per-page flag
+      await setTenantEmbeddingEnabled(ctx.tenantId, true);
       const page = await createKnowledgeText({
         title: `Team Events ${RUN_TAG}`,
         text: `Every quarter we organize a company offsite with workshops and social activities. ${RUN_TAG}`,
         tenantId: ctx.tenantId,
-        embeddingEnabled: true,
       });
       await syncKnowledgeTextEmbedding(page.id, ctx.tenantId);
     });

@@ -310,7 +310,6 @@ export default function defineRoutesForKnowledgeTexts(
               parentId: v.optional(v.string()),
               teamId: v.optional(v.string()),
               tenantWide: v.optional(v.string()),
-              embeddingEnabled: v.optional(v.string()),
               splitIntoBlocks: v.optional(v.string()),
               usePostProcessors: v.optional(v.string()),
               // Parser pass-through options — only meaningful for the modalities
@@ -365,8 +364,6 @@ export default function defineRoutesForKnowledgeTexts(
               parentId: form.get("parentId")?.toString() || undefined,
               teamId: form.get("teamId")?.toString() || undefined,
               tenantWide: form.get("tenantWide")?.toString() === "true",
-              embeddingEnabled:
-                form.get("embeddingEnabled")?.toString() === "true",
               splitIntoBlocks:
                 form.get("splitIntoBlocks")?.toString() !== "false",
               usePostProcessors: form
@@ -424,7 +421,6 @@ export default function defineRoutesForKnowledgeTexts(
         parentId: v.optional(v.string()),
         teamId: v.optional(v.string()),
         tenantWide: v.optional(v.boolean()),
-        embeddingEnabled: v.optional(v.boolean()),
         splitIntoBlocks: v.optional(v.boolean()),
         usePostProcessors: v.optional(v.array(v.string())),
         notifyOnCompletion: v.optional(v.boolean()),
@@ -451,7 +447,6 @@ export default function defineRoutesForKnowledgeTexts(
                 parentId: body.parentId,
                 teamId: body.teamId,
                 tenantWide: body.tenantWide,
-                embeddingEnabled: body.embeddingEnabled,
                 splitIntoBlocks: body.splitIntoBlocks,
                 usePostProcessors: body.usePostProcessors,
               },
@@ -500,7 +495,6 @@ export default function defineRoutesForKnowledgeTexts(
               parentId: v.optional(v.string()),
               teamId: v.optional(v.string()),
               tenantWide: v.optional(v.boolean()),
-              embeddingEnabled: v.optional(v.boolean()),
               meta: v.optional(v.record(v.string(), v.unknown())),
             })
           ),

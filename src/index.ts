@@ -79,6 +79,7 @@ import {
   sweepStaleSummaries,
 } from "./lib/knowledge/summaries";
 import { reEmbedJobRegister } from "./lib/knowledge/re-embed";
+import { textEmbeddingJobRegister } from "./lib/knowledge/knowledge-text-embedding-backfill";
 import { webhookDeliveryJobRegister } from "./lib/webhooks/delivery-job";
 import { isAiEnabled } from "./lib/ai";
 // Cron
@@ -540,6 +541,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
         knowledgeIngestJobRegister,
         summaryJobRegister,
         reEmbedJobRegister,
+        textEmbeddingJobRegister,
         webhookDeliveryJobRegister,
       ];
       const allJobHandlers = [
@@ -679,6 +681,35 @@ export {
   enqueueReEmbedding,
 } from "./lib/knowledge/re-embed";
 export { getConfiguredEmbeddingModelId } from "./lib/knowledge/embedding";
+
+/**
+ * Export the organisation-wide embedding switch (there is no per-page one).
+ */
+export {
+  KNOWLEDGE_EMBEDDING_SETTING_KEY,
+  getTenantEmbeddingEnabled,
+  getTenantEmbeddingEnabledSafe,
+  getEmbeddingProviderStatus,
+  getKnowledgeEmbeddingSettings,
+  setTenantEmbeddingEnabled,
+} from "./lib/knowledge/knowledge-embedding-settings";
+export {
+  TEXT_EMBEDDING_JOB_TYPE,
+  textEmbeddingJobRegister,
+  findKnowledgeTextsNeedingEmbedding,
+  countKnowledgeTextsNeedingEmbedding,
+  enqueueKnowledgeTextEmbeddingBackfill,
+} from "./lib/knowledge/knowledge-text-embedding-backfill";
+export type {
+  TextEmbeddingJobMetadata,
+  EnqueueEmbeddingBackfillResult,
+} from "./lib/knowledge/knowledge-text-embedding-backfill";
+export type {
+  KnowledgeEmbeddingSetting,
+  KnowledgeEmbeddingSettingsState,
+  EmbeddingProviderStatus,
+  SetKnowledgeEmbeddingResult,
+} from "./lib/knowledge/knowledge-embedding-settings";
 export {
   getKnowledgeTenantConfig,
   setKnowledgeTenantConfig,
