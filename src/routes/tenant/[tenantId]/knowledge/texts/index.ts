@@ -34,6 +34,7 @@ import {
 import {
   getKnowledgeTenantConfig,
   setKnowledgeTenantConfig,
+  KNOWLEDGE_PAGE_TYPE_COLORS,
 } from "../../../../../lib/knowledge/knowledge-config";
 import { enqueueSummaryBackfill } from "../../../../../lib/knowledge/summaries";
 import { getUsedAttributeValues } from "../../../../../lib/knowledge/knowledge-texts";
@@ -877,6 +878,20 @@ export default function defineRoutesForKnowledgeTexts(
         autoSummaries: v.optional(v.boolean()),
         pageTypes: v.optional(v.array(v.string())),
         statuses: v.optional(v.array(v.string())),
+        // Presentation per page type. Cosmetic only, so the icon stays a
+        // bounded free string (the frontend resolves emoji / known icon names
+        // and renders nothing for anything else) while the colour is checked
+        // against the closed palette to catch typos on write.
+        pageTypeStyles: v.optional(
+          v.record(
+            v.string(),
+            v.object({
+              icon: v.optional(v.pipe(v.string(), v.maxLength(64))),
+              color: v.optional(v.picklist(KNOWLEDGE_PAGE_TYPE_COLORS)),
+              label: v.optional(v.pipe(v.string(), v.maxLength(120))),
+            })
+          )
+        ),
         attributes: v.optional(
           v.array(
             v.object({

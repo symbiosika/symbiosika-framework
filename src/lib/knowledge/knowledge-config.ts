@@ -43,6 +43,48 @@ export interface KnowledgeAttributeDefinition {
   type?: "string" | "number" | "date" | "boolean" | "enum";
 }
 
+/**
+ * Colour keys a page type may carry. Deliberately a small closed list: the
+ * frontend maps each key onto Tailwind palette utility classes, so a value
+ * outside this list has no rendering. Kept here (not only in the frontend) so
+ * the config route can reject typos on write.
+ */
+export const KNOWLEDGE_PAGE_TYPE_COLORS = [
+  "slate",
+  "red",
+  "orange",
+  "amber",
+  "green",
+  "teal",
+  "blue",
+  "violet",
+  "pink",
+] as const;
+
+export type KnowledgePageTypeColor =
+  (typeof KNOWLEDGE_PAGE_TYPE_COLORS)[number];
+
+/**
+ * Presentation for one page type — icon, colour and display label. Purely
+ * cosmetic: it never gates a write, and a page type works without one.
+ *
+ * Kept in a separate map (keyed by page type) instead of enriching the
+ * `pageTypes` vocabulary itself, so facet validation, the MCP surface and
+ * every existing `pageTypes` consumer keep seeing a plain `string[]`.
+ *
+ * `icon` is resolved by the frontend in three steps: an emoji is rendered as
+ * is, a known icon name from the frontend's bundled allowlist becomes that
+ * icon, anything else renders nothing. Storing an unknown name is therefore
+ * harmless and never breaks a page.
+ */
+export interface KnowledgePageTypeStyle {
+  /** Emoji, or an icon name from the frontend's bundled allowlist. */
+  icon?: string;
+  color?: KnowledgePageTypeColor;
+  /** Display label; falls back to the page type key itself. */
+  label?: string;
+}
+
 export interface KnowledgeTenantConfig {
   /**
    * Whether pages in `auto` summary mode are (re)generated in the background.
@@ -60,6 +102,12 @@ export interface KnowledgeTenantConfig {
    */
   statuses: string[];
   /**
+   * Presentation per page type, keyed by the page type as it appears in
+   * `pageTypes`. Additive and optional — entries for page types that no longer
+   * exist are ignored on read and pruned when the config is saved.
+   */
+  pageTypeStyles: Record<string, KnowledgePageTypeStyle>;
+  /**
    * Catalog attribute keys allowed on knowledge pages. Writes that set an
    * attribute key outside this list (or a value outside a key's closed value
    * list) are rejected. Default: none — attributes are opt-in per tenant.
@@ -75,6 +123,7 @@ const DEFAULT_KNOWLEDGE_TENANT_CONFIG: KnowledgeTenantConfig = {
   autoSummaries: true,
   pageTypes: DEFAULT_PAGE_TYPES,
   statuses: DEFAULT_STATUSES,
+  pageTypeStyles: {},
   attributes: [],
 };
 
@@ -120,13 +169,33 @@ export const getKnowledgeTenantConfig = async (
   return { ...DEFAULT_KNOWLEDGE_TENANT_CONFIG, ...stored };
 };
 
+/**
+ * Drop presentation entries whose page type is no longer part of the
+ * vocabulary, so removing a page type does not leave its icon/colour behind to
+ * reappear when the same name is added again later.
+ */
+const prunePageTypeStyles = (
+  pageTypes: string[],
+  styles: Record<string, KnowledgePageTypeStyle> | undefined
+): Record<string, KnowledgePageTypeStyle> => {
+  if (!styles) return {};
+  const allowed = new Set(pageTypes);
+  return Object.fromEntries(
+    Object.entries(styles).filter(([key]) => allowed.has(key))
+  );
+};
+
 /** Upsert (patch) a tenant's knowledge config. */
 export const setKnowledgeTenantConfig = async (
   tenantId: string,
   patch: Partial<KnowledgeTenantConfig>
 ): Promise<KnowledgeTenantConfig> => {
   const current = await getKnowledgeTenantConfig(tenantId);
-  const next = { ...current, ...patch };
+  const merged = { ...current, ...patch };
+  const next = {
+    ...merged,
+    pageTypeStyles: prunePageTypeStyles(merged.pageTypes, merged.pageTypeStyles),
+  };
   try {
     await getOrganisationSpecificData(tenantId, KNOWLEDGE_CONFIG_KEY);
     await updateOrganisationSpecificData(tenantId, KNOWLEDGE_CONFIG_KEY, {
