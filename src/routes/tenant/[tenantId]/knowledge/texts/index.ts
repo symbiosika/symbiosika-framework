@@ -877,6 +877,21 @@ export default function defineRoutesForKnowledgeTexts(
         autoSummaries: v.optional(v.boolean()),
         pageTypes: v.optional(v.array(v.string())),
         statuses: v.optional(v.array(v.string())),
+        // Presentation per page type. Cosmetic only, and icon and colour are
+        // opaque client tokens: which values exist belongs to the consuming
+        // app's design system, so both are bounded free strings rather than
+        // closed lists. A client resolves what it knows and renders nothing
+        // for the rest.
+        pageTypeStyles: v.optional(
+          v.record(
+            v.string(),
+            v.object({
+              icon: v.optional(v.pipe(v.string(), v.maxLength(64))),
+              color: v.optional(v.pipe(v.string(), v.maxLength(32))),
+              label: v.optional(v.pipe(v.string(), v.maxLength(120))),
+            })
+          )
+        ),
         attributes: v.optional(
           v.array(
             v.object({

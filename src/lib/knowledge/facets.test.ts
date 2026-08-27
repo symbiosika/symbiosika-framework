@@ -121,6 +121,97 @@ describe("controlled facets", () => {
     });
   });
 });
+describe("page type presentation (pageTypeStyles)", () => {
+  beforeAll(async () => {
+    await initTests();
+  });
+
+  test("defaults to an empty map", async () => {
+    const cfg = await getKnowledgeTenantConfig(TENANT);
+    expect(cfg.pageTypeStyles).toBeDefined();
+    expect(typeof cfg.pageTypeStyles).toBe("object");
+  });
+
+  test("stores icon, colour and label per page type", async () => {
+    const saved = await setKnowledgeTenantConfig(TENANT, {
+      pageTypeStyles: {
+        manual: { icon: "book-open-page-variant-outline", color: "blue" },
+        FAQ: { icon: "\u{1F4D8}", label: "H\u00e4ufige Fragen" },
+      },
+    });
+    expect(saved.pageTypeStyles.manual).toEqual({
+      icon: "book-open-page-variant-outline",
+      color: "blue",
+    });
+    expect(saved.pageTypeStyles.FAQ?.label).toBe("H\u00e4ufige Fragen");
+
+    // survives a round trip through the store
+    const reread = await getKnowledgeTenantConfig(TENANT);
+    expect(reread.pageTypeStyles.manual?.color).toBe("blue");
+  });
+
+  test("treats icon and colour as opaque client tokens", async () => {
+    // The framework must not know which icons or colours exist — that belongs
+    // to the consuming app's design system. Values from a completely different
+    // vocabulary have to round-trip untouched, so one client's config never
+    // becomes unwritable for another.
+    const saved = await setKnowledgeTenantConfig(TENANT, {
+      pageTypeStyles: {
+        manual: { icon: "custom:brand-handbook", color: "#3f7fd0" },
+        FAQ: { icon: "\u{1F4D8}", color: "brand-accent-2" },
+      },
+    });
+    expect(saved.pageTypeStyles.manual).toEqual({
+      icon: "custom:brand-handbook",
+      color: "#3f7fd0",
+    });
+    expect(saved.pageTypeStyles.FAQ?.color).toBe("brand-accent-2");
+
+    const reread = await getKnowledgeTenantConfig(TENANT);
+    expect(reread.pageTypeStyles.manual?.color).toBe("#3f7fd0");
+  });
+
+  test("is cosmetic — it never gates a page write", async () => {
+    // "text" has no style configured, yet a page of that type still saves
+    const page = await createKnowledgeText({
+      tenantId: TENANT,
+      title: "Unstyled type",
+      text: "content",
+      pageType: "text",
+    });
+    expect(page.pageType).toBe("text");
+  });
+
+  test("prunes styles whose page type is removed from the vocabulary", async () => {
+    await setKnowledgeTenantConfig(TENANT, {
+      pageTypes: ["manual", "FAQ", "policy", "note", "text"],
+      pageTypeStyles: {
+        manual: { color: "blue" },
+        policy: { color: "red" },
+      },
+    });
+
+    // dropping "policy" from the vocabulary must drop its presentation too,
+    // so re-adding the name later does not resurrect a stale icon
+    const shrunk = await setKnowledgeTenantConfig(TENANT, {
+      pageTypes: ["manual", "FAQ", "note", "text"],
+    });
+    expect(Object.keys(shrunk.pageTypeStyles).sort()).toEqual(["manual"]);
+
+    const reread = await getKnowledgeTenantConfig(TENANT);
+    expect(reread.pageTypeStyles.policy).toBeUndefined();
+    expect(reread.pageTypeStyles.manual?.color).toBe("blue");
+  });
+
+  test("restores the default vocabulary for the suites that follow", async () => {
+    const restored = await setKnowledgeTenantConfig(TENANT, {
+      pageTypes: ["manual", "FAQ", "policy", "note", "text"],
+      pageTypeStyles: {},
+    });
+    expect(restored.pageTypeStyles).toEqual({});
+  });
+});
+
 describe("catalog attributes", () => {
   beforeAll(async () => {
     await initTests();

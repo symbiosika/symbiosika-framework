@@ -719,6 +719,7 @@ export {
 export type {
   KnowledgeTenantConfig,
   KnowledgeAttributeDefinition,
+  KnowledgePageTypeStyle,
 } from "./lib/knowledge/knowledge-config";
 
 /**
