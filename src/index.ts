@@ -715,13 +715,11 @@ export {
   setKnowledgeTenantConfig,
   DEFAULT_PAGE_TYPES,
   DEFAULT_STATUSES,
-  KNOWLEDGE_PAGE_TYPE_COLORS,
 } from "./lib/knowledge/knowledge-config";
 export type {
   KnowledgeTenantConfig,
   KnowledgeAttributeDefinition,
   KnowledgePageTypeStyle,
-  KnowledgePageTypeColor,
 } from "./lib/knowledge/knowledge-config";
 
 /**

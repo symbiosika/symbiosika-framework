@@ -44,27 +44,6 @@ export interface KnowledgeAttributeDefinition {
 }
 
 /**
- * Colour keys a page type may carry. Deliberately a small closed list: the
- * frontend maps each key onto Tailwind palette utility classes, so a value
- * outside this list has no rendering. Kept here (not only in the frontend) so
- * the config route can reject typos on write.
- */
-export const KNOWLEDGE_PAGE_TYPE_COLORS = [
-  "slate",
-  "red",
-  "orange",
-  "amber",
-  "green",
-  "teal",
-  "blue",
-  "violet",
-  "pink",
-] as const;
-
-export type KnowledgePageTypeColor =
-  (typeof KNOWLEDGE_PAGE_TYPE_COLORS)[number];
-
-/**
  * Presentation for one page type — icon, colour and display label. Purely
  * cosmetic: it never gates a write, and a page type works without one.
  *
@@ -72,15 +51,23 @@ export type KnowledgePageTypeColor =
  * `pageTypes` vocabulary itself, so facet validation, the MCP surface and
  * every existing `pageTypes` consumer keep seeing a plain `string[]`.
  *
- * `icon` is resolved by the frontend in three steps: an emoji is rendered as
- * is, a known icon name from the frontend's bundled allowlist becomes that
- * icon, anything else renders nothing. Storing an unknown name is therefore
- * harmless and never breaks a page.
+ * **`icon` and `color` are opaque client tokens.** The framework stores and
+ * returns them without interpreting either, because which icons and which
+ * colours exist is a property of the consuming app's design system, not of the
+ * framework: one app may use Material icon names and Tailwind palette keys,
+ * another emoji and hex values, a third its own brand tokens. A client is
+ * expected to resolve a value it knows and render nothing (or a neutral
+ * default) for one it does not, so a config written by a newer or different
+ * client never breaks an older one.
+ *
+ * Consequently a client must treat `color` as a token to look up, never as a
+ * string to interpolate into CSS.
  */
 export interface KnowledgePageTypeStyle {
-  /** Emoji, or an icon name from the frontend's bundled allowlist. */
+  /** Icon token — e.g. an emoji or an icon name the client knows. */
   icon?: string;
-  color?: KnowledgePageTypeColor;
+  /** Colour token the client resolves against its own palette. */
+  color?: string;
   /** Display label; falls back to the page type key itself. */
   label?: string;
 }

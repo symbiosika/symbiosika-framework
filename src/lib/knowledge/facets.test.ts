@@ -150,6 +150,27 @@ describe("page type presentation (pageTypeStyles)", () => {
     expect(reread.pageTypeStyles.manual?.color).toBe("blue");
   });
 
+  test("treats icon and colour as opaque client tokens", async () => {
+    // The framework must not know which icons or colours exist — that belongs
+    // to the consuming app's design system. Values from a completely different
+    // vocabulary have to round-trip untouched, so one client's config never
+    // becomes unwritable for another.
+    const saved = await setKnowledgeTenantConfig(TENANT, {
+      pageTypeStyles: {
+        manual: { icon: "custom:brand-handbook", color: "#3f7fd0" },
+        FAQ: { icon: "\u{1F4D8}", color: "brand-accent-2" },
+      },
+    });
+    expect(saved.pageTypeStyles.manual).toEqual({
+      icon: "custom:brand-handbook",
+      color: "#3f7fd0",
+    });
+    expect(saved.pageTypeStyles.FAQ?.color).toBe("brand-accent-2");
+
+    const reread = await getKnowledgeTenantConfig(TENANT);
+    expect(reread.pageTypeStyles.manual?.color).toBe("#3f7fd0");
+  });
+
   test("is cosmetic — it never gates a page write", async () => {
     // "text" has no style configured, yet a page of that type still saves
     const page = await createKnowledgeText({
