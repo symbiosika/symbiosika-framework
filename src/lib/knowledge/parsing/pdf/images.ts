@@ -1,5 +1,6 @@
 import log from "../../../log";
 import { saveFile } from "../../../storage";
+import { imageDescriptionMarker } from "../../image-descriptions";
 
 /**
  * Default bucket for images a parsing service extracted from a document.
@@ -53,6 +54,17 @@ export type ParsedPageImage = {
   id: string;
   /** Raw base64 or a `data:` URL. Null/absent when extraction was disabled. */
   base64?: string | null;
+  /**
+   * What the service recognised on the picture — a caption, an OCR summary, a
+   * description of a diagram. Written into the document as an
+   * `<image-description>` marker below the image (see
+   * ../../image-descriptions.ts), which is what makes the content of an
+   * imported picture searchable and readable for an AI client.
+   *
+   * Only services advertising `parse_images_in_doc` fill this in, and only
+   * when the caller asked for it; absent everywhere else.
+   */
+  description?: string | null;
 };
 
 const escapeRegExp = (value: string): string =>
@@ -103,9 +115,13 @@ export const resolveImageReferences = async (
 
     if (savedPath) {
       savedPaths.push(savedPath);
+      // A description the service reported travels with the reference: it is
+      // appended below the rewritten image, so it stays attached to the right
+      // picture even when the page is later split into blocks or chunks.
+      const marker = imageDescriptionMarker(savedPath, image.description);
       out = out.replace(
         referencePattern(image.id),
-        `![${image.id}](${savedPath})`,
+        `![${image.id}](${savedPath})${marker ? `\n${marker}` : ""}`,
       );
       continue;
     }

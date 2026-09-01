@@ -22,7 +22,16 @@ const getBaseUrl = (): string | undefined => process.env.PDF_PARSER_SERVICE_URL;
 // "sync" (default) uses POST /v1/parse; "async" uses the job endpoints.
 const getMode = (): string => process.env.PDF_PARSER_SERVICE_MODE ?? "sync";
 
-type RawImage = { id: string; base64: string };
+type RawImage = {
+  id: string;
+  base64: string;
+  /**
+   * What the service recognised on the picture (spec §3 `pages[].images[]`).
+   * Optional: only services with the `parse_images_in_doc` feature describe
+   * their images, and only when the caller asked for it.
+   */
+  description?: string | null;
+};
 type RawPage = { page: number; text: string; images?: RawImage[] };
 type RawResult = {
   model: string;

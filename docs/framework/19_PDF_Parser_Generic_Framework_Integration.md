@@ -148,7 +148,7 @@ const API_KEY = process.env.PDF_PARSER_SERVICE_API_KEY;
 const BASE_URL = process.env.PDF_PARSER_SERVICE_URL;
 const MODE = process.env.PDF_PARSER_SERVICE_MODE ?? "sync"; // "sync" | "async"
 
-type RawImage = { id: string; base64: string };
+type RawImage = { id: string; base64: string; description?: string | null };
 type RawPage = { page: number; text: string; images?: RawImage[] };
 type RawResult = {
   model: string;
@@ -231,6 +231,10 @@ export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
   const data = MODE === "async" ? await runAsync(form) : await runSync(form);
 
   // Save images + replace placeholders (identical to the Mistral parser).
+  // A `description` the service reported is written below the rewritten
+  // reference as an `<image-description>` marker (see
+  // src/lib/knowledge/image-descriptions.ts), so the content of the picture
+  // reaches the index, the embedding and every AI reader.
   // An image is stored whenever the service sent a payload — the caller's
   // `extractImages` flag does not veto that. A reference we cannot resolve is
   // removed rather than left behind as a dead link.

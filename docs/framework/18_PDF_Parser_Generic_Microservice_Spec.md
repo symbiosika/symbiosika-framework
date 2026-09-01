@@ -241,7 +241,11 @@ curl -X POST https://parser.example.com/v1/parse \
       "page": 1,
       "text": "# Typenschild\n\nHersteller: Siemens\n\n![img-p1-1](img-p1-1)",
       "images": [
-        { "id": "img-p1-1", "base64": "data:image/png;base64,iVBORw0KGgo..." }
+        {
+          "id": "img-p1-1",
+          "base64": "data:image/png;base64,iVBORw0KGgo...",
+          "description": "Typenschild des Sch\u00fctzes, Klemmenbelegung rechts"
+        }
       ]
     },
     { "page": 2, "text": "Weitere technische Daten ..." }
@@ -279,10 +283,27 @@ curl -X POST https://parser.example.com/v1/parse \
 |----------|--------|----------|-------------|
 | `id`     | string | ✅       | Image id, unique within the document. |
 | `base64` | string | ✅       | Image bytes. Raw base64 **or** a `data:<mime>;base64,...` URL — both accepted. |
+| `description` | string | ❌ | What is ON the picture, in prose: a caption, the text of a label, what a diagram shows. Only meaningful for a modality advertising `parse_images_in_doc`, and only expected when the caller set that flag. |
 
 **Image placeholders:** every image referenced in `text` MUST use the id as both
 alt-text and URL: `![img-p1-1](img-p1-1)`. The framework replaces this with the
 real storage path after saving the image.
+
+**`description` vs. `parse_images_in_doc` in `text`:** the extra service may
+fold recognised content into the page `text` (§2.1.1) — that is prose in the
+document flow, and it loses the connection to the individual picture. A
+`description` stays attached to ONE image: the framework writes it below the
+rewritten reference as
+
+```markdown
+![img-p1-1](/api/v1/tenant/<t>/files/db/knowledge/<uuid>.png)
+<image-description src="/api/v1/tenant/<t>/files/db/knowledge/<uuid>.png">Typenschild des Schützes, Klemmenbelegung rechts</image-description>
+```
+
+so the description is indexed, embedded and readable for an AI client together
+with the image it belongs to. Keep it to ONE paragraph without line breaks
+(the framework collapses whitespace anyway) and describe only what is visible —
+this text is treated as page content, not as a note about the parse.
 
 ### `metadata[key]` — extracted value
 
@@ -412,6 +433,8 @@ def build_result(data: bytes, extract_images: bool, extract: str,
         raise HTTPException(400, "invalid_extract")
 
     # extra services are opt-in and only meaningful if advertised in capabilities
+    # images?: [{id, base64, description?}] - description only with
+    # parse_images_in_doc, see §3.x pages[].images[]
     pages = your_parser(data, extract_images, parse_images_in_doc)  # -> [{page, text, images?}, ...]
     metadata = your_extractor(pages, targets)        # -> {key: {value, found, ...}}
     warnings = [f"required field '{t['key']}' not found"

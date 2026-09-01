@@ -290,6 +290,50 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     expect(result.pages?.[0]?.text).not.toContain("![");
   });
 
+  test("writes a reported image description below the image", async () => {
+    // `parse_images_in_doc` services describe what is ON the picture. Without
+    // this the description would be dropped and the imported image would stay
+    // a dead path for search, embedding and every AI reader.
+    nextResultBody = {
+      model: "generic-v1",
+      pages: [
+        {
+          page: 1,
+          text: "Aufbau ![img-1](img-1)",
+          images: [
+            {
+              id: "img-1",
+              base64: "data:image/png;base64,AAAA",
+              description: "Schaltplan der Steuerplatine\nmit Netzteil links",
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = await parsePdfFileAsMarkdownGeneric(
+      pdfFile(),
+      { tenantId: "tenant-1" },
+      { extractImages: true, parseImagesInDoc: true },
+    );
+
+    expect(result.pages?.[0]?.text).toBe(
+      "Aufbau ![img-1](/storage/img-1)\n" +
+        '<image-description src="/storage/img-1">' +
+        "Schaltplan der Steuerplatine mit Netzteil links" +
+        "</image-description>",
+    );
+  });
+
+  test("adds nothing when the service reports no description", async () => {
+    const result = await parsePdfFileAsMarkdownGeneric(pdfFile(), {
+      tenantId: "tenant-1",
+    });
+
+    expect(result.pages?.[0]?.text).toBe("Hersteller ![img-1](/storage/img-1)");
+    expect(result.pages?.[0]?.text).not.toContain("image-description");
+  });
+
   test("leaves a page without dropped images byte-identical", async () => {
     // Nothing was stripped, so no whitespace reflow may happen: the trailing
     // double space is a markdown hard line break and must survive.
