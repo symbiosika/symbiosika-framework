@@ -130,6 +130,7 @@ export const parsePdfFileAsMarkdownMistral = async (
         page.markdown,
         (page.images ?? []).map((i) => ({ id: i.id, base64: i.image_base64 })),
         context.tenantId,
+        options?.imageBucket,
       );
       page.markdown = text;
       savedCount += savedPaths.length;

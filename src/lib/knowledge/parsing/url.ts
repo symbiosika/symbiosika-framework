@@ -47,6 +47,13 @@ export type UrlToMarkdownOptions = {
   };
   /** Override the PDF parser service/model (falls back to PDF_PARSER_SERVICE). */
   pdfModel?: string;
+  /**
+   * Storage bucket for images extracted from a PDF behind the URL. Defaults
+   * to `PARSED_IMAGES_BUCKET` ("images"); a caller that turns the result into
+   * a page passes the bucket that page's images belong in (see
+   * `PdfParserOptions.imageBucket`).
+   */
+  imageBucket?: string;
 };
 
 export type UrlToMarkdownResult = {
@@ -217,6 +224,7 @@ export const urlToMarkdown = async (
     );
     const parsed = await parsePdfFileAsMardown(file, opts.parseContext, {
       model: opts.pdfModel,
+      imageBucket: opts.imageBucket,
     });
     const markdown = (parsed.pages?.map((p) => p.text).join("\n\n") ?? "").trim();
     if (!markdown) {

@@ -2,6 +2,17 @@ import log from "../../../log";
 import { saveFile } from "../../../storage";
 
 /**
+ * Default bucket for images a parsing service extracted from a document.
+ *
+ * Kept as the default so existing callers are unaffected. A caller that owns
+ * the images afterwards should pass its own bucket instead: the knowledge
+ * page importer stores them in the "knowledge" bucket, where the page's file
+ * reference tracking (expiry, cleanup on delete) and the page-scoped image
+ * read both apply — neither of which reaches into this bucket.
+ */
+export const PARSED_IMAGES_BUCKET = "images";
+
+/**
  * Persist a base64-encoded image (raw base64 or a `data:` URL) to storage and
  * return the stored file path. Returns null when the payload is empty.
  *
@@ -11,6 +22,7 @@ export const saveBase64ImageToStorage = async (
   base64OrDataUrl: string | null | undefined,
   id: string,
   tenantId: string,
+  bucket: string = PARSED_IMAGES_BUCKET,
 ): Promise<string | null> => {
   // Defensive: providers may hand us a null/empty payload (e.g. Mistral OCR
   // returns `image_base64: null` for every image when image extraction is off).
@@ -31,7 +43,7 @@ export const saveBase64ImageToStorage = async (
   const blob = new Blob([bytes], { type: "image/jpeg" });
   const file = new File([blob], id, { type: "image/jpeg" });
 
-  const savedFile = await saveFile(file, "images", tenantId, "db");
+  const savedFile = await saveFile(file, bucket, tenantId, "db");
   return savedFile.path;
 };
 
@@ -56,7 +68,7 @@ const referencePattern = (id: string): RegExp =>
 
 /**
  * Persist a page's images and point its markdown references at the stored
- * paths.
+ * paths. `bucket` decides where they land (see {@link PARSED_IMAGES_BUCKET}).
  *
  * The important half is the failure path: a reference whose image was **not**
  * persisted — extraction disabled, empty payload, service reported an image it
@@ -75,6 +87,7 @@ export const resolveImageReferences = async (
   text: string,
   images: ParsedPageImage[],
   tenantId: string,
+  bucket: string = PARSED_IMAGES_BUCKET,
 ): Promise<{ text: string; savedPaths: string[] }> => {
   let out = text;
   const savedPaths: string[] = [];
@@ -85,6 +98,7 @@ export const resolveImageReferences = async (
       image.base64,
       image.id,
       tenantId,
+      bucket,
     );
 
     if (savedPath) {

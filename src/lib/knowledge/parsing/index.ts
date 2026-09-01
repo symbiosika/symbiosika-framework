@@ -64,6 +64,12 @@ export const parseFile = async (
     ocr?: boolean;
     /** Extra service: detect tables and render them as Markdown. */
     detectTables?: boolean;
+    /**
+     * Storage bucket for images extracted from the document. Defaults to
+     * `PARSED_IMAGES_BUCKET` ("images"); a caller that owns the images
+     * afterwards passes its own (see `PdfParserOptions.imageBucket`).
+     */
+    imageBucket?: string;
   }
 ): Promise<{
   text: string;
@@ -103,6 +109,7 @@ export const parseFile = async (
       parseImagesInDoc: options?.parseImagesInDoc,
       ocr: options?.ocr,
       detectTables: options?.detectTables,
+      imageBucket: options?.imageBucket,
     });
 
     // Create a combined text from all pages if available

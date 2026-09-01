@@ -48,6 +48,14 @@ export type PdfParserOptions = {
   ocr?: boolean;
   /** Extra service: detect tables and render them as Markdown in the text. */
   detectTables?: boolean;
+  /**
+   * Storage bucket for images the service extracts from the document.
+   * Defaults to `PARSED_IMAGES_BUCKET` ("images"). A caller that owns the
+   * images afterwards passes its own bucket — the knowledge page importer
+   * uses the "knowledge" bucket so the page's file reference tracking and the
+   * page-scoped image read apply to them.
+   */
+  imageBucket?: string;
 };
 
 /**

@@ -146,6 +146,7 @@ export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
       page.text,
       page.images ?? [],
       context.tenantId,
+      options?.imageBucket,
     );
     page.text = text;
     if (savedPaths.length > 0) {

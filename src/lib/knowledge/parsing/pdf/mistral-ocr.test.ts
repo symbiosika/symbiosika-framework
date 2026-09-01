@@ -16,14 +16,17 @@ process.env.MISTRAL_API_KEY ??= "test-key";
 // in the same module and must run for real. `saveFile` is the single point
 // where the real implementation would touch storage.
 const savedImages: string[] = [];
+const savedBuckets: string[] = [];
 mock.module("../../../storage", () => ({
-  saveFile: async (file: File) => {
+  saveFile: async (file: File, bucket: string) => {
     savedImages.push(file.name);
+    savedBuckets.push(bucket);
     return { path: `/storage/${file.name}` };
   },
 }));
 
 const { parsePdfFileAsMarkdownMistral } = await import("./mistral-ocr");
+const { PARSED_IMAGES_BUCKET } = await import("./images");
 
 const CONTEXT = { tenantId: "00000000-0000-0000-0000-000000000000" };
 
@@ -77,6 +80,7 @@ const installFetchMock = (
 afterEach(() => {
   globalThis.fetch = originalFetch;
   savedImages.length = 0;
+  savedBuckets.length = 0;
 });
 
 afterAll(() => {
@@ -98,6 +102,27 @@ describe("Mistral OCR parser", () => {
       "page one ![img-0.jpeg](/storage/img-0.jpeg)",
     );
     expect(result.pages?.map((p) => p.page)).toEqual([1, 2]);
+  });
+
+  test("stores images in the bucket the caller asked for", async () => {
+    installFetchMock(true);
+
+    await parsePdfFileAsMarkdownMistral(pdf(), CONTEXT, {
+      extractImages: true,
+      imageBucket: "knowledge",
+    });
+
+    expect(savedBuckets).toEqual(["knowledge"]);
+  });
+
+  test("falls back to the parsed-images bucket when none is given", async () => {
+    installFetchMock(true);
+
+    await parsePdfFileAsMarkdownMistral(pdf(), CONTEXT, {
+      extractImages: true,
+    });
+
+    expect(savedBuckets).toEqual([PARSED_IMAGES_BUCKET]);
   });
 
   test("drops the reference instead of emitting a dead link when extraction is off", async () => {
