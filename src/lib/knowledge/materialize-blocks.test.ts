@@ -130,3 +130,73 @@ describe("materializeBlocksText — assembly", () => {
     ).toBe("Preisliste:\n\n| Paket | Preis |\n| --- | --- |\n| Basis | 10 EUR |");
   });
 });
+
+describe("materializeBlocksText — images", () => {
+  const SRC = "/files/db/knowledge/33333333-3333-3333-3333-333333333333.png";
+
+  it("materializes an image without a description exactly as before", () => {
+    expect(md(`<img src="${SRC}" alt="Schaltplan">`)).toBe(
+      `![Schaltplan](${SRC})`
+    );
+    expect(md(`<img src="${SRC}">`)).toBe(`![](${SRC})`);
+    expect(md(`<img src="${SRC}" alt="a" title="t">`)).toBe(
+      `![a](${SRC} "t")`
+    );
+    // the editor's own attributes are decoration, not content
+    expect(
+      md(`<img src="${SRC}" alt="a" data-size="lg" data-align="center">`)
+    ).toBe(`![a](${SRC})`);
+    expect(md('<img alt="no src">')).toBe("");
+  });
+
+  it("emits the description as a marker below the image", () => {
+    expect(
+      md(
+        `<img src="${SRC}" alt="Schaltplan" data-description="Steuerplatine: links das Netzteil.">`
+      )
+    ).toBe(
+      `![Schaltplan](${SRC})\n` +
+        `<image-description src="${SRC}">Steuerplatine: links das Netzteil.</image-description>`
+    );
+  });
+
+  it("keeps the description on one line and escapes it", () => {
+    expect(
+      md(
+        `<img src="${SRC}" alt="a" data-description="Zeile eins&#10;  Zeile zwei &amp; &lt;mehr&gt;">`
+      )
+    ).toBe(
+      `![a](${SRC})\n` +
+        `<image-description src="${SRC}">Zeile eins Zeile zwei &amp; &lt;mehr&gt;</image-description>`
+    );
+  });
+
+  it("ignores an empty description attribute", () => {
+    expect(md(`<img src="${SRC}" alt="a" data-description="   ">`)).toBe(
+      `![a](${SRC})`
+    );
+  });
+
+  it("describes each image of a block separately", () => {
+    const other = "/files/db/images/44444444-4444-4444-4444-444444444444.jpg";
+    expect(
+      md(
+        `<img src="${SRC}" alt="a" data-description="Erstes">` +
+          `<img src="${other}" alt="b" data-description="Zweites">`
+      )
+    ).toBe(
+      `![a](${SRC})\n<image-description src="${SRC}">Erstes</image-description>` +
+        `![b](${other})\n<image-description src="${other}">Zweites</image-description>`
+    );
+  });
+
+  it("survives the trip through a paragraph and stays with its image", () => {
+    expect(
+      md(
+        `<p>Vorher</p><p><img src="${SRC}" alt="a" data-description="Beschreibung"></p><p>Nachher</p>`
+      )
+    ).toBe(
+      `Vorher\n\n![a](${SRC})\n<image-description src="${SRC}">Beschreibung</image-description>\n\nNachher`
+    );
+  });
+});

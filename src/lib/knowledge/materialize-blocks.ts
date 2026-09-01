@@ -9,6 +9,10 @@
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { unescapeWikiLinkMarkers, wikiLinkMarker } from "./wikilinks";
+import {
+  IMAGE_DESCRIPTION_ATTRIBUTE,
+  imageDescriptionMarker,
+} from "./image-descriptions";
 
 /** Join separator between materialized blocks. */
 export const BLOCK_SEPARATOR = "\n\n";
@@ -34,6 +38,15 @@ type ElementLike = {
   querySelectorAll(selector: string): ArrayLike<ElementLike>;
   getAttribute(name: string): string | null;
 };
+
+/**
+ * Turndown's own attribute cleaning (its `cleanAttribute`), replicated because
+ * it is not exported: whitespace runs that contain a newline collapse to a
+ * single newline. Used by the image rule so an image without a description
+ * materializes exactly as it did before that rule existed.
+ */
+const cleanAttribute = (value: string | null): string =>
+  value ? value.replace(/(\n+\s*)+/g, "\n") : "";
 
 const isCell = (node: ElementLike): boolean =>
   node.nodeName === "TH" || node.nodeName === "TD";
@@ -162,6 +175,33 @@ const getTurndown = (): TurndownService => {
         (node as unknown as ElementLike).getAttribute("checked") !== null
           ? "[x]"
           : "[ ]",
+    });
+    // An image's description is stored on the <img> itself
+    // (`data-description`, see image-descriptions.ts) and would be dropped by
+    // Turndown's own image rule together with every other attribute — which is
+    // how a caption a human wrote would stay invisible to search, embedding
+    // and every AI reader. It is emitted as a marker on the line below the
+    // image instead.
+    //
+    // Without a description the output is byte-identical to Turndown's default
+    // rule (same alt/title cleaning): materialization feeds the text cache and
+    // the content hash, so a cosmetic difference here would re-embed every
+    // page that contains a picture.
+    turndown.addRule("wikiImage", {
+      filter: (node) => node.nodeName === "IMG",
+      replacement: (_content, node) => {
+        const element = node as unknown as ElementLike;
+        const src = element.getAttribute("src") ?? "";
+        if (!src) return "";
+        const alt = cleanAttribute(element.getAttribute("alt"));
+        const title = cleanAttribute(element.getAttribute("title"));
+        const image = `![${alt}](${src}${title ? ` "${title}"` : ""})`;
+        const marker = imageDescriptionMarker(
+          src,
+          element.getAttribute(IMAGE_DESCRIPTION_ATTRIBUTE)
+        );
+        return marker ? `${image}\n${marker}` : image;
+      },
     });
     // A page reference is stored as <code data-wiki-link="Target">[[Target]]</code>
     // (see wikilinks.ts). Emit the bare marker instead of Turndown's default
