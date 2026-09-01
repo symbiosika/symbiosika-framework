@@ -172,7 +172,8 @@ export const parsePdfFileAsMarkdownMistralOpenRouter = async (
           const path = await saveBase64ImageToStorage(
             part.image_url.url,
             `or-img-${savedImagePaths.length}.jpeg`,
-            context.tenantId
+            context.tenantId,
+            options?.imageBucket
           );
           if (path) savedImagePaths.push(path);
         }

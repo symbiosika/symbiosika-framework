@@ -19,8 +19,12 @@ process.env.POSTGRES_DB ??= "symbiosika";
 
 // Stub only the storage write, so the reference-resolving logic in ./images
 // (rewrite on success, strip on failure) runs for real.
+const savedBuckets: string[] = [];
 mock.module("../../../storage", () => ({
-  saveFile: async (file: File) => ({ path: `/storage/${file.name}` }),
+  saveFile: async (file: File, bucket: string) => {
+    savedBuckets.push(bucket);
+    return { path: `/storage/${file.name}` };
+  },
 }));
 
 const {
@@ -33,6 +37,12 @@ const {
 // Registry dispatcher — exercised here so the capability tests reuse the same
 // fake service + env this file already stands up.
 const { getConfiguredParserCapabilities } = await import("./index");
+const { PARSED_IMAGES_BUCKET } = await import("./images");
+// The public parsing entry point the knowledge-page importer calls. Exercised
+// here so the `imageBucket` option is covered over the whole path it travels
+// (parseFile → parsePdfFileAsMardown → parser → image storage), not just at
+// the parser's own doorstep.
+const { parseFile } = await import("../index");
 
 // --- A mini fake parsing service implementing the wire contract ------------
 
@@ -172,6 +182,7 @@ afterAll(() => {
 
 afterEach(() => {
   resetGenericParserCapabilitiesCache();
+  savedBuckets.length = 0;
   failNextParse = false;
   nextResultBody = null;
   delete process.env.PDF_PARSER_SERVICE_MODE;
@@ -236,6 +247,26 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     expect(lastParseForm?.extractImages).toBe("false");
     expect(result.includesImages).toBe(true);
     expect(result.pages?.[0]?.text).toBe("Hersteller ![img-1](/storage/img-1)");
+  });
+
+  test("stores extracted images in the parsed-images bucket by default", async () => {
+    await parsePdfFileAsMarkdownGeneric(pdfFile(), { tenantId: "tenant-1" });
+
+    expect(savedBuckets).toEqual([PARSED_IMAGES_BUCKET]);
+  });
+
+  test("parseFile routes extracted images into the requested bucket", async () => {
+    // The knowledge-page importer passes the page image bucket here so an
+    // imported document's pictures land where a page's own images live.
+    process.env.PDF_PARSER_SERVICE = "generic";
+
+    const result = await parseFile(pdfFile(), { tenantId: "tenant-1" }, {
+      extractImages: true,
+      imageBucket: "knowledge",
+    });
+
+    expect(savedBuckets).toEqual(["knowledge"]);
+    expect(result.text).toContain("![img-1](/storage/img-1)");
   });
 
   test("strips placeholders for images the service listed but did not send", async () => {

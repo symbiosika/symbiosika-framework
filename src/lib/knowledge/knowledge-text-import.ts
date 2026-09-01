@@ -29,6 +29,7 @@ import {
   syncKnowledgeTextBlocks,
   type KnowledgeTextBlockInput,
 } from "./knowledge-text-blocks";
+import { KNOWLEDGE_FILES_BUCKET } from "./knowledge-text-files";
 import { syncKnowledgeTextEmbeddingSafe } from "./knowledge-text-embedding";
 import type {
   KnowledgeTextSelect,
@@ -124,6 +125,20 @@ type FileParserOptions = {
   detectTables?: boolean;
 };
 
+/**
+ * Bucket for images a parser extracts from an imported document.
+ *
+ * The same bucket the block editor uploads into, deliberately: from the
+ * moment the page exists, an extracted image IS a page image. Only there does
+ * the page's file bookkeeping reach it — `syncKnowledgeTextFileReferences`
+ * links it to the page on the first save, clears its expiry, and gives it the
+ * grace-period expiry when the last reference (or the page) goes away. In the
+ * parser's own default bucket it would instead sit outside the page
+ * lifecycle: never cleaned up, and unreachable through the page-scoped image
+ * endpoints that serve clients without the `files:read` scope.
+ */
+const IMPORT_IMAGE_BUCKET = KNOWLEDGE_FILES_BUCKET;
+
 /** Convert an uploaded file to markdown text (plus any parser-extracted metadata) */
 const fileToMarkdown = async (
   file: File,
@@ -143,7 +158,10 @@ const fileToMarkdown = async (
     return { text: getTurndown().turndown(await file.text()).trim() };
   }
   // PDF, plain text, … via the existing parsing pipeline
-  const parsed = await parseFile(file, context, parserOptions);
+  const parsed = await parseFile(file, context, {
+    ...parserOptions,
+    imageBucket: IMPORT_IMAGE_BUCKET,
+  });
   return { text: parsed.text, metadata: parsed.metadata };
 };
 
@@ -313,6 +331,7 @@ export const importKnowledgeTextFromUrl = async (
       teamId: options.teamId,
       workspaceId: options.workspaceId,
     },
+    imageBucket: IMPORT_IMAGE_BUCKET,
   });
   if (result.markdown.trim().length === 0) {
     throw new Error("The page contains no extractable text");
