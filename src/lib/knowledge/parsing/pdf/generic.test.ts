@@ -40,7 +40,7 @@ const { getConfiguredParserCapabilities } = await import("./index");
 const { PARSED_IMAGES_BUCKET } = await import("./images");
 // The public parsing entry point the knowledge-page importer calls. Exercised
 // here so the `imageBucket` option is covered over the whole path it travels
-// (parseFile → parsePdfFileAsMardown → parser → image storage), not just at
+// (parseFile → parseFileWithService → parser → image storage), not just at
 // the parser's own doorstep.
 const { parseFile } = await import("../index");
 
@@ -58,6 +58,7 @@ let lastParseForm: {
   detectTables: string | null;
 } | null = null;
 let capabilitiesHits = 0;
+let jobsCreated = 0;
 let failNextParse = false;
 /** Overrides RESULT_BODY for a single parse, reset in afterEach. */
 let nextResultBody: unknown = null;
@@ -82,6 +83,51 @@ const CAPABILITIES_BODY = {
       modality: "image",
       mime_types: ["image/png"],
       extensions: [".png"],
+    },
+    // Mirrors the running service's registry: everything non-media is one
+    // `document` modality — never `ocr` (nothing is recognised, the structure
+    // is in the file) and never `include_positions` (no rendering, no
+    // geometry).
+    {
+      modality: "document",
+      mime_types: [
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "text/plain",
+        "text/markdown",
+        "text/csv",
+        "text/tab-separated-values",
+        "message/rfc822",
+      ],
+      extensions: [
+        ".docx",
+        ".xlsx",
+        ".pptx",
+        ".txt",
+        ".log",
+        ".md",
+        ".csv",
+        ".tsv",
+        ".eml",
+      ],
+      features: {
+        extract_images: true,
+        extract_fields: true,
+        async: true,
+        detect_tables: true,
+        preferred_language: true,
+        parse_images_in_doc: true,
+        polish_markdown: true,
+      },
+    },
+    // Audio advertises `async` and nothing else — it rejects `extract` and
+    // `extract_images=true` outright.
+    {
+      modality: "audio",
+      mime_types: ["audio/mpeg", "audio/ogg", "audio/opus"],
+      extensions: [".mp3", ".ogg", ".opus"],
+      features: { async: true },
     },
   ],
 };
@@ -109,6 +155,19 @@ let jobCounter = 0;
 
 let server: ReturnType<typeof Bun.serve>;
 
+/** Record what the framework sent, for both the sync and the job entry point. */
+const recordForm = async (req: Request): Promise<void> => {
+  const form = await req.formData();
+  lastParseForm = {
+    filename: (form.get("file") as File | null)?.name,
+    extractImages: form.get("extract_images") as string | null,
+    extract: form.get("extract") as string | null,
+    parseImagesInDoc: form.get("parse_images_in_doc") as string | null,
+    ocr: form.get("ocr") as string | null,
+    detectTables: form.get("detect_tables") as string | null,
+  };
+};
+
 beforeAll(() => {
   server = Bun.serve({
     port: 0,
@@ -125,15 +184,7 @@ beforeAll(() => {
       }
 
       if (url.pathname === "/v1/parse" && req.method === "POST") {
-        const form = await req.formData();
-        lastParseForm = {
-          filename: (form.get("file") as File | null)?.name,
-          extractImages: form.get("extract_images") as string | null,
-          extract: form.get("extract") as string | null,
-          parseImagesInDoc: form.get("parse_images_in_doc") as string | null,
-          ocr: form.get("ocr") as string | null,
-          detectTables: form.get("detect_tables") as string | null,
-        };
+        await recordForm(req);
         if (failNextParse) {
           return Response.json({ error: "cannot_parse" }, { status: 422 });
         }
@@ -141,7 +192,8 @@ beforeAll(() => {
       }
 
       if (url.pathname === "/v1/jobs" && req.method === "POST") {
-        await req.formData();
+        await recordForm(req);
+        jobsCreated += 1;
         const jobId = `job_${(jobCounter += 1)}`;
         jobs.add(jobId);
         return Response.json(
@@ -155,7 +207,7 @@ beforeAll(() => {
       );
       if (jobResultMatch) {
         return jobs.has(jobResultMatch[1]!)
-          ? Response.json(RESULT_BODY)
+          ? Response.json(nextResultBody ?? RESULT_BODY)
           : Response.json({ error: "not_ready" }, { status: 409 });
       }
 
@@ -183,6 +235,8 @@ afterAll(() => {
 afterEach(() => {
   resetGenericParserCapabilitiesCache();
   savedBuckets.length = 0;
+  lastParseForm = null;
+  jobsCreated = 0;
   failNextParse = false;
   nextResultBody = null;
   delete process.env.PDF_PARSER_SERVICE_MODE;
@@ -411,7 +465,12 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     expect(await genericParserSupports("application/pdf")).toBe(true);
     // Extension match is case-insensitive.
     expect(await genericParserSupports(undefined, ".PNG")).toBe(true);
-    expect(await genericParserSupports("audio/mpeg", ".mp3")).toBe(false);
+    // Advertised since the service grew audio; a format it does not list at
+    // all is still a no.
+    expect(await genericParserSupports("audio/mpeg", ".mp3")).toBe(true);
+    expect(await genericParserSupports("application/msword", ".doc")).toBe(
+      false,
+    );
   });
 
   test("getConfiguredParserCapabilities returns generic caps when configured", async () => {
@@ -442,5 +501,221 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
   test("getConfiguredParserCapabilities advertises nothing for the default parser", async () => {
     const caps = await getConfiguredParserCapabilities();
     expect(caps.modalities).toEqual([]);
+  });
+});
+
+// --- Routing: parseFile asks the service, it does not guess -----------------
+
+describe("parseFile routing against the advertised capabilities", () => {
+  /** The routing question goes to the *configured* service. */
+  const useGenericService = () => {
+    process.env.PDF_PARSER_SERVICE = "generic";
+  };
+  const upload = (name: string, type: string, body = "irrelevant") =>
+    new File([body], name, { type });
+
+  test("a .docx reaches the service instead of being rejected", async () => {
+    // This is the error that reached end users: "Unsupported file type for
+    // parsing: …wordprocessingml.document".
+    useGenericService();
+
+    const result = await parseFile(
+      upload(
+        "bericht.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ),
+      { tenantId: "tenant-1" },
+    );
+
+    expect(lastParseForm?.filename).toBe("bericht.docx");
+    expect(result.text).toContain("Seite zwei");
+  });
+
+  test("an .eml reaches the service", async () => {
+    useGenericService();
+
+    const result = await parseFile(upload("mail.eml", "message/rfc822"), {
+      tenantId: "tenant-1",
+    });
+
+    expect(lastParseForm?.filename).toBe("mail.eml");
+    expect(result.text).toContain("Seite zwei");
+  });
+
+  test("a .csv arriving as text/plain goes to the service, not the local text path", async () => {
+    // Browsers label .csv as text/plain all the time. Reading it locally would
+    // throw away the whole table layer, so the extension beats the MIME here.
+    useGenericService();
+
+    const result = await parseFile(
+      upload("tabelle.csv", "text/plain", "Name;Wert\nA;1"),
+      { tenantId: "tenant-1" },
+    );
+
+    expect(lastParseForm?.filename).toBe("tabelle.csv");
+    expect(result.text).not.toContain("Name;Wert");
+  });
+
+  test("a .xlsx with a generic MIME is recognised by its extension", async () => {
+    useGenericService();
+
+    const result = await parseFile(
+      upload("zahlen.xlsx", "application/octet-stream"),
+      { tenantId: "tenant-1" },
+    );
+
+    expect(lastParseForm?.filename).toBe("zahlen.xlsx");
+    expect(result.text).toContain("Seite zwei");
+  });
+
+  test("markdown stays in-house — no service call", async () => {
+    useGenericService();
+
+    const result = await parseFile(
+      upload("notiz.md", "text/markdown", "# Titel\n\nText"),
+      { tenantId: "tenant-1" },
+    );
+
+    expect(result.text).toBe("# Titel\n\nText");
+    expect(lastParseForm).toBeNull();
+  });
+
+  test("plain text stays in-house — no service call", async () => {
+    useGenericService();
+
+    const result = await parseFile(
+      upload("log.txt", "text/plain; charset=utf-8", "Zeile"),
+      { tenantId: "tenant-1" },
+    );
+
+    expect(result.text).toBe("Zeile");
+    expect(lastParseForm).toBeNull();
+  });
+
+  test("html stays in-house — the service rejects it on purpose", async () => {
+    useGenericService();
+
+    const result = await parseFile(
+      upload("seite.html", "text/html", "<h1>Titel</h1><p>Text</p>"),
+      { tenantId: "tenant-1" },
+    );
+
+    expect(result.text).toBe("# Titel\n\nText");
+    expect(lastParseForm).toBeNull();
+  });
+
+  test("a format nobody advertises is still rejected", async () => {
+    // .doc / .xls / .ppt were checked and deliberately dropped on the service
+    // side — not "not yet".
+    useGenericService();
+
+    await expect(
+      parseFile(upload("alt.doc", "application/msword"), {
+        tenantId: "tenant-1",
+      }),
+    ).rejects.toThrow("Unsupported file type for parsing");
+    expect(lastParseForm).toBeNull();
+  });
+
+  test("an image is parsed instead of yielding the NOT IMPLEMENTED literal", async () => {
+    // That string used to be written into the index as the page's text.
+    useGenericService();
+
+    const result = await parseFile(upload("bild.png", "image/png"), {
+      tenantId: "tenant-1",
+    });
+
+    expect(result.text).not.toContain("NOT IMPLEMENTED");
+    expect(result.text).toContain("Seite zwei");
+    expect(lastParseForm?.filename).toBe("bild.png");
+  });
+
+  test("warnings from a service response reach the parseFile result", async () => {
+    // A partial result that does not say so is a result that lies.
+    useGenericService();
+    nextResultBody = {
+      model: "generic-v1",
+      pages: [{ page: 1, text: "Teiltranskript" }],
+      warnings: ["transcription_incomplete:80/120"],
+    };
+
+    const result = await parseFile(upload("rede.mp3", "audio/mpeg"), {
+      tenantId: "tenant-1",
+    });
+
+    expect(result.warnings).toEqual(["transcription_incomplete:80/120"]);
+  });
+
+  test("audio takes the job path even while the service mode is sync", async () => {
+    // A one-hour recording would hold a single HTTP request open for the whole
+    // transcription and time out.
+    useGenericService();
+
+    const result = await parseFile(
+      upload("sprachnachricht.opus", "application/octet-stream"),
+      { tenantId: "tenant-1" },
+      {
+        extractImages: true,
+        extract: [{ key: "k", name: "K", description: "d" }],
+      },
+    );
+
+    expect(jobsCreated).toBe(1);
+    expect(result.text).toContain("Seite zwei");
+    // Audio advertises neither, and rejects both with `unsupported_option`.
+    expect(lastParseForm?.extractImages).toBe("false");
+    expect(lastParseForm?.extract).toBeNull();
+  });
+
+  test("does not send an option the target modality does not advertise", async () => {
+    // `document` has no `ocr`: nothing is recognised, the structure is in the
+    // file. Sending it anyway is noise at best.
+    useGenericService();
+
+    await parseFile(
+      upload("zahlen.xlsx", "application/octet-stream"),
+      { tenantId: "tenant-1" },
+      { ocr: true, detectTables: true, preferredLanguage: "de" },
+    );
+
+    expect(lastParseForm?.ocr).toBeNull();
+    expect(lastParseForm?.detectTables).toBe("true");
+  });
+
+  test("an explicitly selected parser decides what is supported", async () => {
+    // No PDF_PARSER_SERVICE in the environment: the routing question has to
+    // follow `options.model`, or a caller picking `generic` per call would be
+    // told its own formats are unsupported.
+    const result = await parseFile(
+      upload("mail.eml", "message/rfc822"),
+      { tenantId: "tenant-1" },
+      { model: "generic" },
+    );
+
+    expect(lastParseForm?.filename).toBe("mail.eml");
+    expect(result.text).toContain("Seite zwei");
+  });
+
+  test("the old parsePdfFileAsMardown name still resolves", async () => {
+    // Existing callers (e.g. parsing/url.ts before the rename) keep working.
+    const { parsePdfFileAsMardown, parseFileWithService } = await import(
+      "./index"
+    );
+    expect(parsePdfFileAsMardown).toBe(parseFileWithService);
+  });
+
+  test("PDF survives a capabilities outage", async () => {
+    // The static fallback exists for exactly this: discovery is down, PDF
+    // imports keep working.
+    useGenericService();
+    const url = process.env.PDF_PARSER_SERVICE_URL;
+    process.env.PDF_PARSER_SERVICE_URL = "http://127.0.0.1:1";
+    try {
+      await expect(
+        parseFile(pdfFile(), { tenantId: "tenant-1" }),
+      ).rejects.toThrow(/^(?!Unsupported file type)/);
+    } finally {
+      process.env.PDF_PARSER_SERVICE_URL = url;
+    }
   });
 });
