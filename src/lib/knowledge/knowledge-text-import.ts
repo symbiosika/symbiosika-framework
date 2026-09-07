@@ -66,11 +66,23 @@ export type ImportKnowledgeTextOptions = {
   parseImagesInDoc?: boolean;
   ocr?: boolean;
   detectTables?: boolean;
+  preferredLanguage?: string;
+  includePositions?: boolean;
+  polishMarkdown?: boolean;
+  /** Free-text hint about the document, handed to the service as `context`. */
+  context?: string;
 };
 
 export type ImportKnowledgeTextResult = {
   knowledgeText: KnowledgeTextSelect;
   blocks: KnowledgeTextBlockSelect[];
+  /**
+   * Non-fatal notes the parsing service reported for the imported file: a
+   * truncated transcript, skipped scan pages, an unreadable mail attachment.
+   * The service returns a partial result on purpose, so these belong in front
+   * of the user — without them the import looks complete when it is not.
+   */
+  parserWarnings?: string[];
 };
 
 let turndown: TurndownService | null = null;
@@ -123,6 +135,11 @@ type FileParserOptions = {
   parseImagesInDoc?: boolean;
   ocr?: boolean;
   detectTables?: boolean;
+  preferredLanguage?: string;
+  includePositions?: boolean;
+  polishMarkdown?: boolean;
+  /** Free-text hint about the document, handed to the service as `context`. */
+  context?: string;
 };
 
 /**
@@ -144,7 +161,11 @@ const fileToMarkdown = async (
   file: File,
   context: { tenantId: string; userId?: string; teamId?: string; workspaceId?: string },
   parserOptions?: FileParserOptions
-): Promise<{ text: string; metadata?: Record<string, ExtractedValue> }> => {
+): Promise<{
+  text: string;
+  metadata?: Record<string, ExtractedValue>;
+  warnings?: string[];
+}> => {
   const name = file.name ?? "";
   const mime = (file.type ?? "").trim().toLowerCase();
 
@@ -162,7 +183,11 @@ const fileToMarkdown = async (
     ...parserOptions,
     imageBucket: IMPORT_IMAGE_BUCKET,
   });
-  return { text: parsed.text, metadata: parsed.metadata };
+  return {
+    text: parsed.text,
+    metadata: parsed.metadata,
+    warnings: parsed.warnings,
+  };
 };
 
 /**
@@ -289,7 +314,7 @@ export const importKnowledgeTextFromFile = async (
   file: File,
   options: ImportKnowledgeTextOptions
 ): Promise<ImportKnowledgeTextResult> => {
-  const { text, metadata } = await fileToMarkdown(
+  const { text, metadata, warnings } = await fileToMarkdown(
     file,
     {
       tenantId: options.tenantId,
@@ -302,6 +327,10 @@ export const importKnowledgeTextFromFile = async (
       parseImagesInDoc: options.parseImagesInDoc,
       ocr: options.ocr,
       detectTables: options.detectTables,
+      preferredLanguage: options.preferredLanguage,
+      includePositions: options.includePositions,
+      polishMarkdown: options.polishMarkdown,
+      context: options.context,
     }
   );
   if (text.trim().length === 0) {
@@ -310,10 +339,11 @@ export const importKnowledgeTextFromFile = async (
   const title =
     options.title ??
     (file.name ? stripExtension(file.name) : "Imported document");
-  return await importMarkdownAsKnowledgeText(
+  const imported = await importMarkdownAsKnowledgeText(
     { title, text, sourceUri: file.name, parserMetadata: metadata },
     options
   );
+  return warnings?.length ? { ...imported, parserWarnings: warnings } : imported;
 };
 
 /**
@@ -336,8 +366,11 @@ export const importKnowledgeTextFromUrl = async (
   if (result.markdown.trim().length === 0) {
     throw new Error("The page contains no extractable text");
   }
-  return await importMarkdownAsKnowledgeText(
+  const imported = await importMarkdownAsKnowledgeText(
     { title: options.title ?? result.title, text: result.markdown, sourceUri: url },
     options
   );
+  return result.warnings?.length
+    ? { ...imported, parserWarnings: result.warnings }
+    : imported;
 };

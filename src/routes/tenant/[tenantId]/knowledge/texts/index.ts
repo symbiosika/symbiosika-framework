@@ -318,6 +318,10 @@ export default function defineRoutesForKnowledgeTexts(
               parseImagesInDoc: v.optional(v.string()),
               ocr: v.optional(v.string()),
               detectTables: v.optional(v.string()),
+              includePositions: v.optional(v.string()),
+              polishMarkdown: v.optional(v.string()),
+              preferredLanguage: v.optional(v.string()),
+              context: v.optional(v.string()),
             }),
           },
         },
@@ -378,6 +382,13 @@ export default function defineRoutesForKnowledgeTexts(
                 form.get("parseImagesInDoc")?.toString() === "true",
               ocr: form.get("ocr")?.toString() === "true",
               detectTables: form.get("detectTables")?.toString() === "true",
+              includePositions:
+                form.get("includePositions")?.toString() === "true",
+              polishMarkdown:
+                form.get("polishMarkdown")?.toString() === "true",
+              preferredLanguage:
+                form.get("preferredLanguage")?.toString() || undefined,
+              context: form.get("context")?.toString() || undefined,
             },
           },
           tenantId,
