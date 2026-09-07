@@ -87,6 +87,14 @@ const buildForm = (
   const form = new FormData();
   form.append("file", file, file.name || "document.pdf");
 
+  /**
+   * A feature map decides strictly. Without one nothing is gated — either the
+   * modality could not be resolved (discovery down) or the service does not
+   * take part in feature discovery at all, and spec §3 obliges a service to
+   * IGNORE an option it does not support rather than fail on it. Dropping the
+   * caller's options in that case would silently disable an extra service the
+   * third-party service does support.
+   */
   const advertises = (feature: string): boolean =>
     modality?.features ? modality.features[feature] === true : true;
 
@@ -263,12 +271,21 @@ const resolveModalityForFile = async (
  *
  * `PDF_PARSER_SERVICE_MODE` decides for documents, but audio and video parse
  * for as long as the recording is long — up to the service's 30 min budget —
- * and a sync request would hold the whole time and time out. Those always take
- * the job path unless the modality says it has no `async` support.
+ * and a sync request would hold the whole time and time out. Those take the
+ * job path whenever the modality advertises `async`.
+ *
+ * The job path requires ADVERTISED async, not merely the absence of a denial:
+ * posting to `/v1/jobs` on a service that has no job endpoints fails the parse
+ * outright, where the sync request would have worked. So a service that does
+ * not advertise it falls back to `PDF_PARSER_SERVICE_MODE` like any other.
  */
 const useJobPath = (modality?: ServiceModality): boolean => {
-  if (modality && LONG_RUNNING_MODALITIES.includes(modality.modality)) {
-    return modality.features?.[SERVICE_FEATURE.ASYNC] !== false;
+  if (
+    modality &&
+    LONG_RUNNING_MODALITIES.includes(modality.modality) &&
+    modality.features?.[SERVICE_FEATURE.ASYNC] === true
+  ) {
+    return true;
   }
   return getMode() === "async";
 };

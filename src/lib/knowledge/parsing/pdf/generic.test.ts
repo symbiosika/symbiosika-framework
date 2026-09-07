@@ -141,6 +141,13 @@ const CAPABILITIES_BODY = {
       extensions: [".mp3", ".ogg", ".opus"],
       features: { async: true },
     },
+    // A modality with no `features` at all: what a service that predates
+    // feature discovery advertises. Long-running, but no job endpoints.
+    {
+      modality: "video",
+      mime_types: ["video/mp4"],
+      extensions: [".mp4"],
+    },
   ],
 };
 
@@ -739,6 +746,36 @@ describe("parseFile routing against the advertised capabilities", () => {
     expect(lastParseForm?.fields.ocr).toBe("true");
     expect(lastParseForm?.fields.parse_images_in_doc).toBe("true");
     expect(lastParseForm?.fields.detect_tables).toBe("true");
+  });
+
+  test("a modality without a feature map still gets the caller's options", async () => {
+    // A service that does not take part in feature discovery must not have
+    // the caller's extra services silently dropped — spec §3 obliges it to
+    // ignore an option it cannot honour.
+    useGenericService();
+
+    await parseFile(
+      upload("clip.mp4", "video/mp4"),
+      { tenantId: "tenant-1" },
+      { ocr: true, serviceOptions: { preferred_language: "de" } },
+    );
+
+    expect(lastParseForm?.fields.ocr).toBe("true");
+    expect(lastParseForm?.fields.preferred_language).toBe("de");
+  });
+
+  test("takes the job path only for an advertised async modality", async () => {
+    // `video` here advertises no `async`: POSTing to /v1/jobs on a service
+    // without job endpoints fails the parse, where sync would have worked.
+    useGenericService();
+    const before = jobsCreated;
+
+    await parseFile(upload("clip.mp4", "video/mp4"), { tenantId: "tenant-1" });
+    expect(jobsCreated).toBe(before);
+
+    // Audio does advertise it and still goes async.
+    await parseFile(upload("rede.mp3", "audio/mpeg"), { tenantId: "tenant-1" });
+    expect(jobsCreated).toBe(before + 1);
   });
 
   test("does not send an option the target modality does not advertise", async () => {
