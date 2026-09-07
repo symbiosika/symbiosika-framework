@@ -14,6 +14,7 @@ import {
   isUninformativeMime,
   PDF_PARSER,
   PDF_PARSER_ALIASES,
+  SERVICE_FEATURE,
   type PdfParser,
   type PdfParserContext,
   type PdfParserOptions,
@@ -65,8 +66,8 @@ function mistralOcrCapabilities(service: string): ServiceCapabilities {
         mimeTypes: ["application/pdf"],
         extensions: [".pdf"],
         // OCR is inherent to the engine rather than an opt-in flag, so
-        // `extractImages` is the only knob the caller actually controls.
-        features: { extractImages: true },
+        // image extraction is the only knob the caller actually controls.
+        features: { [SERVICE_FEATURE.EXTRACT_IMAGES]: true },
       },
     ],
   };

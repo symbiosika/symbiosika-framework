@@ -108,25 +108,20 @@ export type ExtractedValue = {
   page?: number;
 };
 
+/**
+ * Extra options for the service, keyed by the service's own wire names
+ * (camelCase is accepted and converted). An OPEN map on purpose — see §7.1.
+ */
+export type ServiceOptions = Record<string, string | number | boolean>;
+
 export type PdfParserOptions = {
   model?: string;
+  /** Typed because the framework acts on the answer (it stores the images). */
   extractImages?: boolean;
   /** Structured extraction targets passed through to the service. */
   extract?: ExtractionTarget[];
-  /** Extra service: analyse images embedded in the document (§2.1.1). */
-  parseImagesInDoc?: boolean;
-  /** Extra service: OCR on scanned / image-only pages. */
-  ocr?: boolean;
-  /** Extra service: detect tables and render them as Markdown. */
-  detectTables?: boolean;
-  /** Extra service: BCP-47 language hint for OCR / transcription. */
-  preferredLanguage?: string;
-  /** Extra service: per-block geometry (rendered modalities only). */
-  includePositions?: boolean;
-  /** Extra service: service-side Markdown polishing. */
-  polishMarkdown?: boolean;
-  /** Extra service: free-text hint about the document. */
-  context?: string;
+  /** Every other extra service (§2.1.1), forwarded as advertised (§7.1). */
+  serviceOptions?: ServiceOptions;
 };
 
 export interface PdfParserResult {
@@ -296,20 +291,20 @@ export type ServiceModality = {
   modality: ParserModality;
   mimeTypes: string[];
   extensions: string[];
-  features?: {
-    extractImages?: boolean;
-    extractFields?: boolean;
-    async?: boolean;
-    /** Extra services (§2.1.1), advertised per modality. */
-    parseImagesInDoc?: boolean;
-    ocr?: boolean;
-    detectTables?: boolean;
-    preferredLanguage?: boolean;
-    includePositions?: boolean;
-    polishMarkdown?: boolean;
-    context?: boolean;
-  };
+  /**
+   * What this modality can do, exactly as advertised: wire names to booleans
+   * (§2.1.1). Deliberately open — the framework interprets only the three
+   * flags named in `SERVICE_FEATURE` and forwards the rest on demand (§7.1).
+   */
+  features?: Record<string, boolean>;
 };
+
+/** The only feature flags the framework itself interprets. */
+export const SERVICE_FEATURE = {
+  EXTRACT_IMAGES: "extract_images",
+  EXTRACT_FIELDS: "extract_fields",
+  ASYNC: "async",
+} as const;
 
 export type ServiceCapabilities = {
   service: string;
@@ -349,11 +344,9 @@ export const getGenericParserCapabilities =
         modality: m.modality,
         mimeTypes: m.mime_types,
         extensions: m.extensions,
-        features: {
-          extractImages: m.features?.extract_images ?? false,
-          extractFields: m.features?.extract_fields ?? false,
-          async: m.features?.async ?? false,
-        },
+        // Kept as sent: wire names, boolean values, nothing renamed and
+        // nothing dropped (§7.1).
+        features: normalizeFeatures(m.features),
       })),
     };
     return cachedCapabilities;
@@ -490,30 +483,59 @@ unchanged.
 ## 7. Exposing capabilities + pass-through options to a UI
 
 The extra-service flags (`parse_images_in_doc`, `ocr`, `detect_tables`,
-`preferred_language`, `include_positions`, `polish_markdown`, `context`) are
-opt-in per request. So a UI can offer only the options the configured service
-actually supports, the framework surfaces them end-to-end:
+`preferred_language`, `include_positions`, `polish_markdown`, `context`, and
+whatever the service adds next) are opt-in per request. So a UI can offer only
+the options the configured service actually supports, the framework surfaces
+them end-to-end:
 
 - **`getConfiguredParserCapabilities()`** (`parsing/pdf/index.ts`) resolves the
   capabilities of the *currently configured* parser: for `generic` it returns
   the cached `GET /v1/capabilities` response; for the hosted services it returns
   a static declaration from `STATIC_PARSER_CAPABILITIES` (the Mistral parsers
-  advertise `pdf` + `extractImages`); for anything else an empty `modalities`
+  advertise `pdf` + `extract_images`); for anything else an empty `modalities`
   list (nothing to offer). It never throws — a discovery failure degrades to
   "no advertised capabilities". A parser missing from the map advertises
   nothing, which means the import UI renders no checkbox for it and the user
-  cannot opt into any pass-through flag — so add an entry when a parser gains a
+  cannot opt into any option — so add an entry when a parser gains a
   caller-controlled option.
 - **`GET /tenant/:tenantId/knowledge/parser/capabilities`** exposes that to the
-  client (scope `knowledge:read`).
-- **`POST /tenant/:tenantId/knowledge/texts/import`** also accepts the
-  pass-through form fields `extractImages`, `parseImagesInDoc`, `ocr`,
-  `detectTables`, `includePositions`, `polishMarkdown` (all `"true"`/absent)
-  plus the free-text `preferredLanguage` and `context`. They travel through the
-  ingest job into `importKnowledgeTextFromFile` → `fileToMarkdown` →
-  `parseFile` → `parseFileWithService`, where `generic.ts buildForm()` maps
-  each to its `snake_case` wire field — and drops the ones the target modality
-  does not advertise (§4.6).
+  client (scope `knowledge:read`). Its `modalities[].features` map IS the list
+  of options the client may offer — one control per advertised flag, no list
+  of its own.
+- **`POST /tenant/:tenantId/knowledge/texts/import`** accepts `extractImages`
+  (`"true"`/absent) and `serviceOptions`: a JSON object of the service's own
+  option names, e.g.
+  `serviceOptions={"ocr":true,"detect_tables":true,"preferred_language":"de"}`.
+  It travels through the ingest job into `importKnowledgeTextFromFile` →
+  `fileToMarkdown` → `parseFile` → `parseFileWithService`, where `generic.ts
+  buildForm()` sends each entry under its wire name — and drops the ones the
+  target modality does not advertise (§4.6). The legacy named form fields
+  `parseImagesInDoc`, `ocr` and `detectTables` are still accepted and mean the
+  same thing.
 
-The single source of truth for the camelCase key ↔ snake_case wire mapping is
-`PARSER_PASSTHROUGH_FLAGS` in `parsing/pdf/types.ts`.
+### 7.1 Options are generic, not enumerated
+
+The framework declares no list of parser options. A service option is:
+
+1. **advertised** by the service in `modalities[].features` (wire name →
+   `true`), and
+2. **named** by the caller in `PdfParserOptions.serviceOptions` (the same wire
+   name, or its camelCase spelling).
+
+`buildForm()` forwards every entry that satisfies both, verbatim
+(`String(value)` — so `true` becomes `"true"`, `"de"` stays `"de"`), and drops
+the rest with a debug line. That is the whole mechanism: a new extra service on
+the service side is usable the day it is advertised — no framework type, option
+list, route field or release in between.
+
+What the framework does know is only what it acts on itself:
+`extract_images` (it stores the returned images and rewrites the placeholders),
+`extract_fields`/`extract` (typed `ExtractionTarget[]`, typed `metadata` back),
+and `async` (which transport to use). Those three are named in
+`SERVICE_FEATURE`.
+
+Two conveniences, so callers need not know the wire spelling:
+`toServiceOptionWireName()` converts `detectTables` → `detect_tables`, and
+`withLegacyServiceOptions()` folds the three named flags that predate the open
+map (`parseImagesInDoc`, `ocr`, `detectTables`) into it. Nothing new belongs in
+that legacy list.

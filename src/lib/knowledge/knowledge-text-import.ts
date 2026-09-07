@@ -17,7 +17,11 @@
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { parseFile, extractedMetadataToAttributes } from "./parsing";
-import type { ExtractedValue } from "./parsing/pdf/types";
+import type {
+  ExtractedValue,
+  LegacyServiceOptions,
+  ServiceOptions,
+} from "./parsing/pdf/types";
 import { filterValidAttributes } from "./facets";
 import { urlToMarkdown } from "./parsing/url";
 import { applyPostProcessors } from "./parsing/post-processors";
@@ -57,21 +61,20 @@ export type ImportKnowledgeTextOptions = {
    */
   usePostProcessors?: string[];
   /**
-   * Parser pass-through options for file imports that go through the parsing
-   * pipeline (PDF, …). Each extra service is only honoured when the configured
-   * parsing service advertises the matching capability (see
-   * `getConfiguredParserCapabilities`); an unsupported flag is simply ignored.
+   * Ask the parsing service for the images embedded in the document, so they
+   * are stored and referenced from the page (file imports only).
    */
   extractImages?: boolean;
-  parseImagesInDoc?: boolean;
-  ocr?: boolean;
-  detectTables?: boolean;
-  preferredLanguage?: string;
-  includePositions?: boolean;
-  polishMarkdown?: boolean;
-  /** Free-text hint about the document, handed to the service as `context`. */
-  context?: string;
-};
+  /**
+   * Extra options for the parsing service (`ocr`, `detect_tables`,
+   * `preferred_language`, `context`, …), forwarded as-is for file imports
+   * that go through the parsing pipeline. Each is only honoured when the
+   * configured service advertises it for this file's modality (see
+   * `getConfiguredParserCapabilities`); anything else is dropped. An open map
+   * on purpose — see `ServiceOptions`.
+   */
+  serviceOptions?: ServiceOptions;
+} & LegacyServiceOptions;
 
 export type ImportKnowledgeTextResult = {
   knowledgeText: KnowledgeTextSelect;
@@ -129,18 +132,12 @@ export const splitMarkdownIntoSections = (markdown: string): string[] => {
   return sections;
 };
 
-/** Parser pass-through options honoured by file imports going through `parseFile`. */
+/** Parser options honoured by file imports going through `parseFile`. */
 type FileParserOptions = {
   extractImages?: boolean;
-  parseImagesInDoc?: boolean;
-  ocr?: boolean;
-  detectTables?: boolean;
-  preferredLanguage?: string;
-  includePositions?: boolean;
-  polishMarkdown?: boolean;
-  /** Free-text hint about the document, handed to the service as `context`. */
-  context?: string;
-};
+  /** Extra options forwarded to the parsing service — see `ServiceOptions`. */
+  serviceOptions?: ServiceOptions;
+} & LegacyServiceOptions;
 
 /**
  * Bucket for images a parser extracts from an imported document.
@@ -324,13 +321,11 @@ export const importKnowledgeTextFromFile = async (
     },
     {
       extractImages: options.extractImages,
+      serviceOptions: options.serviceOptions,
+      // Legacy named flags, folded into `serviceOptions` by `parseFile`.
       parseImagesInDoc: options.parseImagesInDoc,
       ocr: options.ocr,
       detectTables: options.detectTables,
-      preferredLanguage: options.preferredLanguage,
-      includePositions: options.includePositions,
-      polishMarkdown: options.polishMarkdown,
-      context: options.context,
     }
   );
   if (text.trim().length === 0) {

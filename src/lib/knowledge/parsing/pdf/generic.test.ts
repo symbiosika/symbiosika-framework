@@ -53,9 +53,12 @@ let lastParseForm: {
   filename?: string;
   extractImages: string | null;
   extract: string | null;
-  parseImagesInDoc: string | null;
-  ocr: string | null;
-  detectTables: string | null;
+  /**
+   * Every non-file field of the request, keyed by its wire name. The
+   * framework no longer knows the option names, so the test asserts on what
+   * actually went over the wire rather than on a fixed struct.
+   */
+  fields: Record<string, string>;
 } | null = null;
 let capabilitiesHits = 0;
 let jobsCreated = 0;
@@ -70,6 +73,7 @@ const CAPABILITIES_BODY = {
       modality: "pdf",
       mime_types: ["application/pdf"],
       extensions: [".pdf"],
+      // `pdf` advertises the full set in the reference service.
       features: {
         extract_images: true,
         extract_fields: true,
@@ -77,6 +81,10 @@ const CAPABILITIES_BODY = {
         parse_images_in_doc: true,
         ocr: true,
         detect_tables: true,
+        preferred_language: true,
+        include_positions: true,
+        polish_markdown: true,
+        context: true,
       },
     },
     {
@@ -119,6 +127,10 @@ const CAPABILITIES_BODY = {
         preferred_language: true,
         parse_images_in_doc: true,
         polish_markdown: true,
+        // A flag no framework code knows about. It exists in this fixture to
+        // prove the point of the open feature map: advertised + asked for is
+        // enough to be forwarded.
+        summarize: true,
       },
     },
     // Audio advertises `async` and nothing else — it rejects `extract` and
@@ -158,13 +170,15 @@ let server: ReturnType<typeof Bun.serve>;
 /** Record what the framework sent, for both the sync and the job entry point. */
 const recordForm = async (req: Request): Promise<void> => {
   const form = await req.formData();
+  const fields: Record<string, string> = {};
+  for (const [key, value] of form.entries()) {
+    if (typeof value === "string") fields[key] = value;
+  }
   lastParseForm = {
     filename: (form.get("file") as File | null)?.name,
     extractImages: form.get("extract_images") as string | null,
     extract: form.get("extract") as string | null,
-    parseImagesInDoc: form.get("parse_images_in_doc") as string | null,
-    ocr: form.get("ocr") as string | null,
-    detectTables: form.get("detect_tables") as string | null,
+    fields,
   };
 };
 
@@ -368,7 +382,7 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     const result = await parsePdfFileAsMarkdownGeneric(
       pdfFile(),
       { tenantId: "tenant-1" },
-      { extractImages: true, parseImagesInDoc: true },
+      { extractImages: true, serviceOptions: { parse_images_in_doc: true } },
     );
 
     expect(result.pages?.[0]?.text).toBe(
@@ -407,22 +421,43 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     expect(lastParseForm?.extract).toBeNull();
   });
 
-  test("omits extra-service flags unless they are enabled", async () => {
+  test("sends no service option the caller did not ask for", async () => {
     await parsePdfFileAsMarkdownGeneric(pdfFile(), { tenantId: "tenant-1" });
-    expect(lastParseForm?.parseImagesInDoc).toBeNull();
-    expect(lastParseForm?.ocr).toBeNull();
-    expect(lastParseForm?.detectTables).toBeNull();
+    // Only the file and the always-sent extract_images.
+    expect(Object.keys(lastParseForm?.fields ?? {})).toEqual([
+      "extract_images",
+    ]);
   });
 
-  test("forwards enabled extra-service flags as multipart fields", async () => {
+  test("forwards service options verbatim under their wire names", async () => {
     await parsePdfFileAsMarkdownGeneric(
       pdfFile(),
       { tenantId: "tenant-1" },
-      { ocr: true, parseImagesInDoc: true, detectTables: true },
+      {
+        serviceOptions: {
+          ocr: true,
+          detect_tables: true,
+          preferred_language: "de",
+          // camelCase is accepted and converted to the wire name.
+          parseImagesInDoc: true,
+        },
+      },
     );
-    expect(lastParseForm?.ocr).toBe("true");
-    expect(lastParseForm?.parseImagesInDoc).toBe("true");
-    expect(lastParseForm?.detectTables).toBe("true");
+    expect(lastParseForm?.fields.ocr).toBe("true");
+    expect(lastParseForm?.fields.detect_tables).toBe("true");
+    expect(lastParseForm?.fields.preferred_language).toBe("de");
+    expect(lastParseForm?.fields.parse_images_in_doc).toBe("true");
+  });
+
+  test("an explicit false is passed through, not swallowed", async () => {
+    // A flag the service defaults to on can only be turned off if `false`
+    // actually reaches it.
+    await parsePdfFileAsMarkdownGeneric(
+      pdfFile(),
+      { tenantId: "tenant-1" },
+      { serviceOptions: { ocr: false } },
+    );
+    expect(lastParseForm?.fields.ocr).toBe("false");
   });
 
   test("throws on a non-2xx response", async () => {
@@ -447,14 +482,18 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     const caps = await getGenericParserCapabilities();
     expect(caps.service).toBe("generic-v1");
     expect(caps.modalities[0]!.mimeTypes).toEqual(["application/pdf"]);
-    expect(caps.modalities[0]!.features?.extractImages).toBe(true);
-    // Extra-service flags are mapped from snake_case to camelCase.
+    // Features keep the service's own wire names — nothing is renamed into a
+    // fixed framework vocabulary, so a flag added service-side survives.
+    expect(caps.modalities[0]!.features?.extract_images).toBe(true);
     expect(caps.modalities[0]!.features?.ocr).toBe(true);
-    expect(caps.modalities[0]!.features?.parseImagesInDoc).toBe(true);
-    expect(caps.modalities[0]!.features?.detectTables).toBe(true);
-    // Missing features default to false after normalization.
-    expect(caps.modalities[1]!.features?.async).toBe(false);
-    expect(caps.modalities[1]!.features?.ocr).toBe(false);
+    expect(caps.modalities[0]!.features?.parse_images_in_doc).toBe(true);
+    expect(caps.modalities[0]!.features?.detect_tables).toBe(true);
+    expect(
+      caps.modalities.find((m) => m.modality === "document")?.features
+        ?.summarize
+    ).toBe(true);
+    // A modality that advertises no features at all keeps none.
+    expect(caps.modalities[1]!.features).toBeUndefined();
 
     // Second call is served from cache — service hit only once.
     await getGenericParserCapabilities();
@@ -478,7 +517,7 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     const caps = await getConfiguredParserCapabilities();
     expect(caps.service).toBe("generic-v1");
     expect(caps.modalities[0]!.features?.ocr).toBe(true);
-    expect(caps.modalities[0]!.features?.detectTables).toBe(true);
+    expect(caps.modalities[0]!.features?.detect_tables).toBe(true);
   });
 
   test("getConfiguredParserCapabilities serves static caps for Mistral", async () => {
@@ -488,7 +527,7 @@ describe("Generic PDF Parser Service (against a fake service)", () => {
     const caps = await getConfiguredParserCapabilities();
     expect(caps.service).toBe("mistral");
     expect(caps.modalities[0]!.modality).toBe("pdf");
-    expect(caps.modalities[0]!.features?.extractImages).toBe(true);
+    expect(caps.modalities[0]!.features?.extract_images).toBe(true);
   });
 
   test("getConfiguredParserCapabilities advertises nothing for a parser without options", async () => {
@@ -667,6 +706,41 @@ describe("parseFile routing against the advertised capabilities", () => {
     expect(lastParseForm?.extract).toBeNull();
   });
 
+  test("forwards an option the framework knows nothing about", async () => {
+    // The whole point: `summarize` appears in no framework type, no option
+    // list and no route schema. The service advertises it for `document`, the
+    // caller names it, so it travels.
+    useGenericService();
+
+    await parseFile(
+      upload("bericht.docx", "application/octet-stream"),
+      { tenantId: "tenant-1" },
+      { serviceOptions: { summarize: true, max_words: 250 } },
+    );
+
+    expect(lastParseForm?.fields.summarize).toBe("true");
+    // Not advertised for `document` — dropped, like any other unadvertised
+    // option.
+    expect(lastParseForm?.fields.max_words).toBeUndefined();
+  });
+
+  test("still accepts the legacy named flags", async () => {
+    // `ocr` / `parseImagesInDoc` / `detectTables` shipped as named options
+    // before service options became an open map. They keep working, folded
+    // into the map under the same wire names.
+    useGenericService();
+
+    await parseFile(
+      upload("muster.pdf", "application/pdf"),
+      { tenantId: "tenant-1" },
+      { ocr: true, parseImagesInDoc: true, detectTables: true },
+    );
+
+    expect(lastParseForm?.fields.ocr).toBe("true");
+    expect(lastParseForm?.fields.parse_images_in_doc).toBe("true");
+    expect(lastParseForm?.fields.detect_tables).toBe("true");
+  });
+
   test("does not send an option the target modality does not advertise", async () => {
     // `document` has no `ocr`: nothing is recognised, the structure is in the
     // file. Sending it anyway is noise at best.
@@ -675,11 +749,15 @@ describe("parseFile routing against the advertised capabilities", () => {
     await parseFile(
       upload("zahlen.xlsx", "application/octet-stream"),
       { tenantId: "tenant-1" },
-      { ocr: true, detectTables: true, preferredLanguage: "de" },
+      {
+        ocr: true,
+        serviceOptions: { detect_tables: true, preferred_language: "de" },
+      },
     );
 
-    expect(lastParseForm?.ocr).toBeNull();
-    expect(lastParseForm?.detectTables).toBe("true");
+    expect(lastParseForm?.fields.ocr).toBeUndefined();
+    expect(lastParseForm?.fields.detect_tables).toBe("true");
+    expect(lastParseForm?.fields.preferred_language).toBe("de");
   });
 
   test("an explicitly selected parser decides what is supported", async () => {

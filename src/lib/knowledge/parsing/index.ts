@@ -11,9 +11,12 @@ import { gfm } from "turndown-plugin-gfm";
 import {
   fileExtension,
   isUninformativeMime,
+  withLegacyServiceOptions,
   type ExtractedValue,
   type ExtractionTarget,
+  type LegacyServiceOptions,
   type PageContent,
+  type ServiceOptions,
 } from "./pdf/types";
 import { applyPostProcessors } from "./post-processors";
 import { urlToMarkdown } from "./url";
@@ -114,31 +117,21 @@ export const parseFile = async (
      * catalog attributes are used automatically.
      */
     extract?: ExtractionTarget[];
-    /** Extra service: analyse images embedded in the document. */
-    parseImagesInDoc?: boolean;
-    /** Extra service: OCR on scanned / image-only pages. */
-    ocr?: boolean;
-    /** Extra service: detect tables and render them as Markdown. */
-    detectTables?: boolean;
-    /** Extra service: language hint for OCR / transcription (e.g. "de"). */
-    preferredLanguage?: string;
-    /** Extra service: per-block geometry (rendered modalities only). */
-    includePositions?: boolean;
-    /** Extra service: let the service polish the emitted Markdown. */
-    polishMarkdown?: boolean;
     /**
-     * Extra service: free-text hint about the document handed to the service
-     * (what it is, what matters in it). Same key as its `PARSER_PASSTHROUGH_FLAGS`
-     * entry — not to be confused with this function's `context` argument.
+     * Extra options for the parsing service (`ocr`, `detect_tables`,
+     * `preferred_language`, …), forwarded to it as-is and dropped where the
+     * target modality does not advertise them. An open map on purpose — see
+     * `ServiceOptions`; the framework does not enumerate what the service can
+     * do.
      */
-    context?: string;
+    serviceOptions?: ServiceOptions;
     /**
      * Storage bucket for images extracted from the document. Defaults to
      * `PARSED_IMAGES_BUCKET` ("images"); a caller that owns the images
      * afterwards passes its own (see `PdfParserOptions.imageBucket`).
      */
     imageBucket?: string;
-  }
+  } & LegacyServiceOptions
 ): Promise<{
   text: string;
   pages?: PageContent[];
@@ -202,13 +195,11 @@ export const parseFile = async (
       model: options?.model,
       extractImages: options?.extractImages,
       extract,
-      parseImagesInDoc: options?.parseImagesInDoc,
-      ocr: options?.ocr,
-      detectTables: options?.detectTables,
-      preferredLanguage: options?.preferredLanguage,
-      includePositions: options?.includePositions,
-      polishMarkdown: options?.polishMarkdown,
-      context: options?.context,
+      serviceOptions: withLegacyServiceOptions(options?.serviceOptions, {
+        parseImagesInDoc: options?.parseImagesInDoc,
+        ocr: options?.ocr,
+        detectTables: options?.detectTables,
+      }),
       imageBucket: options?.imageBucket,
     });
 

@@ -129,6 +129,13 @@ A modality advertises only what makes sense for it. In the reference service:
 `async` and nothing else, and reject `extract` and `extract_images=true` with
 `unsupported_option` rather than ignoring them.
 
+The framework treats this map as OPEN: it interprets `extract_images`,
+`extract_fields` and `async` itself, and every other advertised flag is simply
+a name a caller may ask for — it is then forwarded as the identically named
+request field of §3. A service that adds a flag therefore needs no framework
+change to become usable; a client discovers the available flags from this map
+(`GET /v1/capabilities`) rather than from a list of its own.
+
 Convention for new flags: `snake_case`, boolean-valued, named after the
 capability (not the implementation). If a flag also gates a request option, give
 the request form field the **same name** as the flag (see §3).
@@ -176,8 +183,11 @@ Content-Disposition: form-data; name="extract"
 | `polish_markdown`     | `"true"`/`"false"`| ❌       | `false` | Extra service: polish the emitted Markdown (only if advertised). |
 | `context`             | string            | ❌       | –       | Extra service: free-text hint about the document (only if advertised). |
 
-Each extra-service form field is a boolean opt-in that mirrors a feature flag
-from §2.1.1 (same name). The framework only sends a field when the target
+Each extra-service form field mirrors a feature flag from §2.1.1 under the same
+name — boolean flags as `"true"`/`"false"`, the free-text ones as their value.
+The list above is what the reference service offers today, not a closed set: a
+field is accepted whenever the modality advertises the matching flag. The
+framework only sends a field when the target
 modality advertises the matching flag as `true`. A service MAY ignore a field it
 does not support; it MUST NOT fail the request because of an unknown or
 unsupported option field.

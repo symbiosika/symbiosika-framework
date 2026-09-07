@@ -5,10 +5,10 @@ import {
   fileExtension,
   isUninformativeMime,
   LONG_RUNNING_MODALITIES,
-  PARSER_PASSTHROUGH_FLAGS,
   PDF_PARSER,
+  SERVICE_FEATURE,
+  toServiceOptionWireName,
   type ExtractedValue,
-  type ParserPassthroughFlag,
   type PdfParser,
   type PdfParserOptions,
   type ServiceCapabilities,
@@ -74,6 +74,10 @@ const requireConfig = (): void => {
  * `extract` and `extract_images=true` with `unsupported_option` instead of
  * ignoring them. With no resolvable modality (capability discovery down)
  * nothing is gated and the caller's options are sent as-is.
+ *
+ * Note what is *not* here: a list of known options. Whatever the caller put
+ * into `serviceOptions` is forwarded under its wire name if the modality
+ * advertises it — so a flag the service gains tomorrow works today.
  */
 const buildForm = (
   file: File,
@@ -83,32 +87,36 @@ const buildForm = (
   const form = new FormData();
   form.append("file", file, file.name || "document.pdf");
 
-  const advertises = (flag: ParserPassthroughFlag | "extractFields"): boolean =>
-    modality?.features ? modality.features[flag] === true : true;
+  const advertises = (feature: string): boolean =>
+    modality?.features ? modality.features[feature] === true : true;
 
   // Always sent (the service defaults it to false anyway); only the `true`
   // value needs the modality's blessing.
   form.append(
-    "extract_images",
-    String((options?.extractImages ?? false) && advertises("extractImages")),
+    SERVICE_FEATURE.EXTRACT_IMAGES,
+    String(
+      (options?.extractImages ?? false) &&
+        advertises(SERVICE_FEATURE.EXTRACT_IMAGES),
+    ),
   );
 
-  // Extra-service opt-ins (spec §3), driven by PARSER_PASSTHROUGH_FLAGS so a
-  // new flag needs one entry there and nothing here.
-  for (const flag of PARSER_PASSTHROUGH_FLAGS) {
-    if (flag.key === "extractImages") continue;
-    if (!advertises(flag.key)) continue;
-    const value = options?.[flag.key];
-    if (flag.value === "string") {
-      if (typeof value === "string" && value.trim() !== "") {
-        form.append(flag.wire, value);
-      }
-    } else if (value === true) {
-      form.append(flag.wire, "true");
+  // Everything else the caller asked for (spec §3), forwarded verbatim.
+  for (const [key, value] of Object.entries(options?.serviceOptions ?? {})) {
+    const wire = toServiceOptionWireName(key);
+    // Handled above, including its gating — never twice.
+    if (wire === SERVICE_FEATURE.EXTRACT_IMAGES) continue;
+    if (value === undefined || value === null) continue;
+    if (typeof value === "string" && value.trim() === "") continue;
+    if (!advertises(wire)) {
+      log.debug(
+        `Parser option "${wire}" is not advertised for modality "${modality?.modality}" — dropped.`,
+      );
+      continue;
     }
+    form.append(wire, String(value));
   }
 
-  if (options?.extract?.length && advertises("extractFields")) {
+  if (options?.extract?.length && advertises(SERVICE_FEATURE.EXTRACT_FIELDS)) {
     form.append("extract", JSON.stringify(options.extract));
   }
   return form;
@@ -260,12 +268,30 @@ const resolveModalityForFile = async (
  */
 const useJobPath = (modality?: ServiceModality): boolean => {
   if (modality && LONG_RUNNING_MODALITIES.includes(modality.modality)) {
-    return modality.features?.async !== false;
+    return modality.features?.[SERVICE_FEATURE.ASYNC] !== false;
   }
   return getMode() === "async";
 };
 
 // --- Capability discovery ---------------------------------------------------
+
+/**
+ * The advertised feature map, kept as the service sent it: wire names,
+ * boolean values, nothing renamed and nothing dropped. Deliberately not
+ * translated into a fixed set of framework keys — a flag the framework has
+ * never heard of still has to reach `buildForm`, which is the whole point of
+ * an open map. Only the shape is enforced (a non-`true` value is `false`).
+ */
+const normalizeFeatures = (
+  features?: Record<string, unknown>,
+): Record<string, boolean> | undefined => {
+  if (!features) return undefined;
+  const normalized: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(features)) {
+    normalized[toServiceOptionWireName(key)] = value === true;
+  }
+  return normalized;
+};
 
 let cachedCapabilities: ServiceCapabilities | null = null;
 
@@ -305,14 +331,7 @@ export const getGenericParserCapabilities =
         modality: m.modality,
         mimeTypes: m.mime_types,
         extensions: m.extensions,
-        features: {
-          extractImages: m.features?.extract_images ?? false,
-          extractFields: m.features?.extract_fields ?? false,
-          async: m.features?.async ?? false,
-          parseImagesInDoc: m.features?.parse_images_in_doc ?? false,
-          ocr: m.features?.ocr ?? false,
-          detectTables: m.features?.detect_tables ?? false,
-        },
+        features: normalizeFeatures(m.features),
       })),
     };
     return cachedCapabilities;
