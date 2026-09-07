@@ -26,7 +26,7 @@ import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import log from "../../log";
 import { fetchWithSsrfGuard } from "../../utils/url-guard";
-import { parsePdfFileAsMardown } from "./pdf";
+import { parseFileWithService } from "./pdf";
 
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (compatible; SymbiosikaKnowledgeBot/1.0; +https://symbiosika.de)";
@@ -63,6 +63,11 @@ export type UrlToMarkdownResult = {
   byline: string | null;
   siteName: string | null;
   markdown: string;
+  /**
+   * Non-fatal notes the parsing service reported for a document behind the URL
+   * (only the PDF path reaches a service). See `PdfParserResult.warnings`.
+   */
+  warnings?: string[];
 };
 
 type FetchedResource = {
@@ -222,7 +227,7 @@ export const urlToMarkdown = async (
         type: "application/pdf",
       }
     );
-    const parsed = await parsePdfFileAsMardown(file, opts.parseContext, {
+    const parsed = await parseFileWithService(file, opts.parseContext, {
       model: opts.pdfModel,
       imageBucket: opts.imageBucket,
     });
@@ -237,6 +242,7 @@ export const urlToMarkdown = async (
       byline: null,
       siteName: null,
       markdown,
+      warnings: parsed.warnings,
     };
   }
 

@@ -59,6 +59,7 @@ import {
   storeIngestFileInDb,
 } from "../../../../../lib/knowledge/ingestion-jobs";
 import { getConfiguredParserCapabilities } from "../../../../../lib/knowledge/parsing/pdf";
+import type { ServiceOptions } from "../../../../../lib/knowledge/parsing/pdf/types";
 import {
   upsertKnowledgeTextFromSource,
   deleteOrphanedKnowledgeTexts,
@@ -107,6 +108,54 @@ const parseAttributesFilter = (
     message:
       'Invalid "attributes" filter — expected a JSON object of string values, e.g. {"hersteller":"Miele"}',
   });
+};
+
+/**
+ * Parse the `serviceOptions` form field of the file import: a JSON object of
+ * options for the configured parsing service, keyed by the service's own
+ * option names (`{"ocr":true,"preferred_language":"de"}`).
+ *
+ * Values are not interpreted here on purpose — the service advertises which
+ * options it understands (`GET .../parser/capabilities`), the framework
+ * forwards the ones it advertises and drops the rest. Only the shape is
+ * checked, so a typo fails loudly instead of silently doing nothing.
+ */
+const parseServiceOptionsField = (
+  raw?: string
+): ServiceOptions | undefined => {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      Object.values(parsed).every(
+        (value) =>
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+      )
+    ) {
+      return parsed as ServiceOptions;
+    }
+  } catch {
+    // fall through to the error below
+  }
+  throw new HTTPException(400, {
+    message:
+      'Invalid "serviceOptions" — expected a JSON object of string / number / boolean values, e.g. {"ocr":true,"preferred_language":"de"}',
+  });
+};
+
+/**
+ * A boolean form flag that stays `undefined` when the field was not sent, so
+ * an option the caller never mentioned is not forwarded as an explicit
+ * `false`.
+ */
+const formFlag = (form: FormData, name: string): boolean | undefined => {
+  const raw = form.get(name)?.toString();
+  return raw === undefined ? undefined : raw === "true";
 };
 
 const blockInputSchema = v.object({
@@ -312,9 +361,17 @@ export default function defineRoutesForKnowledgeTexts(
               tenantWide: v.optional(v.string()),
               splitIntoBlocks: v.optional(v.string()),
               usePostProcessors: v.optional(v.string()),
-              // Parser pass-through options — only meaningful for the modalities
-              // the configured service advertises (see GET .../parser/capabilities).
               extractImages: v.optional(v.string()),
+              // Everything else the parsing service offers: a JSON object of
+              // the service's own option names, forwarded as-is and dropped
+              // where the service does not advertise the option for this
+              // file's modality. The available names come from
+              // GET .../parser/capabilities → modalities[].features, so a new
+              // extra service needs no change to this endpoint. Example:
+              // {"ocr":true,"detect_tables":true,"preferred_language":"de"}
+              serviceOptions: v.optional(v.string()),
+              // Legacy named flags, still accepted: they mean the same as the
+              // matching serviceOptions entries.
               parseImagesInDoc: v.optional(v.string()),
               ocr: v.optional(v.string()),
               detectTables: v.optional(v.string()),
@@ -372,12 +429,16 @@ export default function defineRoutesForKnowledgeTexts(
                 .split(",")
                 .map((s) => s.trim())
                 .filter((s) => s.length > 0),
-              // Parser pass-through options (opt-in; default off).
+              // Parser options (opt-in; default off). Anything beyond image
+              // extraction travels as an opaque map — the service decides
+              // what it accepts, this endpoint does not enumerate it.
               extractImages: form.get("extractImages")?.toString() === "true",
-              parseImagesInDoc:
-                form.get("parseImagesInDoc")?.toString() === "true",
-              ocr: form.get("ocr")?.toString() === "true",
-              detectTables: form.get("detectTables")?.toString() === "true",
+              serviceOptions: parseServiceOptionsField(
+                form.get("serviceOptions")?.toString()
+              ),
+              parseImagesInDoc: formFlag(form, "parseImagesInDoc"),
+              ocr: formFlag(form, "ocr"),
+              detectTables: formFlag(form, "detectTables"),
             },
           },
           tenantId,

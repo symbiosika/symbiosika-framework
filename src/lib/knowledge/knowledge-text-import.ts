@@ -17,7 +17,11 @@
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { parseFile, extractedMetadataToAttributes } from "./parsing";
-import type { ExtractedValue } from "./parsing/pdf/types";
+import type {
+  ExtractedValue,
+  LegacyServiceOptions,
+  ServiceOptions,
+} from "./parsing/pdf/types";
 import { filterValidAttributes } from "./facets";
 import { urlToMarkdown } from "./parsing/url";
 import { applyPostProcessors } from "./parsing/post-processors";
@@ -57,20 +61,31 @@ export type ImportKnowledgeTextOptions = {
    */
   usePostProcessors?: string[];
   /**
-   * Parser pass-through options for file imports that go through the parsing
-   * pipeline (PDF, …). Each extra service is only honoured when the configured
-   * parsing service advertises the matching capability (see
-   * `getConfiguredParserCapabilities`); an unsupported flag is simply ignored.
+   * Ask the parsing service for the images embedded in the document, so they
+   * are stored and referenced from the page (file imports only).
    */
   extractImages?: boolean;
-  parseImagesInDoc?: boolean;
-  ocr?: boolean;
-  detectTables?: boolean;
-};
+  /**
+   * Extra options for the parsing service (`ocr`, `detect_tables`,
+   * `preferred_language`, `context`, …), forwarded as-is for file imports
+   * that go through the parsing pipeline. Each is only honoured when the
+   * configured service advertises it for this file's modality (see
+   * `getConfiguredParserCapabilities`); anything else is dropped. An open map
+   * on purpose — see `ServiceOptions`.
+   */
+  serviceOptions?: ServiceOptions;
+} & LegacyServiceOptions;
 
 export type ImportKnowledgeTextResult = {
   knowledgeText: KnowledgeTextSelect;
   blocks: KnowledgeTextBlockSelect[];
+  /**
+   * Non-fatal notes the parsing service reported for the imported file: a
+   * truncated transcript, skipped scan pages, an unreadable mail attachment.
+   * The service returns a partial result on purpose, so these belong in front
+   * of the user — without them the import looks complete when it is not.
+   */
+  parserWarnings?: string[];
 };
 
 let turndown: TurndownService | null = null;
@@ -117,13 +132,12 @@ export const splitMarkdownIntoSections = (markdown: string): string[] => {
   return sections;
 };
 
-/** Parser pass-through options honoured by file imports going through `parseFile`. */
+/** Parser options honoured by file imports going through `parseFile`. */
 type FileParserOptions = {
   extractImages?: boolean;
-  parseImagesInDoc?: boolean;
-  ocr?: boolean;
-  detectTables?: boolean;
-};
+  /** Extra options forwarded to the parsing service — see `ServiceOptions`. */
+  serviceOptions?: ServiceOptions;
+} & LegacyServiceOptions;
 
 /**
  * Bucket for images a parser extracts from an imported document.
@@ -144,7 +158,11 @@ const fileToMarkdown = async (
   file: File,
   context: { tenantId: string; userId?: string; teamId?: string; workspaceId?: string },
   parserOptions?: FileParserOptions
-): Promise<{ text: string; metadata?: Record<string, ExtractedValue> }> => {
+): Promise<{
+  text: string;
+  metadata?: Record<string, ExtractedValue>;
+  warnings?: string[];
+}> => {
   const name = file.name ?? "";
   const mime = (file.type ?? "").trim().toLowerCase();
 
@@ -162,7 +180,11 @@ const fileToMarkdown = async (
     ...parserOptions,
     imageBucket: IMPORT_IMAGE_BUCKET,
   });
-  return { text: parsed.text, metadata: parsed.metadata };
+  return {
+    text: parsed.text,
+    metadata: parsed.metadata,
+    warnings: parsed.warnings,
+  };
 };
 
 /**
@@ -289,7 +311,7 @@ export const importKnowledgeTextFromFile = async (
   file: File,
   options: ImportKnowledgeTextOptions
 ): Promise<ImportKnowledgeTextResult> => {
-  const { text, metadata } = await fileToMarkdown(
+  const { text, metadata, warnings } = await fileToMarkdown(
     file,
     {
       tenantId: options.tenantId,
@@ -299,6 +321,8 @@ export const importKnowledgeTextFromFile = async (
     },
     {
       extractImages: options.extractImages,
+      serviceOptions: options.serviceOptions,
+      // Legacy named flags, folded into `serviceOptions` by `parseFile`.
       parseImagesInDoc: options.parseImagesInDoc,
       ocr: options.ocr,
       detectTables: options.detectTables,
@@ -310,10 +334,11 @@ export const importKnowledgeTextFromFile = async (
   const title =
     options.title ??
     (file.name ? stripExtension(file.name) : "Imported document");
-  return await importMarkdownAsKnowledgeText(
+  const imported = await importMarkdownAsKnowledgeText(
     { title, text, sourceUri: file.name, parserMetadata: metadata },
     options
   );
+  return warnings?.length ? { ...imported, parserWarnings: warnings } : imported;
 };
 
 /**
@@ -336,8 +361,11 @@ export const importKnowledgeTextFromUrl = async (
   if (result.markdown.trim().length === 0) {
     throw new Error("The page contains no extractable text");
   }
-  return await importMarkdownAsKnowledgeText(
+  const imported = await importMarkdownAsKnowledgeText(
     { title: options.title ?? result.title, text: result.markdown, sourceUri: url },
     options
   );
+  return result.warnings?.length
+    ? { ...imported, parserWarnings: result.warnings }
+    : imported;
 };

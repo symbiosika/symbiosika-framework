@@ -9,13 +9,18 @@ import { parsePdfFileAsMarkdownMistralOpenRouter } from "./mistral-openrouter";
 import { parsePdfFileAsMarkdownSymbiosika } from "./symbiosika-parse";
 import {
   DEFAULT_PDF_PARSER,
+  findServiceModality,
+  fileExtension,
+  isUninformativeMime,
   PDF_PARSER,
   PDF_PARSER_ALIASES,
+  SERVICE_FEATURE,
   type PdfParser,
   type PdfParserContext,
   type PdfParserOptions,
   type PdfParserResult,
   type ServiceCapabilities,
+  type ServiceModality,
 } from "./types";
 
 /**
@@ -61,8 +66,8 @@ function mistralOcrCapabilities(service: string): ServiceCapabilities {
         mimeTypes: ["application/pdf"],
         extensions: [".pdf"],
         // OCR is inherent to the engine rather than an opt-in flag, so
-        // `extractImages` is the only knob the caller actually controls.
-        features: { extractImages: true },
+        // image extraction is the only knob the caller actually controls.
+        features: { [SERVICE_FEATURE.EXTRACT_IMAGES]: true },
       },
     ],
   };
@@ -85,7 +90,12 @@ const resolveParser = (requested: string): PdfParser => {
   return parser;
 };
 
-export const parsePdfFileAsMardown = async (
+/**
+ * Hand one file to the configured parsing service. Not PDF-only any more — the
+ * service decides what it accepts (see `configuredParserSupports`), so this
+ * takes documents, images, audio and video just the same.
+ */
+export const parseFileWithService = async (
   fileContent: File,
   context: PdfParserContext,
   options?: PdfParserOptions
@@ -95,6 +105,12 @@ export const parsePdfFileAsMardown = async (
   const parser = resolveParser(requested);
   return parser(fileContent, context, options);
 };
+
+/**
+ * Former name of `parseFileWithService`, kept for existing callers.
+ * @deprecated use `parseFileWithService` — the service parses more than PDFs.
+ */
+export const parsePdfFileAsMardown = parseFileWithService;
 
 /**
  * Resolve the capabilities (advertised modalities + per-modality feature
@@ -108,17 +124,79 @@ export const parsePdfFileAsMardown = async (
  * Never throws — a discovery failure degrades gracefully to "no advertised
  * capabilities" so a UI can still render.
  */
-export const getConfiguredParserCapabilities =
-  async (): Promise<ServiceCapabilities> => {
-    const requested = process.env.PDF_PARSER_SERVICE ?? DEFAULT_PDF_PARSER;
-    const id = PDF_PARSER_ALIASES[requested] ?? requested;
-    if (id !== PDF_PARSER.GENERIC) {
-      return STATIC_PARSER_CAPABILITIES[id] ?? { service: id, modalities: [] };
-    }
-    try {
-      return await getGenericParserCapabilities();
-    } catch (e) {
-      log.error(`Failed to fetch generic parser capabilities: ${e}`);
-      return { service: id, modalities: [] };
-    }
-  };
+export const getConfiguredParserCapabilities = async (
+  /**
+   * Parser to ask about, for a call site that selects one explicitly
+   * (`PdfParserOptions.model`). Defaults to `PDF_PARSER_SERVICE`, i.e. the
+   * service a parse would actually go to.
+   */
+  requestedParser?: string
+): Promise<ServiceCapabilities> => {
+  const requested =
+    requestedParser ?? process.env.PDF_PARSER_SERVICE ?? DEFAULT_PDF_PARSER;
+  const id = PDF_PARSER_ALIASES[requested] ?? requested;
+  if (id !== PDF_PARSER.GENERIC) {
+    return STATIC_PARSER_CAPABILITIES[id] ?? { service: id, modalities: [] };
+  }
+  try {
+    return await getGenericParserCapabilities();
+  } catch (e) {
+    log.error(`Failed to fetch generic parser capabilities: ${e}`);
+    return { service: id, modalities: [] };
+  }
+};
+
+/**
+ * The one format every parser service handles, used when the configured
+ * service advertises nothing: either it has no discovery endpoint (`llama`,
+ * `symbiosika-parse-v1`) or `/v1/capabilities` was unreachable. Without this,
+ * a discovery hiccup would stop PDF imports — which is why it exists and why
+ * it holds nothing but PDF. Everything else must be advertised.
+ */
+const PDF_ONLY_FALLBACK: ServiceModality = {
+  modality: "pdf",
+  mimeTypes: ["application/pdf"],
+  extensions: [".pdf"],
+};
+
+/**
+ * Whether the configured parsing service accepts this file — asked of the
+ * service (`GET /v1/capabilities`) rather than answered from a format list
+ * the framework would have to maintain in lockstep with it.
+ *
+ * `mimeType` should be left `undefined` for an uninformative MIME (see
+ * `isUninformativeMime`), so the extension decides: browsers and Windows send
+ * `""` or `application/octet-stream` for `.xlsx`, `.eml` and `.opus` just as
+ * they do for `.pdf`.
+ *
+ * Never throws (`getConfiguredParserCapabilities` degrades to "advertises
+ * nothing"), and always accepts PDF — see `PDF_ONLY_FALLBACK`.
+ */
+export const configuredParserSupports = async (
+  mimeType?: string,
+  extension?: string,
+  /** Parser to ask about; defaults to the configured one. */
+  requestedParser?: string
+): Promise<boolean> => {
+  const caps = await getConfiguredParserCapabilities(requestedParser);
+  return (
+    findServiceModality(caps.modalities, mimeType, extension) !== undefined ||
+    findServiceModality([PDF_ONLY_FALLBACK], mimeType, extension) !== undefined
+  );
+};
+
+/**
+ * `configuredParserSupports` for a `File`: derives the routing keys (MIME,
+ * falling back to the extension when the MIME is uninformative).
+ */
+export const configuredParserSupportsFile = async (
+  file: File,
+  requestedParser?: string
+): Promise<boolean> => {
+  const mime = (file.type ?? "").split(";")[0]!.trim().toLowerCase();
+  return configuredParserSupports(
+    isUninformativeMime(mime) ? undefined : mime,
+    fileExtension(file.name),
+    requestedParser
+  );
+};

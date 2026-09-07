@@ -87,7 +87,7 @@ curl https://parser.example.com/v1/capabilities -H "X-API-Key: sk-abc123..."
 |------------------------|-----------|----------|-------------|
 | `service`              | string    | ✅       | Service/build identifier (matches `model` in results). |
 | `modalities`           | array     | ✅       | Every modality the service accepts. At least one entry. |
-| `modalities[].modality`| string    | ✅       | Canonical class: `pdf`, `image`, `audio`, `video`, `text`, or `office`. |
+| `modalities[].modality`| string    | ✅       | Canonical class: `pdf`, `image`, `audio`, `video`, or `document`. (`text` / `office` are accepted legacy values from the first draft; no service advertises them.) |
 | `modalities[].mime_types` | string[] | ✅    | Accepted MIME types for this modality. Used as the primary routing key. |
 | `modalities[].extensions` | string[] | ✅    | Accepted file extensions (lowercase, leading dot). Fallback when MIME is unknown. |
 | `modalities[].features` | object   | ❌       | Optional per-modality feature flags (see §2.1.1). An open, boolean-valued map. Tells the framework which request options / extra services are meaningful for this type. Any flag not present defaults to `false`. |
@@ -117,6 +117,24 @@ the corresponding capability, so the framework can wire them automatically:
 | `parse_images_in_doc` | `parse_images_in_doc` (§3) | Extra service: analyses images **embedded in the document** (OCR / captioning / description) and folds the recognised content into the page `text`, instead of only emitting the raw image. |
 | `ocr`                 | `ocr` (§3)             | Extra service: runs OCR on scanned / image-only pages to recover machine-readable text. |
 | `detect_tables`       | `detect_tables` (§3)   | Extra service: detects tables and renders them as Markdown tables in the page `text`. |
+| `preferred_language`  | `preferred_language` (§3) | Extra service: accepts a BCP-47 language hint (e.g. `de`) for OCR / transcription. |
+| `include_positions`   | `include_positions` (§3)  | Extra service: can report per-block geometry. Only meaningful for rendered modalities — a `document` has no geometry without rendering. |
+| `polish_markdown`     | `polish_markdown` (§3)    | Extra service: polishes the emitted Markdown. |
+| `context`             | `context` (§3)            | Extra service: accepts a free-text hint about the document (what it is, what matters in it). |
+
+A modality advertises only what makes sense for it. In the reference service:
+`pdf` and `image` advertise the full set; `document` never advertises `ocr`
+(nothing is recognised — the structure is in the file) and never
+`include_positions` (no rendering, no geometry); `audio` and `video` advertise
+`async` and nothing else, and reject `extract` and `extract_images=true` with
+`unsupported_option` rather than ignoring them.
+
+The framework treats this map as OPEN: it interprets `extract_images`,
+`extract_fields` and `async` itself, and every other advertised flag is simply
+a name a caller may ask for — it is then forwarded as the identically named
+request field of §3. A service that adds a flag therefore needs no framework
+change to become usable; a client discovers the available flags from this map
+(`GET /v1/capabilities`) rather than from a list of its own.
 
 Convention for new flags: `snake_case`, boolean-valued, named after the
 capability (not the implementation). If a flag also gates a request option, give
@@ -160,9 +178,16 @@ Content-Disposition: form-data; name="extract"
 | `parse_images_in_doc` | `"true"`/`"false"`| ❌       | `false` | Extra service: analyse images embedded in the document and fold the recognised content into the page `text` (only if the modality advertises `parse_images_in_doc`). |
 | `ocr`                 | `"true"`/`"false"`| ❌       | `false` | Extra service: run OCR on scanned / image-only pages (only if the modality advertises `ocr`). |
 | `detect_tables`       | `"true"`/`"false"`| ❌       | `false` | Extra service: detect tables and render them as Markdown (only if the modality advertises `detect_tables`). |
+| `preferred_language`  | string            | ❌       | –       | Extra service: BCP-47 language hint for OCR / transcription (only if advertised). |
+| `include_positions`   | `"true"`/`"false"`| ❌       | `false` | Extra service: report per-block geometry (only if advertised). |
+| `polish_markdown`     | `"true"`/`"false"`| ❌       | `false` | Extra service: polish the emitted Markdown (only if advertised). |
+| `context`             | string            | ❌       | –       | Extra service: free-text hint about the document (only if advertised). |
 
-Each extra-service form field is a boolean opt-in that mirrors a feature flag
-from §2.1.1 (same name). The framework only sends a field when the target
+Each extra-service form field mirrors a feature flag from §2.1.1 under the same
+name — boolean flags as `"true"`/`"false"`, the free-text ones as their value.
+The list above is what the reference service offers today, not a closed set: a
+field is accepted whenever the modality advertises the matching flag. The
+framework only sends a field when the target
 modality advertises the matching flag as `true`. A service MAY ignore a field it
 does not support; it MUST NOT fail the request because of an unknown or
 unsupported option field.
