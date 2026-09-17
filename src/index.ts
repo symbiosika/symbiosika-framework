@@ -39,6 +39,7 @@ import {
   registerPreEmailChangeVerification,
 } from "./lib/auth/actions";
 import { registerPostConnectionAction } from "./lib/connections/actions";
+import { registerPostEmailSendAction } from "./lib/email/actions";
 // Routes
 import { definePublicUserRoutes } from "./routes/user/public";
 import { defineSecuredUserRoutes } from "./routes/user/protected";
@@ -235,6 +236,17 @@ export const defineServer = (config: ServerSpecificConfig) => {
   if (config.customPostEmailChangeActions) {
     config.customPostEmailChangeActions.forEach((action) => {
       registerPostEmailChangeAction(action);
+    });
+  }
+
+  /**
+   * Register the observers of the outgoing mail stream.
+   * Fired after every send attempt, the framework's own login, verification
+   * and invitation mails included (see lib/email/actions.ts).
+   */
+  if (config.customPostEmailSendActions) {
+    config.customPostEmailSendActions.forEach((action) => {
+      registerPostEmailSendAction(action);
     });
   }
 

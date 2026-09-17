@@ -427,6 +427,48 @@ Both lists are also reachable at runtime via
 
 ---
 
+## Observing Outgoing E-Mails
+
+The mails of the login flow — magic link, one-time code, address verification,
+invitations — are sent from inside the framework, so an app has no call site of
+its own to hook into. `customPostEmailSendActions` is that hook: every mail the
+server sends passes through `smtpService.sendMail`, and each registered action
+is called once per send attempt.
+
+```ts
+defineServer({
+  // Runs after every send attempt — the framework's own login and invitation
+  // mails included. Metadata only; the body is never handed over.
+  customPostEmailSendActions: [
+    async ({ recipients, subject, sender, delivered, sentAt }) => {
+      await writeMailLog({ recipients, subject, delivered, sentAt });
+    },
+  ],
+});
+```
+
+Worth knowing:
+
+- **`sentAt` is the hand-over time, not the finish time.** A failing SMTP server
+  is retried for up to ~30 minutes; an audit entry should show when the mail was
+  triggered.
+- **`delivered` reports the outcome.** `false` means the mailer gave up, or the
+  options were rejected before SMTP was reached. In console mode
+  (`SMTP_HOST=console.localhost`) nothing leaves the process and `delivered`
+  stays `true`.
+- **Actions are observers.** The attempt is over when they run, so one that
+  throws is logged and swallowed and the remaining actions still run.
+- **No message body.** The context carries recipients, subject, sender,
+  outcome and timestamp. Bodies hold magic links and one-time codes and are
+  deliberately not passed on.
+- The fire-and-forget path (`sendMailInBackground`, used by the login mails)
+  goes through the same method and triggers the actions as well.
+
+Also reachable at runtime via `registerPostEmailSendAction`
+(`lib/email/actions.ts`).
+
+---
+
 ## Organization, Team, and Invitation Endpoints
 
 (See previous section for details. All routes are prefixed with `/api/v1/`.)
