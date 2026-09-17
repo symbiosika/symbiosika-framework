@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import * as v from "valibot";
 import log from "../log";
+import { runPostEmailSendActions } from "./actions";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 
 /**
@@ -111,7 +112,40 @@ class SMTPService {
     }
   }
 
-  async sendMail({
+  /**
+   * Send an e-mail and tell the registered post-send actions about the
+   * attempt (see `customPostEmailSendActions` in the server config).
+   *
+   * Every mail of the server passes through here — the framework's own login
+   * link, one-time code, verification and invitation mails as well as anything
+   * an app sends — which is what makes this the one place an app can observe
+   * to know what a person was sent.
+   *
+   * `sentAt` is taken BEFORE the attempt on purpose: {@link deliver} retries a
+   * failing SMTP server for up to ~30 minutes, and an audit entry should carry
+   * the moment the mail was triggered, not the moment the last retry gave up.
+   * Actions run for every attempt that reaches this method, including one that
+   * fails validation (`delivered: false`).
+   */
+  async sendMail(options: EmailOptions): Promise<boolean> {
+    const sentAt = new Date().toISOString();
+    const delivered = await this.deliver(options);
+    await runPostEmailSendActions({
+      recipients: options.recipients ?? [],
+      subject: options.subject,
+      sender: options.sender ?? process.env.SMTP_DEFAULT_SENDER,
+      delivered,
+      sentAt,
+    });
+    return delivered;
+  }
+
+  /**
+   * The delivery itself: validate, then either log (console mode) or hand the
+   * mail to SMTP with retries. Split from {@link sendMail} so that the
+   * post-send actions run on exactly one path, whichever way this returns.
+   */
+  private async deliver({
     sender,
     recipients,
     subject,

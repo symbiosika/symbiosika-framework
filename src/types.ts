@@ -208,6 +208,15 @@ export interface ServerSpecificConfig {
    */
   customPostEmailChangeActions?: CustomPostEmailChangeAction[];
 
+  // Outgoing e-mails
+  /**
+   * Actions that run after every e-mail send attempt — the framework's own
+   * login, verification and invitation mails included. The typical use is an
+   * app-level record of what was sent to whom and when; the action sees
+   * metadata (recipients, subject, outcome, timestamp), never the body.
+   */
+  customPostEmailSendActions?: CustomPostEmailSendAction[];
+
   // Knowledge post processors
   /**
    * Post processors registered at server start. They run after a document is
@@ -370,6 +379,51 @@ export type CustomPreEmailChangeVerification = (
  */
 export type CustomPostEmailChangeAction = (
   context: EmailChangeContext
+) => Promise<void>;
+
+/** What a post-send action is told about one outgoing e-mail. */
+export type EmailSentContext = {
+  /** Recipients the mail was addressed to, as handed to the mailer. */
+  recipients: string[];
+  subject: string;
+  /** The effective sender (explicit one, else `SMTP_DEFAULT_SENDER`). */
+  sender?: string;
+  /**
+   * Whether the mailer considers the mail sent. `false` means it gave up after
+   * all retries, or the options were rejected before SMTP was reached at all.
+   * In console mode (`SMTP_HOST=console.localhost`) nothing leaves the process
+   * and this is still `true` — the mail "succeeded" as far as the app is
+   * concerned.
+   */
+  delivered: boolean;
+  /**
+   * ISO timestamp of when the mail was handed to the mailer — NOT of when the
+   * attempt finished. A failing SMTP server is retried for up to ~30 minutes,
+   * and an audit trail should show when the mail was triggered.
+   */
+  sentAt: string;
+};
+
+/**
+ * Custom action that runs AFTER an e-mail send attempt.
+ *
+ * The slot exists so an app can answer "which mails did this person get, and
+ * when?" without wrapping the mailer: login links, one-time codes, invitations
+ * and every app mail go through the same `smtpService`, so one action here
+ * sees all of them — including mails sent by the framework itself, which an
+ * app cannot otherwise reach.
+ *
+ * Observers only. The attempt is over by the time an action runs, so an action
+ * that throws is logged and swallowed rather than failing the send for the
+ * caller. Keep them to bookkeeping (audit log, statistics, downstream note).
+ *
+ * The context carries metadata only — no `text`/`html` body. Mail bodies hold
+ * magic links, one-time codes and personal data; an action that wants them has
+ * them at its own call site anyway, and the framework's own mails are exactly
+ * the ones whose bodies should not be copied around.
+ */
+export type CustomPostEmailSendAction = (
+  context: EmailSentContext
 ) => Promise<void>;
 
 /**
