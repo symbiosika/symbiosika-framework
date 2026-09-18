@@ -27,6 +27,7 @@ import { gfm } from "turndown-plugin-gfm";
 import log from "../../log";
 import { fetchWithSsrfGuard } from "../../utils/url-guard";
 import { parseFileWithService } from "./pdf";
+import type { ParserWarning } from "./pdf/types";
 
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (compatible; SymbiosikaKnowledgeBot/1.0; +https://symbiosika.de)";
@@ -67,7 +68,7 @@ export type UrlToMarkdownResult = {
    * Non-fatal notes the parsing service reported for a document behind the URL
    * (only the PDF path reaches a service). See `PdfParserResult.warnings`.
    */
-  warnings?: string[];
+  warnings?: ParserWarning[];
 };
 
 type FetchedResource = {

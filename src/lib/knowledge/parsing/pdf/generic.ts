@@ -8,9 +8,11 @@ import {
   PDF_PARSER,
   SERVICE_FEATURE,
   toServiceOptionWireName,
+  toParserWarnings,
   type ExtractedValue,
   type PdfParser,
   type PdfParserOptions,
+  type RawParserWarning,
   type ServiceCapabilities,
   type ServiceModality,
 } from "./types";
@@ -44,11 +46,16 @@ type RawResult = {
   pages: RawPage[];
   metadata?: Record<string, ExtractedValue>;
   /**
-   * Non-fatal notes about this result (spec §5). The service returns a partial
-   * result rather than failing — a truncated transcript, skipped scan pages, a
-   * mail attachment it cannot read — and says so here.
+   * Non-fatal notes about this result (spec §5 `warnings[]`). Two kinds arrive
+   * through this one field — content that did not make it (a truncated
+   * transcript, an unreadable mail attachment) and notes about a document that
+   * arrived complete (a table column the parser repaired) — and the entry's
+   * `severity` is what tells them apart.
+   *
+   * A service still on the old contract sends plain strings; those count as
+   * `incomplete`. See `toParserWarning`.
    */
-  warnings?: string[];
+  warnings?: RawParserWarning[];
 };
 
 const authHeaders = (): Record<string, string> => ({
@@ -228,9 +235,11 @@ export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
     }
   }
 
-  if (data.warnings?.length) {
+  const warnings = toParserWarnings(data.warnings);
+  if (warnings?.length) {
     log.info(
-      `Generic parser reported warnings for ${fileContent.name}: ${data.warnings.join(", ")}`,
+      `Generic parser reported warnings for ${fileContent.name}: ` +
+        warnings.map((w) => `${w.raw} [${w.severity}]`).join(", "),
     );
   }
 
@@ -239,7 +248,7 @@ export const parsePdfFileAsMarkdownGeneric: PdfParser = async (
     pages: data.pages.map((p) => ({ page: p.page, text: p.text })),
     includesImages,
     metadata: data.metadata,
-    warnings: data.warnings,
+    warnings,
   };
 };
 

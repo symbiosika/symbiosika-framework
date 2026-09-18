@@ -20,6 +20,7 @@ import { parseFile, extractedMetadataToAttributes } from "./parsing";
 import type {
   ExtractedValue,
   LegacyServiceOptions,
+  ParserWarning,
   ServiceOptions,
 } from "./parsing/pdf/types";
 import { filterValidAttributes } from "./facets";
@@ -81,11 +82,13 @@ export type ImportKnowledgeTextResult = {
   blocks: KnowledgeTextBlockSelect[];
   /**
    * Non-fatal notes the parsing service reported for the imported file: a
-   * truncated transcript, skipped scan pages, an unreadable mail attachment.
-   * The service returns a partial result on purpose, so these belong in front
-   * of the user — without them the import looks complete when it is not.
+   * truncated transcript, skipped scan pages, an unreadable mail attachment —
+   * or a note about a document that arrived complete, which `severity` marks
+   * as such. The service returns a partial result on purpose, so these belong
+   * in front of the user: without them the import looks complete when it is
+   * not.
    */
-  parserWarnings?: string[];
+  parserWarnings?: ParserWarning[];
 };
 
 let turndown: TurndownService | null = null;
@@ -161,7 +164,7 @@ const fileToMarkdown = async (
 ): Promise<{
   text: string;
   metadata?: Record<string, ExtractedValue>;
-  warnings?: string[];
+  warnings?: ParserWarning[];
 }> => {
   const name = file.name ?? "";
   const mime = (file.type ?? "").trim().toLowerCase();

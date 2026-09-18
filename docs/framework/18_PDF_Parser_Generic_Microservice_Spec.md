@@ -236,7 +236,8 @@ caller names the fields (`key`, `name`, `description`); your service fills them.
 **Required fields:** a `required` field that cannot be found MUST still appear in
 `metadata` with `found: false` and `value: null`. **Do NOT fail the request**
 because a required field is missing — the framework decides how to handle gaps.
-List every missing required `key` in the top-level `warnings` array.
+List every missing required `key` in the top-level `warnings` array, as an
+`extraction_field_missing` entry with `severity: "incomplete"` (§5 `warnings[]`).
 
 ---
 
@@ -292,7 +293,67 @@ curl -X POST https://parser.example.com/v1/parse \
 | `model`    | string  | ✅       | Free-form identifier of your parser build, e.g. `generic-v1`, `docling-0.3`. |
 | `pages`    | array   | ✅       | One entry per page, `page` 1-based and ascending. |
 | `metadata` | object  | ❌       | Extracted key/value results, keyed by each `extract` target's `key`. Omit or `{}` when no targets were requested. |
-| `warnings` | string[]| ❌       | Non-fatal notes, e.g. `"required field 'geraeteart' not found"`. |
+| `warnings` | array   | ❌       | Non-fatal notes about this result. See `warnings[]`. |
+
+### `warnings[]`
+
+A warning is **not** the same as "something is missing". A service reports two
+different things here, and only it can tell them apart:
+
+- a **note** — a repair it made (a table column the OCR dropped and the parser
+  reconstructed), a decision it took (decorative graphics left out), an option
+  that did not apply. The document arrived complete.
+- an **incomplete** result — content that did not make it: images without a
+  description because a cap was reached, truncated rows, an unreadable
+  attachment.
+
+The framework shows the second in amber under "not fully imported" and the
+first as a neutral note. It cannot derive that from the text, so **the service
+says which one it is**:
+
+```json
+"warnings": [
+  {
+    "code": "table_columns_widened",
+    "severity": "note",
+    "params": { "count": "8" },
+    "message": "8 table rows: a missing column was detected and the structure repaired."
+  },
+  {
+    "code": "vision_skipped_cap",
+    "severity": "incomplete",
+    "params": { "count": "254" },
+    "message": "254 images without a description: the per-document limit was reached."
+  }
+]
+```
+
+| Field      | Type   | Required | Description |
+|------------|--------|----------|-------------|
+| `code`     | string | ✅       | Machine-readable identifier, `[a-z0-9_]+`. Stable across releases — the framework may carry its own phrasing for a code it knows. |
+| `severity` | string | ✅       | `"note"` or `"incomplete"`. Anything else is read as `"incomplete"`. |
+| `params`   | object | ❌       | Flat string→string map filling the placeholders of the phrasing, e.g. `{ "count": "8" }`. Send counts, not id lists: `"count": "66"` rather than `"img-p156-1,img-p178-2,…"` — a wall of ids reads like a defect report. |
+| `message`  | string | ❌       | Your own sentence for a reader. Shown when the framework has no phrasing for `code`, so a code it has never seen still reads as a sentence. English is fine; it is a fallback, not the primary text. |
+
+**Choosing a severity.** Ask only: *is content missing from the result?* Not
+whether something unusual happened, and not how confident the model was. A
+confidence score is a `note` — measured against real documents it does not
+correlate with correctness, so it cannot say *where* something is wrong and
+must not read as a request to check.
+
+A **required field that could not be found** (§3.1) is `incomplete`:
+
+```json
+{ "code": "extraction_field_missing", "severity": "incomplete",
+  "params": { "key": "geraeteart" },
+  "message": "required field 'geraeteart' not found" }
+```
+
+**Plain strings stay valid.** A service that sends `["transcription_incomplete:80/120"]`
+or `["required field 'geraeteart' not found"]` keeps working; every such entry
+counts as `incomplete`, because a warning nobody classified must not be waved
+through as harmless. New services should send objects — a string cannot report
+a note, so a complete import will keep looking like a failure.
 
 ### `pages[]`
 
@@ -462,7 +523,10 @@ def build_result(data: bytes, extract_images: bool, extract: str,
     # parse_images_in_doc, see §3.x pages[].images[]
     pages = your_parser(data, extract_images, parse_images_in_doc)  # -> [{page, text, images?}, ...]
     metadata = your_extractor(pages, targets)        # -> {key: {value, found, ...}}
-    warnings = [f"required field '{t['key']}' not found"
+    warnings = [{"code": "extraction_field_missing",
+                 "severity": "incomplete",
+                 "params": {"key": t["key"]},
+                 "message": f"required field '{t['key']}' not found"}
                 for t in targets
                 if t.get("required") and not metadata.get(t["key"], {}).get("found")]
     return {"model": "generic-v1", "pages": pages,
