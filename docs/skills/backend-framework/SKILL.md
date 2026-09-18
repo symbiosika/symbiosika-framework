@@ -52,6 +52,7 @@ defineServer({
   // Hooks
   customPreRegisterCustomVerifications: [(email, meta) => Promise<void>],
   customPostRegisterActions: [(userId, email) => Promise<void>],
+  customPostEmailSendActions: [(context: EmailSentContext) => Promise<void>],  // every outgoing mail, login mails included
 
   // Features
   jobHandlers: JobHandlerRegister[],
