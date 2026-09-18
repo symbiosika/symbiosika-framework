@@ -682,6 +682,63 @@ describe("parseFile routing against the advertised capabilities", () => {
     nextResultBody = {
       model: "generic-v1",
       pages: [{ page: 1, text: "Teiltranskript" }],
+      warnings: [
+        {
+          code: "transcription_incomplete",
+          severity: "incomplete",
+          params: { done: "80", total: "120" },
+          message: "Transcript incomplete: only 80 of 120 sections.",
+        },
+      ],
+    };
+
+    const result = await parseFile(upload("rede.mp3", "audio/mpeg"), {
+      tenantId: "tenant-1",
+    });
+
+    expect(result.warnings).toEqual([
+      {
+        code: "transcription_incomplete",
+        severity: "incomplete",
+        params: { done: "80", total: "120" },
+        message: "Transcript incomplete: only 80 of 120 sections.",
+        raw: "Transcript incomplete: only 80 of 120 sections.",
+      },
+    ]);
+  });
+
+  test("a note about a complete document is not reported as incomplete", async () => {
+    // The whole reason severity travels on the wire: a repaired table column
+    // and a truncated table are both "a warning about a table", and only the
+    // service knows which one lost data.
+    useGenericService();
+    nextResultBody = {
+      model: "generic-v1",
+      pages: [{ page: 1, text: "Katalog" }],
+      warnings: [
+        {
+          code: "table_columns_widened",
+          severity: "note",
+          params: { count: "8" },
+        },
+      ],
+    };
+
+    const result = await parseFile(upload("katalog.pdf", "application/pdf"), {
+      tenantId: "tenant-1",
+    });
+
+    expect(result.warnings?.[0]?.severity).toBe("note");
+    expect(result.warnings?.[0]?.params).toEqual({ count: "8" });
+  });
+
+  test("a service still sending plain strings counts as incomplete", async () => {
+    // The old contract cannot express a note, so an unclassified warning stays
+    // visible rather than being waved through as harmless.
+    useGenericService();
+    nextResultBody = {
+      model: "generic-v1",
+      pages: [{ page: 1, text: "Teiltranskript" }],
       warnings: ["transcription_incomplete:80/120"],
     };
 
@@ -689,7 +746,49 @@ describe("parseFile routing against the advertised capabilities", () => {
       tenantId: "tenant-1",
     });
 
-    expect(result.warnings).toEqual(["transcription_incomplete:80/120"]);
+    expect(result.warnings).toEqual([
+      {
+        code: "transcription_incomplete",
+        severity: "incomplete",
+        raw: "transcription_incomplete:80/120",
+      },
+    ]);
+  });
+
+  test("an unknown severity is read as incomplete, not as a note", async () => {
+    useGenericService();
+    nextResultBody = {
+      model: "generic-v1",
+      pages: [{ page: 1, text: "Katalog" }],
+      warnings: [
+        { code: "some_new_code", severity: "info" },
+        { code: "no_severity_at_all" },
+      ],
+    };
+
+    const result = await parseFile(upload("katalog.pdf", "application/pdf"), {
+      tenantId: "tenant-1",
+    });
+
+    expect(result.warnings?.map((w) => w.severity)).toEqual([
+      "incomplete",
+      "incomplete",
+    ]);
+  });
+
+  test("an entry with nothing to identify or read it by is dropped", async () => {
+    useGenericService();
+    nextResultBody = {
+      model: "generic-v1",
+      pages: [{ page: 1, text: "Katalog" }],
+      warnings: [{ severity: "note" }, "   ", { code: "kept" }],
+    };
+
+    const result = await parseFile(upload("katalog.pdf", "application/pdf"), {
+      tenantId: "tenant-1",
+    });
+
+    expect(result.warnings?.map((w) => w.code)).toEqual(["kept"]);
   });
 
   test("audio takes the job path even while the service mode is sync", async () => {

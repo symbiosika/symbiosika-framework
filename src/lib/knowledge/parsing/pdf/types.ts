@@ -145,6 +145,121 @@ export interface PageContent {
   text: string;
 }
 
+/**
+ * Does a warning mean content is missing, or is it merely a note?
+ *
+ * Only the service can tell: a repaired table column and a truncated table
+ * both arrive as "a warning about a table", and nothing in the text says
+ * which one lost data. So the classification travels on the wire (spec §5
+ * `warnings[]`) instead of being guessed from the code here or in the UI —
+ * a service that gains a code must not need a frontend release to stop its
+ * harmless note from reading as a defect.
+ */
+export type ParserWarningSeverity = "note" | "incomplete";
+
+/** One non-fatal note about a parsed result (spec §5 `warnings[]`). */
+export interface ParserWarning {
+  /** Machine-readable identifier, e.g. `table_columns_widened`. */
+  code: string;
+  severity: ParserWarningSeverity;
+  /** Values filling the placeholders of a phrasing, e.g. `{ count: "8" }`. */
+  params?: Record<string, string>;
+  /** The service's own sentence, shown when nothing phrases `code`. */
+  message?: string;
+  /** Exactly as the service sent it — for logs, and as the last fallback. */
+  raw: string;
+}
+
+/** What a service may put into `warnings[]`: the object, or a legacy string. */
+export type RawParserWarning =
+  | string
+  | {
+      code?: unknown;
+      severity?: unknown;
+      params?: unknown;
+      message?: unknown;
+    };
+
+/** Flatten `params` to string→string; anything unusable is left out. */
+const readParams = (value: unknown): Record<string, string> | undefined => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const params: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw === "string") params[key] = raw;
+    else if (typeof raw === "number" || typeof raw === "boolean") {
+      params[key] = String(raw);
+    }
+  }
+  return Object.keys(params).length > 0 ? params : undefined;
+};
+
+/**
+ * Read one wire entry into a {@link ParserWarning}.
+ *
+ * A **string** is a service that has not adopted the object form (spec §5).
+ * It cannot express a note, so it counts as `incomplete`: a warning nobody
+ * classified must not be waved through as harmless just because it happens to
+ * be about something harmless. Its `<code>:<detail>` shape is kept in `raw`
+ * for whoever renders it — this layer does not try to parse the detail, since
+ * the detail format is that service's own and not part of the contract.
+ *
+ * An **object without a usable `code`** is treated the same way: there is
+ * nothing to phrase, so it falls back to its text.
+ */
+export const toParserWarning = (
+  entry: RawParserWarning,
+): ParserWarning | undefined => {
+  if (typeof entry === "string") {
+    const raw = entry.trim();
+    if (raw === "") return undefined;
+    const at = raw.indexOf(":");
+    return {
+      code: at > 0 ? raw.slice(0, at) : raw,
+      severity: "incomplete",
+      raw,
+    };
+  }
+
+  if (typeof entry !== "object" || entry === null) return undefined;
+
+  const code = typeof entry.code === "string" ? entry.code.trim() : "";
+  const message =
+    typeof entry.message === "string" && entry.message.trim() !== ""
+      ? entry.message.trim()
+      : undefined;
+  if (code === "") {
+    // Nothing identifies this warning; keep it visible via its own sentence.
+    return message
+      ? { code: "", severity: "incomplete", message, raw: message }
+      : undefined;
+  }
+
+  // Only the two documented values mean anything; a third (or a missing one)
+  // errs towards visible rather than silent.
+  const severity: ParserWarningSeverity =
+    entry.severity === "note" ? "note" : "incomplete";
+
+  return {
+    code,
+    severity,
+    params: readParams(entry.params),
+    message,
+    raw: message ?? code,
+  };
+};
+
+/** {@link toParserWarning} for a whole list, unusable entries dropped. */
+export const toParserWarnings = (
+  entries: RawParserWarning[] | undefined,
+): ParserWarning[] | undefined => {
+  const warnings = (entries ?? [])
+    .map((entry) => toParserWarning(entry))
+    .filter((w): w is ParserWarning => w !== undefined);
+  return warnings.length > 0 ? warnings : undefined;
+};
+
 export interface PdfParserResult {
   includesImages: boolean;
   model: string;
@@ -153,12 +268,14 @@ export interface PdfParserResult {
   metadata?: Record<string, ExtractedValue>;
   /**
    * Non-fatal notes the service reported about *this* result (spec §5
-   * `warnings`). The service deliberately returns a partial result instead of
-   * failing — a truncated transcript, skipped scan pages, an unsupported mail
-   * attachment. Dropping these makes a partial result look complete, so they
-   * are carried all the way out of `parseFile` / `parseDocument`.
+   * `warnings[]`). They cover both a result that is deliberately partial (a
+   * truncated transcript, skipped scan pages, an unsupported mail attachment)
+   * and one that merely has something to report about a complete document —
+   * `severity` tells them apart. Dropping these makes a partial result look
+   * complete, so they are carried all the way out of `parseFile` /
+   * `parseDocument`.
    */
-  warnings?: string[];
+  warnings?: ParserWarning[];
 }
 
 /**

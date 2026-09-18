@@ -16,6 +16,7 @@ import {
   type ExtractionTarget,
   type LegacyServiceOptions,
   type PageContent,
+  type ParserWarning,
   type ServiceOptions,
 } from "./pdf/types";
 import { applyPostProcessors } from "./post-processors";
@@ -139,12 +140,13 @@ export const parseFile = async (
   /** Extracted key/value metadata keyed by `ExtractionTarget.key`. */
   metadata?: Record<string, ExtractedValue>;
   /**
-   * Non-fatal notes the service reported about this result: a truncated
-   * transcript, skipped scan pages, an unreadable mail attachment. The service
-   * returns a partial result instead of failing, so a caller that drops these
-   * presents a partial result as a complete one.
+   * Non-fatal notes the service reported about this result: content that did
+   * not make it (a truncated transcript, an unreadable mail attachment), or a
+   * note about a document that arrived complete. `severity` tells them apart.
+   * The service returns a partial result instead of failing, so a caller that
+   * drops these presents a partial result as a complete one.
    */
-  warnings?: string[];
+  warnings?: ParserWarning[];
 }> => {
   log.debug(`Parse file: ${file.name} from type ${file.type}`);
 
@@ -262,7 +264,7 @@ export const parseDocument = async (data: {
   let sourceHash: string | undefined;
   let parserMetadata: Record<string, ExtractedValue> | undefined;
   /** Non-fatal notes the parsing service reported (see `parseFile`). */
-  let parserWarnings: string[] | undefined;
+  let parserWarnings: ParserWarning[] | undefined;
 
   const hashingEnabled =
     data.computeSourceHash ?? _GLOBAL_SERVER_CONFIG.enableSourceHashing;
