@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { defineFilesRoutes } from ".";
 import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import { initTests, TEST_ORGANISATION_1 } from "../../../../test/init.test";
+import jsonwebtoken from "jsonwebtoken";
+import { shareFile } from "../../../../lib/storage/share";
 
 describe("Files API Endpoints", () => {
   const app: SymbiosikaFrameworkHonoApp = new Hono();
@@ -173,4 +175,76 @@ describe("Files API Endpoints", () => {
     );
     expect(invalidContentResponse.status).toBe(400);
   });
+
+  // The share route: the token is the permission, so these requests carry no
+  // session at all. That is the point of it.
+  it("serves a shared file to a request with no session, and refuses everything else", async () => {
+    const upload = await app.request(
+      "/api/tenant/" + TEST_ORGANISATION_1.id + "/files/db/" + testBucket,
+      {
+        method: "POST",
+        body: (() => {
+          const form = new FormData();
+          form.append("file", new File(["shared bytes"], "shared.txt", { type: "text/plain" }));
+          return form;
+        })(),
+        headers: { Cookie: `jwt=${jwt}` },
+      }
+    );
+    expect(upload.status).toBe(200);
+    const uploaded: any = await upload.json();
+
+    const share = await shareFile(uploaded.id, testBucket, TEST_ORGANISATION_1.id, "db", {
+      expiresInSeconds: 120,
+    });
+    const token = share.url.split("/").pop()!;
+
+    // no cookie, no bearer: the link carries its own permission
+    const served = await app.request(`/api/files/shared/${token}`);
+    expect(served.status).toBe(200);
+    expect(await served.text()).toBe("shared bytes");
+    expect(served.headers.get("cache-control")).toBe("private, no-store");
+
+    // expired
+    const expired = signShare(uploaded.id, -1);
+    expect((await app.request(`/api/files/shared/${expired}`)).status).toBe(403);
+
+    // signed with another key
+    const forged = jsonwebtoken.sign(
+      {
+        tenantId: TEST_ORGANISATION_1.id,
+        bucket: testBucket,
+        name: uploaded.id,
+        storageType: "db",
+        purpose: "file_share",
+      },
+      "not-the-key",
+      { expiresIn: 600 }
+    );
+    expect((await app.request(`/api/files/shared/${forged}`)).status).toBe(403);
+
+    // a session token is not a share
+    expect((await app.request(`/api/files/shared/${jwt}`)).status).toBe(403);
+
+    // nonsense
+    expect((await app.request("/api/files/shared/not-a-token")).status).toBe(403);
+
+    // a valid token whose file is gone
+    const missing = signShare("11111111-2222-3333-4444-555555555555", 120);
+    expect((await app.request(`/api/files/shared/${missing}`)).status).toBe(404);
+  });
 });
+
+/** A share token for a file of the test organisation, signed the way the framework does. */
+const signShare = (name: string, expiresIn: number) =>
+  jsonwebtoken.sign(
+    {
+      tenantId: TEST_ORGANISATION_1.id,
+      bucket: "test-bucket",
+      name,
+      storageType: "db",
+      purpose: "file_share",
+    },
+    process.env.JWT_PRIVATE_KEY || "",
+    { expiresIn }
+  );
