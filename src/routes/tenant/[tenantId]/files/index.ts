@@ -13,6 +13,11 @@ import {
   getFileFromLocalDisc,
   saveFileToLocalDisc,
 } from "../../../../lib/storage/local";
+import {
+  deleteFileFromS3,
+  getFileFromS3,
+  saveFileToS3,
+} from "../../../../lib/storage/s3";
 import type { SymbiosikaFrameworkHonoApp } from "../../../../types";
 import {
   authAndSetUsersInfo,
@@ -64,7 +69,7 @@ export function defineFilesRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH
       "param",
       v.object({
         tenantId: v.string(),
-        type: v.union([v.literal("local"), v.literal("db")]),
+        type: v.union([v.literal("local"), v.literal("db"), v.literal("s3")]),
         bucket: v.string(),
       })
     ),
@@ -103,6 +108,9 @@ export function defineFilesRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH
             options
           );
           return c.json(entry);
+        } else if (type === "s3") {
+          const entry = await saveFileToS3(form.file, bucket, tenantId, options);
+          return c.json(entry);
         }
       } catch (err) {
         throw new HTTPException(400, { message: err + "" });
@@ -129,7 +137,7 @@ export function defineFilesRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH
       "param",
       v.object({
         tenantId: v.string(),
-        type: v.union([v.literal("local"), v.literal("db")]),
+        type: v.union([v.literal("local"), v.literal("db"), v.literal("s3")]),
         bucket: v.string(),
         filename: v.string(),
       })
@@ -145,6 +153,8 @@ export function defineFilesRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH
           f = await getFileFromDb(filename, bucket, tenantId);
         } else if (type === "local") {
           f = await getFileFromLocalDisc(filename, bucket, tenantId);
+        } else if (type === "s3") {
+          f = await getFileFromS3(filename, bucket, tenantId);
         } else {
           throw new HTTPException(400, { message: "Invalid type" });
         }
@@ -271,7 +281,7 @@ export function defineFilesRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH
       "param",
       v.object({
         tenantId: v.string(),
-        type: v.union([v.literal("local"), v.literal("db")]),
+        type: v.union([v.literal("local"), v.literal("db"), v.literal("s3")]),
         bucket: v.string(),
         id: v.string(),
       })
@@ -286,6 +296,8 @@ export function defineFilesRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH
           await deleteFileFromDB(id, bucket, tenantId);
         } else if (type === "local") {
           await deleteFileFromLocalDisc(id, bucket, tenantId);
+        } else if (type === "s3") {
+          await deleteFileFromS3(id, bucket, tenantId);
         }
 
         return new Response(null, { status: 204 });

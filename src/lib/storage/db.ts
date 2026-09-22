@@ -100,7 +100,9 @@ export const deleteFileFromDB: DeleteFileFunction = async (
   tenantId
 ) => {
   try {
-    const id = name.split("/").pop() || "";
+    // The same name the save handed back in `path` ("<id>.<ext>"), a bare id,
+    // or a whole path: read takes all three, so delete has to as well.
+    const id = getIdFromFileName(name.split("/").pop() || "");
 
     // Delete the file record from the database
     await getDb()
