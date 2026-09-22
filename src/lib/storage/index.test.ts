@@ -132,6 +132,25 @@ describe("Storage Functions", () => {
       }
     });
 
+    test("should delete file from database by the name the save handed back", async () => {
+      // `path` ends in "<id>.<extension>"; getFile has always taken that form,
+      // so deleteFile has to take it too, not only the bare id.
+      const saveResult = await saveFile(
+        testFile,
+        testBucket,
+        TEST_ORGANISATION_1.id,
+        "db"
+      );
+      const storedName = saveResult.path.split("/").pop() || "";
+      expect(storedName).toBe(`${saveResult.id}.txt`);
+
+      await deleteFile(storedName, testBucket, TEST_ORGANISATION_1.id, "db");
+
+      await expect(
+        getFile(saveResult.id, testBucket, TEST_ORGANISATION_1.id, "db")
+      ).rejects.toThrow("Failed to get file from database");
+    });
+
     test("should throw error when getting non-existent file", async () => {
       await expect(
         getFile("nonexistent", testBucket, TEST_ORGANISATION_1.id, "db")

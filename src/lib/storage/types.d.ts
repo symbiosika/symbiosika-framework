@@ -1,3 +1,6 @@
+/** The storage backends the framework carries. */
+export type StorageType = "local" | "db" | "s3";
+
 export interface SaveFileFunction {
   (
     file: File,
@@ -20,7 +23,7 @@ export interface GeneralSaveFileFunction {
     file: File,
     bucket: string,
     tenantId: string,
-    storageType: "local" | "db"
+    storageType: StorageType
   ): Promise<{
     path: string;
     id: string;
@@ -38,7 +41,7 @@ export interface GeneralGetFileFunction {
     id: string,
     bucket: string,
     tenantId: string,
-    storageType: "local" | "db"
+    storageType: StorageType
   ): Promise<File>;
 }
 
@@ -51,6 +54,6 @@ export interface GeneralDeleteFileFunction {
     id: string,
     bucket: string,
     tenantId: string,
-    storageType: "local" | "db"
+    storageType: StorageType
   ): Promise<void>;
 }
