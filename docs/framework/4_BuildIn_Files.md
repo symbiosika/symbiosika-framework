@@ -132,6 +132,45 @@ missing bucket is heard on the first boot and not on the first upload.
 The content type of a file read from S3 comes from the extension in its key
 (the upload puts it there), not from a second request to the store.
 
+### Sharing a file: a temporary URL
+
+Something that is not the app sometimes needs the bytes: an analysis service, a
+worker, a browser that should pull a large file without the request going
+through the API. None of them has a session. `shareFile` from
+`lib/storage/share` hands out a URL that carries its own permission and stops
+working when the time is up.
+
+```ts
+import { shareFile } from "@framework/lib/storage/share";
+
+const { url, expiresAt } = await shareFile(name, bucket, tenantId, storageType, {
+  expiresInSeconds: 30 * 60,
+});
+```
+
+It works for every backend, so a caller does not have to know where the file
+lies:
+
+| type | what the URL is |
+|---|---|
+| `s3` | a presigned URL of the object store. The bytes go straight from the store to whoever holds the link and never through this server |
+| `db`, `local` | `<baseUrl><basePath>/files/shared/<token>`, served by this server |
+
+The token for `db` and `local` is a JWT with a `purpose` of its own
+(`file_share`). It names one tenant, one bucket, one file name and one backend,
+and nothing else in the installation can be read with it. A session token
+cannot be used on the share route and a share token cannot be used as a
+session.
+
+Time is the only thing the caller decides, and it is bounded: the default is
+15 minutes and the ceiling is 24 hours, whatever is asked for. A link that
+outlives a working day is not a share.
+
+**GET `<basePath>/files/shared/:token`** takes no session: the token is the
+permission. An invalid, forged or expired token is answered with 403 and the
+same message in every case, so nothing is given away; a token whose file is
+gone is a 404.
+
 ### Other
 
 - **Buckets:** Buckets are logical groupings for files (e.g., per chat, workspace, or general purpose). With `s3` a bucket is one level of the object key, not a bucket of the store.

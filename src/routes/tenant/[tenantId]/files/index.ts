@@ -34,11 +34,61 @@ import {
   isTenantMember,
 } from "../../../tenant/index";
 import { validateScope } from "../../../../lib/utils/validate-scope";
+import { getFile } from "../../../../lib/storage";
+import { verifyFileShareToken } from "../../../../lib/storage/share";
 
 /**
  * Define the payment routes
  */
 export function defineFilesRoutes(app: SymbiosikaFrameworkHonoApp, API_BASE_PATH: string) {
+  /**
+   * A file behind a share token (lib/storage/share.ts). No session: the token
+   * is the permission. It names one file and expires, and it carries a purpose
+   * of its own, so a session token cannot be used here and this token cannot be
+   * used anywhere else.
+   *
+   * Only `db` and `local` reach this route. An `s3` share is a presigned URL of
+   * the object store and never touches this server.
+   */
+  app.get(
+    API_BASE_PATH + "/files/shared/:token",
+    describeRoute({
+      tags: ["files"],
+      summary: "A shared file, by its token",
+      responses: {
+        200: { description: "The file" },
+        403: { description: "The token is invalid or has expired" },
+      },
+    }),
+    validator("param", v.object({ token: v.string() })),
+    async (c) => {
+      const { token } = c.req.valid("param");
+      let ref;
+      try {
+        ref = verifyFileShareToken(token);
+      } catch {
+        // one answer for invalid, expired and forged: nothing is given away
+        throw new HTTPException(403, { message: "This link is not valid any more" });
+      }
+      let f: File;
+      try {
+        f = await getFile(ref.name, ref.bucket, ref.tenantId, ref.storageType);
+      } catch (err) {
+        throw new HTTPException(404, { message: "File not found" });
+      }
+      return new Response(f.stream(), {
+        status: 200,
+        headers: {
+          "Content-Type": f.type || "application/octet-stream",
+          "Content-Length": String(f.size),
+          // the link is short-lived and names one file; nothing about it should
+          // be kept by a proxy on the way
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
+  );
+
   app.post(
     API_BASE_PATH + "/tenant/:tenantId/files/:type/:bucket",
     authAndSetUsersInfo,
