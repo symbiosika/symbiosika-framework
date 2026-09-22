@@ -9,7 +9,7 @@ import { nanoid } from "nanoid";
 import { smtpService } from "../email";
 import { generateUserSessionJwt } from ".";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
-import { postRegisterActions } from "./actions";
+import { postRegisterActions, runPreRegisterVerifications } from "./actions";
 import {
   checkIfInvitationCodeIsNeededToRegister,
   getPendingInvitationsForEmail,
@@ -65,6 +65,14 @@ export const createMagicLinkToken = async (
 
   // If creating a new user, check invitation code requirements
   if (isNewUser && createUserIfMissing) {
+    // App-level rules may refuse the address outright. This must run before the
+    // user row is written: the magic-link flow creates the account as soon as
+    // the address is submitted, long before the link is clicked.
+    await runPreRegisterVerifications(email, {
+      invitationCode,
+      customRegisterData,
+    });
+
     // A pending tenant invitation for this email is, on its own, sufficient
     // authorisation to register – it stands in for a general invitation code.
     // The list is needed both for the code-requirement bypass below and to

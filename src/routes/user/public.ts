@@ -52,6 +52,7 @@ import {
 } from "../../lib/auth/auth-cookies";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { revokeSessionByToken } from "../../lib/auth/sessions";
+import { PreRegisterVerificationError } from "../../lib/auth/actions";
 import { deleteCachedToken } from "../../lib/utils/redis-cache";
 
 /**
@@ -61,7 +62,9 @@ import { deleteCachedToken } from "../../lib/utils/redis-cache";
 export type OAuthLoginError =
   | "oauth_unavailable"
   | "oauth_cancelled"
-  | "oauth_failed";
+  | "oauth_failed"
+  /** A pre-register verification of the app refused the address. */
+  | "registration_not_allowed";
 
 const oauthLoginError = (error: OAuthLoginError) =>
   `${_GLOBAL_SERVER_CONFIG.loginUrl}?error=${error}`;
@@ -312,6 +315,10 @@ export function definePublicUserRoutes(
         );
         return c.json(RESPONSES.SUCCESS);
       } catch (err) {
+        // An app rule refused the address: no account was created.
+        if (err instanceof PreRegisterVerificationError) {
+          throw new HTTPException(403, { message: err.reason });
+        }
         const errorMessage = err + "";
         // Return specific error code for invitation code needed
         if (errorMessage.includes("Invitation code needed")) {
@@ -582,6 +589,9 @@ export function definePublicUserRoutes(
         );
         return c.json({ ...user, password: undefined, salt: undefined });
       } catch (err) {
+        if (err instanceof PreRegisterVerificationError) {
+          throw new HTTPException(403, { message: err.reason });
+        }
         log.error(err + "");
         throw new HTTPException(500, { message: err + "" });
       }
@@ -994,6 +1004,10 @@ export function definePublicUserRoutes(
 
         return c.redirect(transaction.redirect);
       } catch (err) {
+        if (err instanceof PreRegisterVerificationError) {
+          log.info(`${provider} sign-up refused: ${err.reason}`);
+          return c.redirect(oauthLoginError("registration_not_allowed"));
+        }
         log.error(`${provider} login failed: ${err}`);
         return c.redirect(oauthLoginError("oauth_failed"));
       }
@@ -1105,6 +1119,14 @@ export function definePublicUserRoutes(
           c.req.valid("json").invitationCode
         );
       } catch (err) {
+        if (err instanceof PreRegisterVerificationError) {
+          deleteCookie(c, OAUTH_PENDING_REGISTRATION_COOKIE, {
+            path: "/",
+            secure: isSecureContext(),
+            sameSite: "Lax",
+          });
+          throw new HTTPException(403, { message: err.reason });
+        }
         const message = err instanceof Error ? err.message : String(err);
         // Only the code can be wrong here; anything about the token itself
         // means the user has to start over.

@@ -191,6 +191,14 @@ export interface ServerSpecificConfig {
   staticPrivateExclude?: string[];
 
   // Registration Flow
+  /**
+   * Optional checks that run before a NEW account is created, on every sign-up
+   * path: password registration, magic link (`createUserIfMissing`), social
+   * login and hanko. An app can refuse an address its own rules forbid; the
+   * returned `message` is shown to the user (HTTP 403 on the register and
+   * magic-link endpoints, `?error=registration_not_allowed` on the social
+   * login redirect). Logins of existing accounts are never affected.
+   */
   customPreRegisterCustomVerifications?: CustomPreRegisterVerification[];
   customPostRegisterActions?: CustomPostRegisterAction[];
   customPostConnectionActions?: CustomPostConnectionAction[];

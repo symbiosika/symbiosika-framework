@@ -20,7 +20,7 @@ import {
   sendResetPasswordLink,
 } from "./magic-link";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
-import { preRegisterCustomVerifications, postRegisterActions } from "./actions";
+import { runPreRegisterVerifications, postRegisterActions } from "./actions";
 import log from "../log";
 import { addTenantMember } from "../usermanagement/tenants";
 import { updateUser } from "../usermanagement/user";
@@ -364,13 +364,7 @@ export const LocalAuth = {
     log.info(`Registering user: ${email}`);
 
     // go through all pre-register custom verifications
-    for (const verification of preRegisterCustomVerifications) {
-      log.info(`Running pre-register custom verification`);
-      const r = await verification(email, meta);
-      if (!r.success) {
-        throw "Custom verification failed: " + r.message;
-      }
-    }
+    await runPreRegisterVerifications(email, meta);
 
     // check if the user has pending invitations
     const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);

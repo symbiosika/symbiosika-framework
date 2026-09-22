@@ -5,7 +5,7 @@ import { getDb } from "../db/db-connection";
 import { users } from "../db/db-schema";
 import log from "../log";
 import { getCachedToken, setCachedToken } from "../utils/redis-cache";
-import { postRegisterActions } from "./actions";
+import { postRegisterActions, runPreRegisterVerifications } from "./actions";
 import { normalizeEmail } from "../utils/email";
 
 const HANKO_API_URL = process.env.HANKO_API_URL ?? "";
@@ -103,6 +103,11 @@ export async function verifyHankoToken(c: Context) {
     .limit(1);
 
   const isNewUser = !existingUser[0];
+
+  // App-level rules may refuse the address before an account is created.
+  if (isNewUser) {
+    await runPreRegisterVerifications(userEmail, {});
+  }
 
   // upsert user in db
   const [user] = await getDb()
