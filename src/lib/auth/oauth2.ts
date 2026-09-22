@@ -30,7 +30,7 @@ import { eq } from "drizzle-orm";
 import { tenantMembers, users } from "../db/db-schema";
 import { checkGeneralInvitationCode, generateUserSessionJwt } from "./index";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
-import { postRegisterActions } from "./actions";
+import { postRegisterActions, runPreRegisterVerifications } from "./actions";
 import {
   checkIfInvitationCodeIsNeededToRegister,
   getPendingInvitationsForEmail,
@@ -544,6 +544,9 @@ export const completePendingOAuthRegistration = async (
 
   const email = normalizeEmail(profile.email);
 
+  // Re-checked here: the app's rules may have changed since the callback.
+  await runPreRegisterVerifications(email, { invitationCode });
+
   // The gate may have been lifted in the meantime (last code deactivated, or an
   // invitation for this address created) — then no code is demanded any more.
   let setTenantId: string | null = null;
@@ -706,6 +709,11 @@ export const OAuthAuth = {
 
     if (!existing) {
       const email = normalizeEmail(profile.email);
+
+      // App-level rules may refuse the address outright. Checked before the
+      // invitation-code gate, so a refused address is not first asked for a
+      // code it could never use.
+      await runPreRegisterVerifications(email, {});
 
       if (await needsInvitationCodeToRegister(email)) {
         log.info(

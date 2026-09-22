@@ -4,11 +4,7 @@
  * These routes are note protected by the RegEx PermissionChecker since the scope is only the user itself.
  */
 
-import type {
-  CustomPostRegisterAction,
-  CustomPreRegisterVerification,
-  SymbiosikaFrameworkHonoApp,
-} from "../../types";
+import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { HTTPException } from "hono/http-exception";
 import {
   tenantInvitationsSelectSchema,
@@ -74,30 +70,6 @@ import {
   listPasskeysForUser,
   deletePasskeyForUser,
 } from "../../lib/auth/passkeys";
-
-/**
- * Pre-register custom verification
- */
-const preRegisterCustomVerifications: CustomPreRegisterVerification[] = [];
-const postRegisterActions: CustomPostRegisterAction[] = [];
-
-/**
- * Register new verification
- */
-export const registerPreRegisterCustomVerification = (
-  verification: CustomPreRegisterVerification
-) => {
-  preRegisterCustomVerifications.push(verification);
-};
-
-/**
- * Register new post-register action
- */
-export const registerPostRegisterAction = (
-  action: CustomPostRegisterAction
-) => {
-  postRegisterActions.push(action);
-};
 
 /**
  * Define the payment routes
