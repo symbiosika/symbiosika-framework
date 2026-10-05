@@ -79,6 +79,20 @@ export const isSessionValid = async (sid: string): Promise<boolean> => {
 };
 
 /**
+ * Expiry of a session, or null when the session does not exist (anymore).
+ */
+export const getSessionExpiresAt = async (
+  sid: string
+): Promise<Date | null> => {
+  const rows = await getDb()
+    .select({ expires: sessions.expires })
+    .from(sessions)
+    .where(eq(sessions.sessionToken, sid));
+  const row = rows[0];
+  return row ? new Date(row.expires) : null;
+};
+
+/**
  * Revoke a single session (logout of one device).
  */
 export const revokeSession = async (sid: string): Promise<void> => {

@@ -175,6 +175,10 @@ the target's, all permission checks apply as for the target) and carries the
 actor in the RFC 8693 `act` claim. The auth middleware exposes it as
 `c.get("actor")`. The session is revocable like any login.
 
+`GET /user/me` returns the actor as `actor: { id, email, firstname, surname }`
+(`null` for a normal session) plus `sessionExpiresAt` (ISO string), so a
+frontend can show a banner like "You act as X, signed in by Y, ends at HH:MM".
+
 Blocked during impersonation: changing password or email address, refreshing
 the token (it would become a full-length session without the actor), creating
 API tokens, registering or deleting passkeys, and approving OAuth clients. Protect

@@ -22,6 +22,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/db-connection";
 import { users } from "../db/db-schema";
 import { generateUserSessionJwt } from "./index";
+import { getSessionExpiresAt } from "./sessions";
 import type { TokenActor } from "../../types";
 
 /** Default lifetime of an impersonation session: 1 hour. */
@@ -82,6 +83,52 @@ export const createImpersonationSession = async (params: {
 
 /** Is the current request made from an impersonation session? */
 export const isImpersonated = (c: Context): boolean => !!c.get("actor");
+
+/**
+ * Session info for the client, e.g. to show an impersonation banner.
+ *
+ * - `actor`: the person acting as the user (names from `users`, null if that
+ *   user no longer exists), or null for a normal session.
+ * - `sessionExpiresAt`: expiry of the current server-side session as ISO
+ *   string, or null for tokens without a session (API/external tokens).
+ */
+export const getSessionActorInfo = async (
+  c: Context
+): Promise<{
+  actor: {
+    id: string;
+    email: string;
+    firstname: string | null;
+    surname: string | null;
+  } | null;
+  sessionExpiresAt: string | null;
+}> => {
+  const tokenActor: TokenActor | undefined = c.get("actor");
+  const sid: string | undefined = c.get("sessionId");
+
+  const [actorUser, expiresAt] = await Promise.all([
+    tokenActor
+      ? getDb()
+          .select({ firstname: users.firstname, surname: users.surname })
+          .from(users)
+          .where(eq(users.id, tokenActor.id))
+          .then((rows) => rows[0])
+      : undefined,
+    sid ? getSessionExpiresAt(sid) : null,
+  ]);
+
+  return {
+    actor: tokenActor
+      ? {
+          id: tokenActor.id,
+          email: tokenActor.email,
+          firstname: actorUser?.firstname ?? null,
+          surname: actorUser?.surname ?? null,
+        }
+      : null,
+    sessionExpiresAt: expiresAt ? expiresAt.toISOString() : null,
+  };
+};
 
 /**
  * HONO Middleware: reject the request (403) during impersonation.

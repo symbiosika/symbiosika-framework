@@ -202,11 +202,55 @@ describe("User routes during impersonation", () => {
     }));
   });
 
-  test("reading the own profile works", async () => {
+  test("reading the own profile works and names the actor", async () => {
     const res = await userApp.request("/api/user/me", {
       headers: bearer(impersonationToken),
     });
     expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.id).toBe(TEST_ORG1_USER_1.id);
+    expect(body.email).toBe(TEST_ORG1_USER_1.email);
+    expect(body.actor).toEqual({
+      id: ACTOR.id,
+      email: ACTOR.email,
+      firstname: TEST_ADMIN_USER.firstname,
+      surname: TEST_ADMIN_USER.surname,
+    });
+    const expiresAt = new Date(body.sessionExpiresAt).getTime();
+    expect(expiresAt).toBeGreaterThan(Date.now());
+    expect(expiresAt).toBeLessThanOrEqual(Date.now() + 60 * 60 * 1000);
+  });
+
+  test("/user/me of a normal session has no actor", async () => {
+    const { user1Token } = await initTests();
+    const res = await userApp.request("/api/user/me", {
+      headers: bearer(user1Token),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.id).toBe(TEST_ORG1_USER_1.id);
+    expect(body.actor).toBeNull();
+    expect("sessionExpiresAt" in body).toBe(true);
+  });
+
+  test("/user/me tolerates an actor that no longer exists", async () => {
+    const goneActor = {
+      id: "00000000-9999-9999-9999-000000000098",
+      email: "gone@symbiosika.com",
+    };
+    const { token } = await createImpersonationSession({
+      targetUserId: TEST_ORG1_USER_1.id,
+      actor: goneActor,
+    });
+    const res = await userApp.request("/api/user/me", {
+      headers: bearer(token),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).actor).toEqual({
+      ...goneActor,
+      firstname: null,
+      surname: null,
+    });
   });
 
   test.each([

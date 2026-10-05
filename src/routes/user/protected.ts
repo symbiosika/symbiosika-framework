@@ -16,7 +16,10 @@ import {
   authAndSetUsersInfo,
   checkUserPermission,
 } from "../../lib/utils/hono-middlewares";
-import { forbidDuringImpersonation } from "../../lib/auth/impersonation";
+import {
+  forbidDuringImpersonation,
+  getSessionActorInfo,
+} from "../../lib/auth/impersonation";
 import { setAuthCookies } from "../../lib/auth/auth-cookies";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import {
@@ -93,7 +96,21 @@ export function defineSecuredUserRoutes(
           description: "Successful response",
           content: {
             "application/json": {
-              schema: resolver(usersRestrictedSelectSchema),
+              schema: resolver(
+                v.object({
+                  ...usersRestrictedSelectSchema.entries,
+                  // set during impersonation: who acts as this user
+                  actor: v.nullable(
+                    v.object({
+                      id: v.string(),
+                      email: v.string(),
+                      firstname: v.nullable(v.string()),
+                      surname: v.nullable(v.string()),
+                    })
+                  ),
+                  sessionExpiresAt: v.nullable(v.string()),
+                })
+              ),
             },
           },
         },
@@ -105,9 +122,9 @@ export function defineSecuredUserRoutes(
         // check if id is set
         const uid = c.get("usersId");
         const user = await getUserById(uid);
-        const scopes = c.get("scopes");
+        const { actor, sessionExpiresAt } = await getSessionActorInfo(c);
 
-        return c.json(user);
+        return c.json({ ...user, actor, sessionExpiresAt });
       } catch (err) {
         throw new HTTPException(500, {
           message: "Error getting user: " + err,
