@@ -26,6 +26,7 @@ import log from "./lib/log";
 import { validateAllEnvVariables } from "./lib/utils/env-validate";
 import { globalErrorHandler } from "./lib/utils/global-error-handler";
 import { withRequestPathGuard } from "./lib/utils/request-path-guard";
+import { withStartupGate } from "./lib/utils/startup-gate";
 import {
   isExcludedFromPrivateStatic,
   isExcludedFromPublicStatic,
@@ -299,9 +300,11 @@ export const defineServer = (config: ServerSpecificConfig) => {
   defineHealthRoute(app);
 
   /**
-   * Initialize internal caches after DB is connected
+   * Initialize internal caches after DB is connected and register the
+   * remaining routes. Requests are held back by the startup gate until this
+   * settles: Hono's router accepts no routes once it has served a request.
    */
-  waitForDbConnection().then(async () => {
+  const initialization = waitForDbConnection().then(async () => {
     licenseManager.init();
 
     // Initialize Redis cache for JWT token validation
@@ -394,7 +397,8 @@ export const defineServer = (config: ServerSpecificConfig) => {
        */
 
       if (_GLOBAL_SERVER_CONFIG.useWhatsApp) {
-        getMetaIpAddresses().then((ips) => {
+        // Awaited so the routes are in place before the startup gate opens.
+        await getMetaIpAddresses().then((ips) => {
           app.use(
             _GLOBAL_SERVER_CONFIG.basePath + "/communication/wa/*",
             ipRestriction(
@@ -608,6 +612,12 @@ export const defineServer = (config: ServerSpecificConfig) => {
       console.log("License check was invalid! Please check your license key.");
     }
   });
+  initialization.catch((error) => {
+    console.error(
+      "Server initialization failed; serving the routes registered so far:",
+      error
+    );
+  });
 
   const tlsCertPath = process.env.TLS_CERT_PATH;
   const tlsKeyPath = process.env.TLS_KEY_PATH;
@@ -631,7 +641,9 @@ export const defineServer = (config: ServerSpecificConfig) => {
     // Malformed paths are refused here, in front of the whole app — including
     // the static mounts above, which would otherwise turn a NUL byte into a
     // logged 500. See request-path-guard.ts.
-    fetch: withRequestPathGuard(app.fetch),
+    // Until initialization has settled, the startup gate answers instead of
+    // the app (see startup-gate.ts).
+    fetch: withRequestPathGuard(withStartupGate(app.fetch, initialization)),
     ...(tls ? { tls } : {}),
   };
 };
