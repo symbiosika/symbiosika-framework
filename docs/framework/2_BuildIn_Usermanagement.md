@@ -87,6 +87,8 @@ The following endpoints are available for user authentication and registration:
 
 - **GET `/api/v1/user/invitation-code-needed`**  
   Check if an invitation code is required for registration.
+  **Query:** optional `?email=...` — an address of a cleared registration
+  domain never needs a code (see "Registration domains").
 
 - **POST `/api/v1/user/token-exchange`**  
   Exchange an API token for a short-lived JWT with specific scopes.
@@ -137,6 +139,31 @@ The following endpoints are available for user authentication and registration:
   `400` for a missing/unknown code (retryable — the pending registration is
   kept), `401` when the pending registration is gone.
 
+### Registration domains
+
+Besides invitation codes, whole e-mail domains can be cleared for
+self-registration via the `registration_domains` table:
+
+```sql
+INSERT INTO base_registration_domains (domain, tenant_id, role)
+VALUES ('example.com', '<tenant-uuid>', 'member');
+```
+
+A **new** account whose address ends in `@example.com` then
+
+- needs **no invitation code**, even when codes are active ("code skip") — this
+  applies to password, magic-link and social sign-up alike;
+- joins `tenant_id` with `role` right after it was created (leave `tenant_id`
+  empty to only skip the code). Pending tenant invitations are accepted first,
+  so an invited role is never downgraded by the domain rule; an existing
+  membership is left untouched. The tenant becomes the user's last tenant only
+  if none is set yet.
+
+The match is exact and case-insensitive: `sub.example.com` needs its own row.
+Inactive rows (`is_active = false`) are ignored. Existing accounts are not
+touched. Password sign-ups still have to verify their address before they can
+log in, so registering somebody else's address does not grant access.
+
 ### Social sign-up with a required invitation code
 
 A verified Microsoft / Google identity proves *who* somebody is, not that they
@@ -157,8 +184,8 @@ does **not** create a user. Instead:
    the account and signs the user in — landing on the `redirectUrl` the login
    was started with.
 
-A pending tenant invitation for the address counts as authorisation on its own
-and skips the whole detour (same rule as the magic-link sign-up). If the code
+A pending tenant invitation for the address — or a cleared registration domain
+— counts as authorisation on its own and skips the whole detour (same rule as the magic-link sign-up). If the code
 carries a `tenant_id`, the new account joins that tenant — as its **owner** when
 the tenant has no members yet, as a member otherwise, exactly like
 `LocalAuth.register`.

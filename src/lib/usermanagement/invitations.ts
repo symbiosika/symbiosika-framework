@@ -3,10 +3,12 @@
  * Invitations are used to invite users to an tenant
  */
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import {
   invitationCodes,
+  registrationDomains,
+  type RegistrationDomainsSelect,
   tenantInvitations,
   type TenantInvitationsInsert,
   tenantMembers,
@@ -16,6 +18,7 @@ import {
 import { getDb } from "../db/db-connection";
 import { getUserByEmail, getUserById, setUsersLastTenant } from "./user";
 import { addUserToDefaultTeams } from "./teams";
+import { addTenantMember } from "./tenants";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { smtpService } from "../email";
 import log from "../log";
@@ -518,9 +521,18 @@ export const createTenantInvitation = async (
 };
 
 /**
- * A check function is an inviation code is needed to register
+ * A check function is an inviation code is needed to register.
+ *
+ * With an `email`, an address whose domain is cleared via
+ * `registrationDomains` never needs a code.
  */
-export const checkIfInvitationCodeIsNeededToRegister = async () => {
+export const checkIfInvitationCodeIsNeededToRegister = async (
+  email?: string
+) => {
+  if (email && (await getRegistrationDomainForEmail(email))) {
+    return false;
+  }
+
   const codes = await getDb()
     .select()
     .from(invitationCodes)
@@ -551,4 +563,75 @@ export const getPendingInvitationsForEmail = async (
   return {
     invitedInTenantIds: invitations.map((invitation) => invitation.tenantId),
   };
+};
+
+/**
+ * The domain part of an address, lower-case ("Jane@Example.com" → "example.com").
+ * Returns null for anything without a usable domain.
+ */
+export const getEmailDomain = (rawEmail: string): string | null => {
+  const email = normalizeEmail(rawEmail);
+  const at = email.lastIndexOf("@");
+  if (at < 1 || at === email.length - 1) {
+    return null;
+  }
+  return email.slice(at + 1);
+};
+
+/**
+ * The active registration-domain rule that covers this address, if any.
+ * A match lets the address register without a general invitation code.
+ */
+export const getRegistrationDomainForEmail = async (
+  email: string
+): Promise<RegistrationDomainsSelect | null> => {
+  const domain = getEmailDomain(email);
+  if (!domain) {
+    return null;
+  }
+  const rows = await getDb()
+    .select()
+    .from(registrationDomains)
+    .where(
+      and(
+        eq(registrationDomains.domain, domain),
+        eq(registrationDomains.isActive, true)
+      )
+    );
+  return rows[0] ?? null;
+};
+
+/**
+ * Join a freshly registered user to the tenant of a registration-domain rule.
+ *
+ * Does nothing for a rule without tenant. An existing membership is left
+ * untouched, so a role granted by an invitation is never downgraded — call it
+ * after the pending invitations were accepted. The
+ * tenant becomes the user's last tenant only if none is set yet.
+ */
+export const joinRegistrationDomainTenant = async (
+  userId: string,
+  rule: RegistrationDomainsSelect
+) => {
+  if (!rule.tenantId) {
+    return;
+  }
+
+  const membership = await getDb()
+    .select({ userId: tenantMembers.userId })
+    .from(tenantMembers)
+    .where(
+      and(
+        eq(tenantMembers.tenantId, rule.tenantId),
+        eq(tenantMembers.userId, userId)
+      )
+    );
+  if (!membership[0]) {
+    await addTenantMember(rule.tenantId, userId, rule.role);
+  }
+
+  await getDb()
+    .update(users)
+    .set({ lastTenantId: rule.tenantId })
+    .where(and(eq(users.id, userId), isNull(users.lastTenantId)));
 };

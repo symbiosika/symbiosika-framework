@@ -35,6 +35,8 @@ import {
   checkIfInvitationCodeIsNeededToRegister,
   getPendingInvitationsForEmail,
   acceptAllPendingInvitationsForTenantMember,
+  getRegistrationDomainForEmail,
+  joinRegistrationDomainTenant,
 } from "../usermanagement/invitations";
 import { addTenantMember } from "../usermanagement/tenants";
 import { updateUser } from "../usermanagement/user";
@@ -424,6 +426,13 @@ async function createOAuthUser(
     await acceptAllPendingInvitationsForTenantMember(newUser[0].id, tenantId);
   }
 
+  // Join the tenant of a matching registration domain (if any). Runs after
+  // the invitations, so an invited role always wins over the domain rule.
+  const registrationDomain = await getRegistrationDomainForEmail(email);
+  if (registrationDomain) {
+    await joinRegistrationDomainTenant(newUser[0].id, registrationDomain);
+  }
+
   for (const action of postRegisterActions) {
     await action(newUser[0].id, newUser[0].email, meta);
   }
@@ -511,13 +520,13 @@ export const verifyPendingRegistrationToken = (
 
 /**
  * Does this address need a general invitation code before an account may be
- * created for it? A pending tenant invitation counts as authorisation on its
- * own — same rule as the magic-link sign-up.
+ * created for it? A pending tenant invitation or a cleared registration domain
+ * counts as authorisation on its own — same rule as the magic-link sign-up.
  */
 const needsInvitationCodeToRegister = async (email: string) => {
   const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);
   if (invitedInTenantIds.length > 0) return false;
-  return await checkIfInvitationCodeIsNeededToRegister();
+  return await checkIfInvitationCodeIsNeededToRegister(email);
 };
 
 /**
