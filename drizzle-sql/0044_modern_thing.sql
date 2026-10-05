@@ -1,0 +1,2 @@
+ALTER TABLE "base_secrets" DROP CONSTRAINT "secrets_reference_name_idx";--> statement-breakpoint
+ALTER TABLE "base_secrets" ADD CONSTRAINT "secrets_tenant_reference_name_idx" UNIQUE("tenant_id","reference","name");

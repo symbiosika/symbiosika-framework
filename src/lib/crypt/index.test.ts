@@ -3,6 +3,7 @@ import {
   initTests,
   TEST_ADMIN_USER,
   TEST_ORGANISATION_1,
+  TEST_ORGANISATION_2,
 } from "../../test/init.test";
 import {
   isValidSecretName,
@@ -76,6 +77,51 @@ describe("Crypt Module Tests", () => {
         expect(e).toBeInstanceOf(Error);
         expect(e.message).toContain("Invalid secret name");
       }
+    });
+  });
+
+  describe("tenant isolation", () => {
+    test("two tenants keep their own value for the same secret name", async () => {
+      const name = "SHARED_NAME_SECRET";
+      await deleteSecret(name, TEST_ORGANISATION_1.id);
+      await deleteSecret(name, TEST_ORGANISATION_2.id);
+
+      const first = await setSecret({
+        name,
+        value: "value-of-tenant-1",
+        tenantId: TEST_ORGANISATION_1.id,
+      });
+      const second = await setSecret({
+        name,
+        value: "value-of-tenant-2",
+        tenantId: TEST_ORGANISATION_2.id,
+      });
+
+      expect(first.tenantId).toBe(TEST_ORGANISATION_1.id);
+      expect(second.tenantId).toBe(TEST_ORGANISATION_2.id);
+      expect(second.id).not.toBe(first.id);
+      expect(await getSecret(name, TEST_ORGANISATION_1.id)).toBe(
+        "value-of-tenant-1"
+      );
+      expect(await getSecret(name, TEST_ORGANISATION_2.id)).toBe(
+        "value-of-tenant-2"
+      );
+
+      // Updating one tenant's secret leaves the other one untouched
+      await setSecret({
+        name,
+        value: "updated-by-tenant-2",
+        tenantId: TEST_ORGANISATION_2.id,
+      });
+      expect(await getSecret(name, TEST_ORGANISATION_1.id)).toBe(
+        "value-of-tenant-1"
+      );
+      expect(await getSecret(name, TEST_ORGANISATION_2.id)).toBe(
+        "updated-by-tenant-2"
+      );
+
+      await deleteSecret(name, TEST_ORGANISATION_1.id);
+      await deleteSecret(name, TEST_ORGANISATION_2.id);
     });
   });
 

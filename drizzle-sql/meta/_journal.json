@@ -309,6 +309,13 @@
       "when": 1791224798849,
       "tag": "0043_registration_domains",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791229250487,
+      "tag": "0044_modern_thing",
+      "breakpoints": true
     }
   ]
 }
