@@ -642,6 +642,17 @@ export const defineServer = (config: ServerSpecificConfig) => {
 export * from "./types";
 
 /**
+ * Export impersonation: session JWTs in which an actor acts as another user
+ * (RFC 8693 `act` claim, exposed as `c.get("actor")` by the auth middleware).
+ */
+export {
+  createImpersonationSession,
+  isImpersonated,
+  forbidDuringImpersonation,
+  DEFAULT_IMPERSONATION_EXPIRES_IN,
+} from "./lib/auth/impersonation";
+
+/**
  * Export the resource system for composable CRUD resources
  */
 export * from "./lib/resource";

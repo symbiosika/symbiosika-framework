@@ -23,10 +23,12 @@ export const globalErrorHandler = (err: Error, c: Context) => {
   const usersId = c.get("usersId");
   const tenantId = c.req.param("tenantId") ?? c.get("tokenTenantId");
   const sessionId = c.get("sessionId");
+  const actor = c.get("actor");
 
   log.error(
     `Unhandled error ${method} ${path} ` +
-      `[user=${usersId ?? "-"} tenant=${tenantId ?? "-"} session=${sessionId ?? "-"}]: ` +
+      `[user=${usersId ?? "-"} tenant=${tenantId ?? "-"} session=${sessionId ?? "-"}` +
+      `${actor ? ` actor=${actor.id}` : ""}]: ` +
       (err?.message ?? "unknown error"),
     err?.stack ?? ""
   );

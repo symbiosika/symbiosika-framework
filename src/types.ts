@@ -24,6 +24,15 @@ export type {
 export { HTTPException } from "hono/http-exception";
 export type { ProcessedWhatsAppMessage };
 
+/**
+ * The user who acts on behalf of the authenticated user (impersonation).
+ * Taken from the RFC 8693 `act` claim of the token.
+ */
+export type TokenActor = {
+  id: string;
+  email: string;
+};
+
 export type SFContextVariables = {
   usersId: string;
   usersEmail: string;
@@ -35,6 +44,8 @@ export type SFContextVariables = {
   tokenType?: string;
   /** Token `tenantId` claim — for connection tokens, the tenant they may act for. */
   tokenTenantId?: string;
+  /** Set when the token is an impersonation token: who is acting as `usersId`. */
+  actor?: TokenActor;
 };
 
 export interface SymbiosikaFrameworkHonoApp

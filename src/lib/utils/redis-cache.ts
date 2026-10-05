@@ -18,6 +18,8 @@ type CachedTokenData = {
   type?: string;
   /** Token `tenantId` claim (e.g. the tenant a connection token may act for). */
   tenantId?: string;
+  /** Token `act` claim (impersonation): who acts on behalf of `usersId`. */
+  actor?: { id: string; email: string };
 };
 
 // Fallback in-memory cache if Redis is not available
@@ -110,6 +112,7 @@ export async function getCachedToken(
       service: cached.service,
       type: cached.type,
       tenantId: cached.tenantId,
+      actor: cached.actor,
     };
   }
 

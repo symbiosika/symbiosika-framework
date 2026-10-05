@@ -174,6 +174,9 @@ export const generateJwt = async (
  * reset) before it expires. Use this for every interactive login flow
  * (password, passkey, magic link, OAuth). Stateless service tokens (API tokens,
  * server connections) must keep using `generateJwt` directly.
+ *
+ * `additionalClaims` are embedded as-is (e.g. the `act` claim of an
+ * impersonation session, see impersonation.ts).
  */
 export const generateUserSessionJwt = async (
   user: {
@@ -182,10 +185,16 @@ export const generateUserSessionJwt = async (
     firstname: string;
     surname: string;
   },
-  expiresIn: number = _GLOBAL_SERVER_CONFIG.jwtExpiresAfter
+  expiresIn: number = _GLOBAL_SERVER_CONFIG.jwtExpiresAfter,
+  additionalClaims?: Record<string, any>
 ) => {
   const { sid, expiresAt } = await createUserSession(user.id, expiresIn);
-  const { token } = await generateJwt(user, expiresIn, { sid });
+  // `sid` goes last so additional claims can never point the token at a
+  // different session.
+  const { token } = await generateJwt(user, expiresIn, {
+    ...additionalClaims,
+    sid,
+  });
   return { token, expiresAt, sid };
 };
 

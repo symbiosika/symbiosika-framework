@@ -16,6 +16,7 @@ import {
   authAndSetUsersInfo,
   checkUserPermission,
 } from "../../lib/utils/hono-middlewares";
+import { forbidDuringImpersonation } from "../../lib/auth/impersonation";
 import { setAuthCookies } from "../../lib/auth/auth-cookies";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import {
@@ -334,6 +335,7 @@ export function defineSecuredUserRoutes(
   app.post(
     API_BASE_PATH + "/user/me/email-change",
     authAndSetUsersInfo,
+    forbidDuringImpersonation,
     describeRoute({
       tags: ["user"],
       summary: "Request a change of the own email address",
@@ -484,6 +486,7 @@ export function defineSecuredUserRoutes(
   app.put(
     API_BASE_PATH + "/user/me/password",
     authAndSetUsersInfo,
+    forbidDuringImpersonation,
     describeRoute({
       tags: ["user"],
       summary: "Change the own password",
@@ -858,6 +861,9 @@ export function defineSecuredUserRoutes(
   app.get(
     API_BASE_PATH + "/user/refresh-token",
     authAndSetUsersInfo,
+    // A refresh would turn the short impersonation token into a regular
+    // full-length session without the actor.
+    forbidDuringImpersonation,
     describeRoute({
       tags: ["user"],
       summary: "Refresh the own token",
@@ -932,6 +938,7 @@ export function defineSecuredUserRoutes(
   app.post(
     API_BASE_PATH + "/user/api-tokens",
     authAndSetUsersInfo,
+    forbidDuringImpersonation,
     describeRoute({
       tags: ["user", "api-tokens"],
       summary:
@@ -1161,6 +1168,7 @@ export function defineSecuredUserRoutes(
   app.post(
     API_BASE_PATH + "/user/passkey/registration/options",
     authAndSetUsersInfo,
+    forbidDuringImpersonation,
     describeRoute({
       tags: ["user"],
       summary: "Begin passkey registration",
@@ -1194,6 +1202,7 @@ export function defineSecuredUserRoutes(
   app.post(
     API_BASE_PATH + "/user/passkey/registration/verify",
     authAndSetUsersInfo,
+    forbidDuringImpersonation,
     describeRoute({
       tags: ["user"],
       summary: "Complete passkey registration",
@@ -1266,6 +1275,7 @@ export function defineSecuredUserRoutes(
   app.delete(
     API_BASE_PATH + "/user/passkeys/:passkeyId",
     authAndSetUsersInfo,
+    forbidDuringImpersonation,
     describeRoute({
       tags: ["user"],
       summary: "Delete a passkey",
