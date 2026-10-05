@@ -112,10 +112,17 @@ const appendParams = (
 const wantsJson = (c: Context): boolean =>
   (c.req.header("accept") ?? "").includes("application/json");
 
-/** Soft session check: returns the logged-in userId or null. */
+/**
+ * Soft session check: returns the logged-in userId or null.
+ *
+ * An impersonation session counts as "not logged in": approving an OAuth client
+ * would hand out tokens for the impersonated user that no longer carry the
+ * actor, so the real user has to sign in for that.
+ */
 const currentUserId = async (c: Context): Promise<string | null> => {
   try {
-    const { usersId } = await checkToken(c);
+    const { usersId, actor } = await checkToken(c);
+    if (actor) return null;
     return usersId || null;
   } catch {
     return null;

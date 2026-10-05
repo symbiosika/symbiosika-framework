@@ -94,6 +94,7 @@ type SFContextVariables = {
   usersEmail: string;
   usersRoles: string[];
   scopes: string[];
+  actor?: { id: string; email: string }; // set during impersonation (`act` claim)
 };
 
 type SymbiosikaFrameworkHonoApp = Hono<{ Variables: SFContextVariables }>;
@@ -116,7 +117,7 @@ import { log } from "@framework/index";
 - Reads token from: `?token=`, `X-API-KEY`, `Authorization: Bearer`, or `jwt` cookie
 - Validates JWT using `JWT_PUBLIC_KEY`
 - Caches tokens in Redis (1h TTL), falls back to in-memory
-- Sets context: `usersId`, `usersEmail`, `scopes`
+- Sets context: `usersId`, `usersEmail`, `scopes`, `actor` (impersonation only)
 - Throws `HTTPException(401)` on failure
 
 ### Tenant Middleware (from routes)
@@ -148,6 +149,11 @@ Available scopes: `"user:read"`, `"tenants:write"`, `"knowledge:read"`, `"files:
 - Claims: `email`, `sub` (userId), `symbiosika.roles`, custom claims
 - Default expiration: 30 days
 - Verified with `JWT_PUBLIC_KEY`
+
+### Impersonation
+- `createImpersonationSession({ targetUserId, actor, expiresIn? })` - session JWT for the target with the actor in the RFC 8693 `act` claim (default 1h); the app does the authorization check
+- `c.get("actor")` / `isImpersonated(c)` - who is acting; undefined for normal logins
+- `forbidDuringImpersonation` - middleware (403) for owner-only routes; already applied to password/email change, token refresh, API token creation, passkey registration/deletion; OAuth consent requires a real login
 
 ### API Tokens
 - Created per user, scoped to tenant

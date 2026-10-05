@@ -7,6 +7,8 @@ import { generateTemporaryJwtFromToken } from "../auth/token-auth";
 import { verifyHankoToken } from "../auth/hanko";
 import { getCachedToken, setCachedToken } from "./redis-cache";
 import { isSessionValid } from "../auth/sessions";
+import { parseActClaim } from "../auth/impersonation";
+import type { TokenActor } from "../../types";
 
 const JWT_PUBLIC_KEY = process.env.JWT_PUBLIC_KEY || "";
 
@@ -34,6 +36,7 @@ const getTokenFromJwt = async (token: string) => {
   let service: boolean;
   let type: string | undefined;
   let tenantId: string | undefined;
+  let actor: TokenActor | undefined;
 
   const cached = await getCachedToken(token);
   if (cached) {
@@ -44,6 +47,7 @@ const getTokenFromJwt = async (token: string) => {
     service = cached.service ?? false;
     type = cached.type;
     tenantId = cached.tenantId;
+    actor = cached.actor;
   } else {
     const decoded = jwtlib.verify(token, JWT_PUBLIC_KEY, {
       algorithms:
@@ -69,6 +73,8 @@ const getTokenFromJwt = async (token: string) => {
       claims.apiToken === true || claims.type === "connection" || isOauth;
     type = claims.type;
     tenantId = claims.tenantId;
+    // RFC 8693 `act` claim: set on impersonation tokens, names who is acting.
+    actor = parseActClaim(claims.act);
 
     await setCachedToken(token, {
       usersEmail: email,
@@ -78,6 +84,7 @@ const getTokenFromJwt = async (token: string) => {
       service,
       type,
       tenantId,
+      actor,
     });
   }
 
@@ -88,7 +95,7 @@ const getTokenFromJwt = async (token: string) => {
     }
   }
 
-  return { email, sub, scopes, sid, type, tenantId };
+  return { email, sub, scopes, sid, type, tenantId, actor };
 };
 
 /**
@@ -229,6 +236,7 @@ const checkTokenCredentials = async (c: Context) => {
       sessionId: undefined as string | undefined,
       tokenType: undefined as string | undefined,
       tokenTenantId: undefined as string | undefined,
+      actor: undefined as TokenActor | undefined,
     };
   } else {
     // get existing params
@@ -277,6 +285,7 @@ const checkTokenCredentials = async (c: Context) => {
       sessionId: decoded.sid,
       tokenType: decoded.type,
       tokenTenantId: decoded.tenantId,
+      actor: decoded.actor,
     };
   }
 };
@@ -286,13 +295,21 @@ const checkTokenCredentials = async (c: Context) => {
  */
 export const authAndSetUsersInfo = async (c: Context, next: Function) => {
   try {
-    const { usersEmail, usersId, scopes, sessionId, tokenType, tokenTenantId } =
-      await checkToken(c);
+    const {
+      usersEmail,
+      usersId,
+      scopes,
+      sessionId,
+      tokenType,
+      tokenTenantId,
+      actor,
+    } = await checkToken(c);
     c.set("usersEmail", usersEmail);
     c.set("usersId", usersId);
     c.set("sessionId", sessionId);
     c.set("tokenType", tokenType);
     c.set("tokenTenantId", tokenTenantId);
+    c.set("actor", actor);
     addScopesToContext(c, scopes);
   } catch (error) {
     throw new HTTPException(401, { message: "Unauthorized" });
@@ -326,10 +343,12 @@ export const authAndSetUsersInfoOrRedirectToLogin = async (
   next: Function
 ) => {
   try {
-    const { usersEmail, usersId, scopes, sessionId } = await checkToken(c);
+    const { usersEmail, usersId, scopes, sessionId, actor } =
+      await checkToken(c);
     c.set("usersEmail", usersEmail);
     c.set("usersId", usersId);
     c.set("sessionId", sessionId);
+    c.set("actor", actor);
     addScopesToContext(c, scopes);
   } catch (error) {
     return c.redirect(

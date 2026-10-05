@@ -146,7 +146,40 @@ After authentication, these context variables are available:
 const userId = c.get("usersId");      // Authenticated user ID
 const userEmail = c.get("usersEmail"); // User email
 const scopes = c.get("scopes");        // User scopes
+const actor = c.get("actor");          // { id, email } during impersonation, else undefined
 ```
+
+### Impersonation
+
+An app can let someone (e.g. a support admin) act as another user. The app
+decides who may do that; the framework issues the token:
+
+```typescript
+import {
+  createImpersonationSession,
+  forbidDuringImpersonation,
+} from "@framework/index";
+
+app.post("/admin/impersonate/:userId", isSupportAdmin, async (c) => {
+  const { token, expiresAt } = await createImpersonationSession({
+    targetUserId: c.req.param("userId"),
+    actor: { id: c.get("usersId"), email: c.get("usersEmail") },
+    expiresIn: 60 * 60, // optional, default 1 hour
+  });
+  return c.json({ token, expiresAt });
+});
+```
+
+The token is a normal session for the target user (`usersId`/`usersEmail` are
+the target's, all permission checks apply as for the target) and carries the
+actor in the RFC 8693 `act` claim. The auth middleware exposes it as
+`c.get("actor")`. The session is revocable like any login.
+
+Blocked during impersonation: changing password or email address, refreshing
+the token (it would become a full-length session without the actor), creating
+API tokens, registering or deleting passkeys, and approving OAuth clients. Protect
+your own owner-only routes with `forbidDuringImpersonation` (after the auth
+middleware); use `isImpersonated(c)` for inline checks.
 
 ### User-Specific Data Access
 
