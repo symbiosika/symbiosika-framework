@@ -14,6 +14,8 @@ import {
   checkIfInvitationCodeIsNeededToRegister,
   getPendingInvitationsForEmail,
   acceptAllPendingInvitationsForTenantMember,
+  getRegistrationDomainForEmail,
+  joinRegistrationDomainTenant,
 } from "../usermanagement/invitations";
 import { checkGeneralInvitationCode } from "./index";
 import { normalizeEmail } from "../utils/email";
@@ -79,8 +81,10 @@ export const createMagicLinkToken = async (
     // auto-accept the memberships once the account exists.
     const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);
 
-    // Check if invitation codes are required
-    const invitationCodeNeeded = await checkIfInvitationCodeIsNeededToRegister();
+    // Check if invitation codes are required (an address of a cleared
+    // registration domain never needs one)
+    const invitationCodeNeeded =
+      await checkIfInvitationCodeIsNeededToRegister(email);
 
     // Only demand a general invitation code when one is required AND the user
     // has no pending invitation to fall back on.
@@ -140,6 +144,13 @@ export const createMagicLinkToken = async (
           tenantId
         );
       }
+    }
+
+    // Join the tenant of a matching registration domain (if any). Runs after
+    // the invitations, so an invited role always wins over the domain rule.
+    const registrationDomain = await getRegistrationDomainForEmail(email);
+    if (registrationDomain) {
+      await joinRegistrationDomainTenant(newUser[0].id, registrationDomain);
     }
 
     // Execute post-register actions for newly created user. The register meta

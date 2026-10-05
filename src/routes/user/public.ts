@@ -87,6 +87,8 @@ export function definePublicUserRoutes(
     describeRoute({
       tags: ["user"],
       summary: "Check if an invitation code is needed to register",
+      description:
+        "Pass `email` to take cleared registration domains into account: an address of such a domain never needs a code.",
       responses: {
         200: {
           description: "Successful response",
@@ -100,10 +102,17 @@ export function definePublicUserRoutes(
         },
       },
     }),
+    validator(
+      "query",
+      v.object({
+        email: v.optional(v.string()),
+      })
+    ),
     async (c) => {
       try {
+        const { email } = c.req.valid("query");
         const invitationCodeNeeded =
-          await checkIfInvitationCodeIsNeededToRegister();
+          await checkIfInvitationCodeIsNeededToRegister(email);
         return c.json({ invitationCodeNeeded });
       } catch (err) {
         throw new HTTPException(500, {

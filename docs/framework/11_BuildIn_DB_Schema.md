@@ -410,6 +410,21 @@ Defined in `users.ts`.
 | maxUses | max_uses | integer |
 | usedCount | used_count | integer |
 
+## registration_domains
+Defined in `users.ts`. E-mail domains cleared for self-registration: a new
+account of such a domain needs no invitation code and joins `tenant_id` (if set)
+with `role`. `domain` is stored lower-case without "@"; the match is exact
+(no subdomains).
+
+| Property | Column | Type |
+| --- | --- | --- |
+| id | id | uuid |
+| isActive | is_active | boolean |
+| domain | domain | text |
+| tenantId | tenant_id | uuid |
+| role | role | tenant_member_role |
+| createdAt | created_at | timestamp |
+
 ## webhooks
 Defined in `webhooks.ts`.
 

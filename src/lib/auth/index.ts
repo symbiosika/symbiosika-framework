@@ -27,6 +27,8 @@ import { updateUser } from "../usermanagement/user";
 import {
   acceptAllPendingInvitationsForTenantMember,
   getPendingInvitationsForEmail,
+  getRegistrationDomainForEmail,
+  joinRegistrationDomainTenant,
 } from "../usermanagement/invitations";
 import { normalizeEmail } from "../utils/email";
 
@@ -369,10 +371,13 @@ export const LocalAuth = {
     // check if the user has pending invitations
     const { invitedInTenantIds } = await getPendingInvitationsForEmail(email);
 
+    // an address of a cleared registration domain needs no invitation code
+    const registrationDomain = await getRegistrationDomainForEmail(email);
+
     // check if we can register without an invitation code
     // then we can skip the invitation code check
     let firstTenantId: string | null = null;
-    if (invitedInTenantIds.length < 1) {
+    if (invitedInTenantIds.length < 1 && !registrationDomain) {
       const { usedInvitationCode, setTenantId } =
         await checkGeneralInvitationCode(meta?.invitationCode);
       firstTenantId = setTenantId;
@@ -419,6 +424,12 @@ export const LocalAuth = {
       for (const tenantId of invitedInTenantIds) {
         await acceptAllPendingInvitationsForTenantMember(user.id, tenantId);
       }
+    }
+
+    // join the tenant the registration domain points at (if any). Runs after
+    // the invitations, so an invited role always wins over the domain rule.
+    if (registrationDomain) {
+      await joinRegistrationDomainTenant(user.id, registrationDomain);
     }
 
     // go through all post-register actions (meta is forwarded for custom per-user data)

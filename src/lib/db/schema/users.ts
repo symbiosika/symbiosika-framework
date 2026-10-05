@@ -762,6 +762,49 @@ export const invitationCodesSelectSchema = createSelectSchema(invitationCodes);
 export const invitationCodesInsertSchema = createInsertSchema(invitationCodes);
 export const invitationCodesUpdateSchema = createUpdateSchema(invitationCodes);
 
+/**
+ * E-mail domains that are cleared for self-registration.
+ *
+ * A new account whose address ends in `@<domain>` does not need a general
+ * invitation code ("code skip"). If `tenantId` is set, the account is
+ * additionally joined to that tenant with `role` right after it was created.
+ * The match is exact (no subdomains): `domain` is stored lower-case and
+ * without a leading "@", e.g. "example.com".
+ */
+export const registrationDomains = pgBaseTable(
+  "registration_domains",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    isActive: boolean("is_active").notNull().default(true),
+    domain: text("domain").notNull(),
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
+      onDelete: "cascade",
+    }),
+    role: tenantMemberRoleEnum("role").notNull().default("member"),
+    createdAt: timestamp("created_at", { mode: "string" })
+      .notNull()
+      .defaultNow(),
+  },
+  (registrationDomains) => [
+    uniqueIndex("unique_registration_domain").on(registrationDomains.domain),
+    index("registration_domains_tenant_id_idx").on(
+      registrationDomains.tenantId
+    ),
+  ]
+);
+
+export type RegistrationDomainsSelect = typeof registrationDomains.$inferSelect;
+export type RegistrationDomainsInsert = typeof registrationDomains.$inferInsert;
+
+export const registrationDomainsSelectSchema =
+  createSelectSchema(registrationDomains);
+export const registrationDomainsInsertSchema =
+  createInsertSchema(registrationDomains);
+export const registrationDomainsUpdateSchema =
+  createUpdateSchema(registrationDomains);
+
 // Message type enum
 export const messageTypeEnum = pgEnum("message_type", [
   "info",
