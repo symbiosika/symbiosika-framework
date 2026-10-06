@@ -14,7 +14,7 @@ import {
 } from "../../test/init.test";
 import { _GLOBAL_SERVER_CONFIG } from "../../store";
 import { getDb } from "../db/db-connection";
-import { oauthClients } from "../db/db-schema";
+import { oauthClients, users } from "../db/db-schema";
 import { defineOAuth2Routes } from "../oauth2";
 import { createOAuthClient } from "../oauth2/clients";
 import { authAndSetUsersInfo } from "../utils/hono-middlewares";
@@ -210,11 +210,17 @@ describe("User routes during impersonation", () => {
     const body = (await res.json()) as any;
     expect(body.id).toBe(TEST_ORG1_USER_1.id);
     expect(body.email).toBe(TEST_ORG1_USER_1.email);
+    // Other suites rename the admin in the shared test DB, so compare against
+    // the stored row instead of the seed constants.
+    const [actorRow] = await getDb()
+      .select({ firstname: users.firstname, surname: users.surname })
+      .from(users)
+      .where(eq(users.id, ACTOR.id));
     expect(body.actor).toEqual({
       id: ACTOR.id,
       email: ACTOR.email,
-      firstname: TEST_ADMIN_USER.firstname,
-      surname: TEST_ADMIN_USER.surname,
+      firstname: actorRow!.firstname,
+      surname: actorRow!.surname,
     });
     const expiresAt = new Date(body.sessionExpiresAt).getTime();
     expect(expiresAt).toBeGreaterThan(Date.now());
