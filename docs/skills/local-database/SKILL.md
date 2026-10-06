@@ -69,10 +69,16 @@ when ready. Start it **once** per session and leave it alive — do not run it i
 the foreground (it never exits). `LOCAL_DB_DIR`, `LOCAL_DB_HOST` and
 `POSTGRES_PORT` override its location.
 
-PGlite is a single-connection engine and `pglite-socket` serializes connections,
-so keep `POSTGRES_CONNECTION_POOL_SIZE=1` for the dev DB (what `bun run init`
-writes). Apps that host several backends give each one its own port and
-`POSTGRES_DB` in its own `.env`, so multiple instances can run side by side.
+PGlite is a single-session engine; `pglite-socket` multiplexes all connections
+onto it (up to 20, `LOCAL_DB_MAX_CONNECTIONS`). Both `db:local` and `test:local`
+patch its queue via `.scripts/pglite-serialize-queries.ts` so each connection's
+extended-query batch (Parse..Sync) runs uninterrupted — otherwise parallel
+queries from a pool > 1 can receive each other's rows. A normal pool size works
+(`test:local` uses 5); don't drop to 1, code that queries outside an open
+transaction then deadlocks. If a `pglite-socket` upgrade changes the queue
+internals, both scripts refuse to start with a clear error. Apps that host
+several backends give each one its own port and `POSTGRES_DB` in its own
+`.env`, so multiple instances can run side by side.
 
 ## 3. Inspect the data → `bun run db:query`
 

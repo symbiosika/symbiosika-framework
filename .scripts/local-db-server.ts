@@ -12,14 +12,18 @@
  *   Terminal 2:  bun run framework:migrate   (once / after new migrations)
  *                bun run dev
  *
- * PGlite is a single-connection database; pglite-socket multiplexes (serializes)
- * multiple connections, so maxConnections must be 1(!) for postgres-js pool size
- * (default 10).
+ * PGlite is a single-session database; pglite-socket multiplexes all client
+ * connections onto it (up to LOCAL_DB_MAX_CONNECTIONS, default 20). Out of the
+ * box it only keeps a connection's protocol messages together inside a
+ * transaction, so parallel queries from a postgres-js pool > 1 could interleave
+ * and receive each other's rows. serializeExtendedQueries() keeps each
+ * connection's Parse..Sync batch together, so any pool size works.
  */
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite-pgvector";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 import { mkdirSync } from "node:fs";
+import { serializeExtendedQueries } from "./pglite-serialize-queries";
 
 const DIR = process.env.LOCAL_DB_DIR ?? "./dev-db/pglite";
 const PORT = parseInt(process.env.POSTGRES_PORT ?? "5432");
@@ -42,6 +46,7 @@ const server = new PGLiteSocketServer({
   host: HOST,
   maxConnections: MAX,
 });
+serializeExtendedQueries(server);
 await server.start();
 console.log(
   `PGlite socket server listening on ${HOST}:${PORT} (dir: ${DIR}, maxConnections: ${MAX})`
