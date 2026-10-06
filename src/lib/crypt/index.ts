@@ -39,7 +39,7 @@ export async function setSecret(data: {
       tenantId: data.tenantId,
     })
     .onConflictDoUpdate({
-      target: [secrets.reference, secrets.name],
+      target: [secrets.tenantId, secrets.reference, secrets.name],
       set: {
         value: encrypted.value,
         type: encrypted.algorithm,

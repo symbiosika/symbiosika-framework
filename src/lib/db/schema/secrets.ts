@@ -47,7 +47,11 @@ export const secrets = pgBaseTable(
       .defaultNow(),
   },
   (secrets) => [
-    unique("secrets_reference_name_idx").on(secrets.reference, secrets.name),
+    unique("secrets_tenant_reference_name_idx").on(
+      secrets.tenantId,
+      secrets.reference,
+      secrets.name
+    ),
     index("secrets_idx").on(secrets.referenceId),
     index("secrets_ref_idx").on(secrets.reference),
     index("secrets_ref_id_idx").on(secrets.referenceId),
