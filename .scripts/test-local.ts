@@ -42,6 +42,7 @@ import { vector } from "@electric-sql/pglite-pgvector";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
+import { serializeExtendedQueries } from "./pglite-serialize-queries";
 
 // Run from the app's backend root (the directory containing framework/ and
 // package.json) — `bun run test:local` does this automatically. Location-
@@ -91,6 +92,9 @@ await db.exec("CREATE EXTENSION IF NOT EXISTS vector;");
 let server: PGLiteSocketServer;
 try {
   server = new PGLiteSocketServer({ db, port: PORT, host: HOST, maxConnections: 20 });
+  // Keep parallel queries from the pool from interleaving on PGlite's single
+  // session (see pglite-serialize-queries.ts).
+  serializeExtendedQueries(server);
   await server.start();
 } catch (error) {
   console.error(
