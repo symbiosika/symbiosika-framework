@@ -5,7 +5,7 @@ import { defineServer } from "./src/index";
  */
 const server = defineServer({
   port: 3099,
-  appName: "KINAUT Webserver",
+  appName: "Symbiosika Framework Demo",
   basePath: "/api/v1",
   baseUrl: "http://localhost:3099",
   authType: "local",

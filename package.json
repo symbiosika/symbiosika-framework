@@ -52,7 +52,7 @@
       "default": "./lib/index.js"
     }
   },
-  "description": "Kinaut Webserver",
+  "description": "Backend framework for multi-tenant SaaS apps on Bun, Hono, PostgreSQL and Drizzle ORM",
   "engines": {
     "bun": ">=1.0.0"
   },
@@ -63,9 +63,9 @@
     "drizzle-sql/**/*"
   ],
   "types": "./lib/index.d.ts",
-  "homepage": "https://github.com/symbiosika/kinaut_webserver",
+  "homepage": "https://github.com/symbiosika/symbiosika-framework",
   "keywords": [],
-  "license": "proprietary",
+  "license": "Apache-2.0",
   "scripts": {
     "dev": "bun --hot run demo.ts",
     "dev:inspect": "bun --inspect --hot run demo.ts",

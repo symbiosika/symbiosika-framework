@@ -135,3 +135,13 @@ defineServer({
   ],
 });
 ```
+
+## License
+
+Copyright 2025-2026 Symbiosika GmbH
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
+
+## Security
+
+Please report vulnerabilities privately to security@symbiosika.de, not in a public issue. See [SECURITY.md](SECURITY.md).
