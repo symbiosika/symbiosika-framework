@@ -638,6 +638,7 @@ export const defineServer = (config: ServerSpecificConfig) => {
   return {
     idleTimeout: 255,
     port: config.port ?? 3000,
+    ...(config.maxRequestBodySize ? { maxRequestBodySize: config.maxRequestBodySize } : {}),
     // Malformed paths are refused here, in front of the whole app — including
     // the static mounts above, which would otherwise turn a NUL byte into a
     // logged 500. See request-path-guard.ts.

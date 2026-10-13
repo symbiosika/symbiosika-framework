@@ -81,6 +81,10 @@ export type WhatsAppIncomingWebhookHandler = (
 
 export interface ServerSpecificConfig {
   port?: number;
+  // Largest request body the server accepts, in bytes. Bun refuses anything
+  // bigger with a 413 before any route runs, so apps that take large uploads
+  // must raise this. Default: Bun's own limit (128 MB).
+  maxRequestBodySize?: number;
   appName?: string;
   basePath?: string;
   baseUrl?: string;
