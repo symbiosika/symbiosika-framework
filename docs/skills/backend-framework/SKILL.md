@@ -23,6 +23,7 @@ defineServer({
   basePath: string,           // e.g. "/api/v1"
   baseUrl: string,            // e.g. "http://localhost:3100"
   allowedOrigins: string[],
+  maxRequestBodySize: number, // bytes; Bun default 128 MB — raise for big uploads
 
   // Auth
   authType: "local" | "auth0" | "hanko",
