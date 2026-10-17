@@ -201,11 +201,16 @@ export function createCrudRoutes(
     return [describeRoute(route)];
   };
 
+  // Routes are registered via app.on(method, [path], ...) because the doc and
+  // auth middleware lists have a variable length; Hono's typed app.get/post
+  // overloads only accept fixed-length handler tuples.
+
   // GET / - List entries with optional filtering, pagination, sorting and
   // relation expansion. Filters use PostgREST-style query params, e.g.
   //   ?status=eq.active&age=gte.18&name=like.john&expand=tenant&limit=20
-  app.get(
-    "/",
+  app.on(
+    "GET",
+    ["/"],
     ...doc({
       summary: `List ${resourceName}`,
       dataSchema: selectSchema ? v.array(selectSchema) : undefined,
@@ -234,8 +239,9 @@ export function createCrudRoutes(
   if (config.markdown) {
     const renderer = config.markdown.renderer;
 
-    app.get(
-      "/markdown",
+    app.on(
+      "GET",
+      ["/markdown"],
       ...doc({ summary: `Export ${resourceName} as markdown` }),
       ...authChain("read", "read"),
       validator("param", v.object({ tenantId: v.string() })),
@@ -271,8 +277,9 @@ export function createCrudRoutes(
   }
 
   // GET /:id - Get single entry
-  app.get(
-    "/:id",
+  app.on(
+    "GET",
+    ["/:id"],
     ...doc({ summary: `Get a ${entityName} by id`, dataSchema: selectSchema }),
     ...authChain("read", "read"),
     validator("param", v.object({ tenantId: v.string(), id: v.string() })),
@@ -300,8 +307,9 @@ export function createCrudRoutes(
   );
 
   // POST / - Create new entry
-  app.post(
-    "/",
+  app.on(
+    "POST",
+    ["/"],
     ...doc({
       summary: `Create a ${entityName}`,
       dataSchema: selectSchema,
@@ -327,8 +335,9 @@ export function createCrudRoutes(
   );
 
   // PUT /:id - Update entry
-  app.put(
-    "/:id",
+  app.on(
+    "PUT",
+    ["/:id"],
     ...doc({
       summary: `Update a ${entityName}`,
       dataSchema: selectSchema,
@@ -362,8 +371,9 @@ export function createCrudRoutes(
   );
 
   // DELETE /:id - Delete entry
-  app.delete(
-    "/:id",
+  app.on(
+    "DELETE",
+    ["/:id"],
     ...doc({ summary: `Delete a ${entityName}` }),
     ...authChain("delete", "write"),
     validator("param", v.object({ tenantId: v.string(), id: v.string() })),

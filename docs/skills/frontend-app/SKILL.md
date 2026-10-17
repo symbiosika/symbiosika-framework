@@ -9,14 +9,14 @@ description: >
 
 # Frontend App
 
-Vue 3 SPA (Composition API, no SSR). Built with Vite, Tailwind CSS v4, PrimeVue/Volt.
+Vue 3 SPA (Composition API, no SSR). Built with Vite 8, Tailwind CSS v4, PrimeVue/Volt.
 
 ## Tech Stack
 
 - Vue 3.5 (Composition API only)
-- Vue Router 4 (hash mode)
-- Pinia 3 (state management)
-- PrimeVue 4 + Volt (unstyled components)
+- Vue Router 5 (hash mode)
+- Pinia 4 (state management)
+- PrimeVue 4 + Volt (unstyled components) — stay on 4.x: PrimeVue 5 is no longer MIT and needs a PrimeUI license key
 - Tailwind CSS v4
 - Vue I18n 11
 - Valibot (validation)

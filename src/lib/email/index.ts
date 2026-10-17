@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 import * as v from "valibot";
 import log from "../log";
 import { runPostEmailSendActions } from "./actions";
@@ -83,7 +83,7 @@ const getMailCredentials = () => {
 };
 
 class SMTPService {
-  private transporter: nodemailer.Transporter | null = null;
+  private transporter: Transporter | null = null;
   private logEnabled: boolean = false;
   private consoleMode: boolean = false;
 

@@ -5,7 +5,7 @@ import {
   generateRegistrationOptions,
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
-  type AuthenticatorTransportFuture,
+  type AuthenticatorTransport,
 } from "@simplewebauthn/server";
 import type { Context } from "hono";
 import { getDb } from "../db/db-connection";
@@ -169,7 +169,7 @@ export async function passkeyRegistrationOptions(c: Context, userId: string) {
     excludeCredentials: existing.map((row) => ({
       id: row.credentialId,
       type: "public-key" as const,
-      transports: row.transports as AuthenticatorTransportFuture[] | undefined,
+      transports: row.transports as AuthenticatorTransport[] | undefined,
     })),
   });
 
@@ -288,7 +288,7 @@ export async function passkeyAuthenticationOptions(
     allowCredentials: creds.map((row) => ({
       id: row.credentialId,
       type: "public-key" as const,
-      transports: row.transports as AuthenticatorTransportFuture[] | undefined,
+      transports: row.transports as AuthenticatorTransport[] | undefined,
     })),
     userVerification: "preferred",
   });
