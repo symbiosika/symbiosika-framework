@@ -260,7 +260,30 @@ dynamic tool lists and per-tenant instructions need no extra plumbing.
 - Service: `smtpService` from `@framework/lib/email`
 - Console mode: `SMTP_HOST=console.localhost` logs emails to console
 - Custom templates via `emailTemplates` config
-- Template types: `verifyEmail`, `magicLink`, `resetPassword`, `inviteToOrganization`
+- Template types: `verifyEmail`, `magicLink`, `resetPassword`, `resetPasswordWelcome`,
+  `inviteToOrganization`, `inviteToOrganizationWhenUserExists`, `emailLoginCode`,
+  `verifyEmailChange`, `emailChangeNotice`
+- Layout: `renderEmail()` from `@framework/lib/email/render` — the look of all
+  default mails (white, app name as wordmark or `logoUrl`, heading, short lines,
+  optional code, one dark button, German first + one English line). Use it for
+  the app's own mails too, so everything a user receives looks alike; escape
+  user-typed values with `escapeHtml()`:
+
+```typescript
+import { renderEmail, escapeHtml } from "@framework/lib/email/render";
+
+await smtpService.sendMail({
+  recipients: [email],
+  subject: "Export fertig",
+  html: renderEmail({
+    appName,
+    de: { heading: "Export fertig", lines: [`${escapeHtml(name)} ist bereit.`] },
+    button: { link, text: "Herunterladen" },
+    note: "Nicht angefordert? Dann ignorieren Sie diese E-Mail einfach.",
+    en: "Your export is ready.",
+  }),
+});
+```
 
 ## Validation
 
