@@ -39,8 +39,12 @@ const disableAi = () => {
 };
 
 afterEach(() => {
-  process.env.AI_PROVIDER = AI_ENV.AI_PROVIDER;
-  process.env.MISTRAL_API_KEY = AI_ENV.MISTRAL_API_KEY;
+  // Assigning undefined would store the string "undefined" (truthy), which
+  // leaks a fake API key into every later test file — delete instead.
+  for (const [key, value] of Object.entries(AI_ENV)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 });
 
 describe("page summaries", () => {
