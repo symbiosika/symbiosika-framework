@@ -35,6 +35,7 @@ import {
 import { createTenantInvitation } from "../../lib/usermanagement/invitations";
 import type { MiddlewareHandler } from "hono";
 import { validateScope } from "../../lib/utils/validate-scope";
+import { _GLOBAL_SERVER_CONFIG } from "../../store";
 
 /**
  * Middleware to check if user is a member of the tenant
@@ -134,8 +135,8 @@ export default function defineTenantRoutes(
         const data = c.req.valid("json");
         const userId = c.get("usersId");
         // By default a user may only own a single tenant.
-        // ALLOW_OPEN_TENANT_CREATION=true lifts this limit.
-        if (process.env.ALLOW_OPEN_TENANT_CREATION !== "true") {
+        // The server config allowOpenTenantCreation lifts this limit.
+        if (!_GLOBAL_SERVER_CONFIG.allowOpenTenantCreation) {
           const userTenants = await getUserTenants(userId);
           if (userTenants.length > 0) {
             throw new HTTPException(400, {

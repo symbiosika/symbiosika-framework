@@ -48,6 +48,7 @@ export const _GLOBAL_SERVER_CONFIG = {
   emailChangeTtl: 60 * 60, // 1 hour
   useConsoleLogger: true,
   useLicenseSystem: false,
+  allowOpenTenantCreation: false,
   publicKey: "",
   emailTemplates: {
     verifyEmail: stdTemplateVerifyEmail,
@@ -133,6 +134,8 @@ export const setGlobalServerConfig = (config: ServerSpecificConfig) => {
   }
 
   _GLOBAL_SERVER_CONFIG.useLicenseSystem = config.useLicenseSystem ?? false;
+  _GLOBAL_SERVER_CONFIG.allowOpenTenantCreation =
+    config.allowOpenTenantCreation ?? false;
   _GLOBAL_SERVER_CONFIG.publicKey = config.publicKey ?? "";
 
   _GLOBAL_SERVER_CONFIG.chunkingStrategy = config.chunkingStrategy ?? "simple";
