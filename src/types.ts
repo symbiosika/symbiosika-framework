@@ -85,6 +85,9 @@ export interface ServerSpecificConfig {
   // bigger with a 413 before any route runs, so apps that take large uploads
   // must raise this. Default: Bun's own limit (128 MB).
   maxRequestBodySize?: number;
+  // Lets every user create further tenants via POST /tenant. Default: false,
+  // i.e. a user can only create a tenant while not yet a member of one.
+  allowOpenTenantCreation?: boolean;
   appName?: string;
   basePath?: string;
   baseUrl?: string;

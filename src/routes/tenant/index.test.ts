@@ -10,6 +10,7 @@ import {
 } from "../../test/init.test";
 import { testFetcher } from "../../test/fetcher.test";
 import { type TenantsSelect } from "../../lib/db/db-schema";
+import { _GLOBAL_SERVER_CONFIG } from "../../store";
 
 let app: SymbiosikaFrameworkHonoApp;
 let TEST_USER_1_TOKEN: string;
@@ -59,9 +60,9 @@ describe("Organisation Routes", () => {
     );
 
     console.log(
-      "Starting test: ALLOW_OPEN_TENANT_CREATION lifts the one-tenant limit"
+      "Starting test: allowOpenTenantCreation lifts the one-tenant limit"
     );
-    process.env.ALLOW_OPEN_TENANT_CREATION = "true";
+    _GLOBAL_SERVER_CONFIG.allowOpenTenantCreation = true;
     try {
       response = await testFetcher.post(
         app,
@@ -70,7 +71,7 @@ describe("Organisation Routes", () => {
         { name: "Second Organisation" }
       );
     } finally {
-      delete process.env.ALLOW_OPEN_TENANT_CREATION;
+      _GLOBAL_SERVER_CONFIG.allowOpenTenantCreation = false;
     }
     expect(response.status).toBe(200);
     const secondOrg = response.jsonResponse;
