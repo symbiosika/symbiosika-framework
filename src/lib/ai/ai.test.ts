@@ -26,11 +26,12 @@ const ORIGINAL_ENV = {
 };
 
 afterEach(() => {
-  process.env.AI_PROVIDER = ORIGINAL_ENV.AI_PROVIDER;
-  process.env.MISTRAL_API_KEY = ORIGINAL_ENV.MISTRAL_API_KEY;
-  process.env.OPENROUTER_API_KEY = ORIGINAL_ENV.OPENROUTER_API_KEY;
-  process.env.OPENROUTER_STRUCTURED_OUTPUTS =
-    ORIGINAL_ENV.OPENROUTER_STRUCTURED_OUTPUTS;
+  // Assigning undefined would store the string "undefined" (truthy), which
+  // leaks a fake API key into every later test file — delete instead.
+  for (const [key, value] of Object.entries(ORIGINAL_ENV)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 });
 
 describe("AI provider layer", () => {
