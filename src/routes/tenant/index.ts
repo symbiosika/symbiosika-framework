@@ -133,12 +133,15 @@ export default function defineTenantRoutes(
       try {
         const data = c.req.valid("json");
         const userId = c.get("usersId");
-        // check if the user has already an tenant
-        const userTenants = await getUserTenants(userId);
-        if (userTenants.length > 0) {
-          throw new HTTPException(400, {
-            message: "User already has an tenant",
-          });
+        // By default a user may only own a single tenant.
+        // ALLOW_OPEN_TENANT_CREATION=true lifts this limit.
+        if (process.env.ALLOW_OPEN_TENANT_CREATION !== "true") {
+          const userTenants = await getUserTenants(userId);
+          if (userTenants.length > 0) {
+            throw new HTTPException(400, {
+              message: "User already has an tenant",
+            });
+          }
         }
 
         // create the tenant

@@ -58,6 +58,30 @@ describe("Organisation Routes", () => {
       "Error creating tenant: Error: User already has an tenant"
     );
 
+    console.log(
+      "Starting test: ALLOW_OPEN_TENANT_CREATION lifts the one-tenant limit"
+    );
+    process.env.ALLOW_OPEN_TENANT_CREATION = "true";
+    try {
+      response = await testFetcher.post(
+        app,
+        "/api/tenant",
+        TEST_USER_3_TOKEN,
+        { name: "Second Organisation" }
+      );
+    } finally {
+      delete process.env.ALLOW_OPEN_TENANT_CREATION;
+    }
+    expect(response.status).toBe(200);
+    const secondOrg = response.jsonResponse;
+    expect(secondOrg.name).toBe("Second Organisation");
+    response = await testFetcher.delete(
+      app,
+      `/api/tenant/${secondOrg.id}`,
+      TEST_USER_3_TOKEN
+    );
+    expect(response.status).toBe(200);
+
     console.log("Starting test: Add a member to the tenant");
     response = await testFetcher.post(
       app,
