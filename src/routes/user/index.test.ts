@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import { Hono } from "hono";
 import { definePublicUserRoutes } from "./public";
+import { LocalAuth } from "../../lib/auth";
 import { defineSecuredUserRoutes } from "./protected";
 import type { SymbiosikaFrameworkHonoApp } from "../../types";
 import { initTests } from "../../test/init.test";
@@ -315,6 +316,47 @@ describe("User API Endpoints", () => {
 
     const response = await app.request(url, { method: "GET" });
     expect(response.status).toBe(400);
+  });
+
+  // The page that sent the user to the login has to survive the e-mail
+  // round-trip, otherwise the magic link always lands on the start page.
+  it("GET /user/send-magic-link forwards a local redirectUrl into the link", async () => {
+    const spy = spyOn(LocalAuth, "sendMagicLink").mockResolvedValue(undefined);
+    try {
+      const target = "/static/app/tenant-1/wiki/page-1?x=1#section";
+      const response = await app.request(
+        "/api/user/send-magic-link?email=" +
+          encodeURIComponent("redirect-test@symbiosika.de") +
+          "&redirectUrl=" +
+          encodeURIComponent(target),
+        { method: "GET" }
+      );
+      expect(response.status).toBe(200);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0]![1]).toBe(target);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("GET /user/send-magic-link drops a redirectUrl that leaves the site", async () => {
+    const spy = spyOn(LocalAuth, "sendMagicLink").mockResolvedValue(undefined);
+    try {
+      for (const target of ["https://evil.example.com/", "//evil.example.com"]) {
+        const response = await app.request(
+          "/api/user/send-magic-link?email=" +
+            encodeURIComponent("redirect-test@symbiosika.de") +
+            "&redirectUrl=" +
+            encodeURIComponent(target),
+          { method: "GET" }
+        );
+        expect(response.status).toBe(200);
+      }
+      expect(spy).toHaveBeenCalledTimes(2);
+      for (const call of spy.mock.calls) expect(call[1]).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   // Test available scopes endpoint
