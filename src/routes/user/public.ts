@@ -284,11 +284,18 @@ export function definePublicUserRoutes(
         // (only used together with createUserIfMissing=true).
         firstname: v.optional(v.string()),
         surname: v.optional(v.string()),
+        // Where the user lands after clicking the link (e.g. the page that
+        // sent them to the login). Only same-origin paths are accepted.
+        redirectUrl: v.optional(v.string()),
       })
     ),
     async (c) => {
       const query = c.req.valid("query");
       const email = query.email;
+      // The link travels by e-mail, so an absolute URL would turn the login
+      // into an open redirect. Anything that is not a local path is dropped
+      // and the login page falls back to its default target.
+      const redirectUrl = sanitizeOAuthRedirect(query.redirectUrl, "") || undefined;
       const createUserIfMissing = query.createUserIfMissing === "true";
       const invitationCode = query.invitationCode;
       const template = query.template;
@@ -314,7 +321,7 @@ export function definePublicUserRoutes(
         console.log("createUserIfMissing", createUserIfMissing);
         await LocalAuth.sendMagicLink(
           email,
-          undefined,
+          redirectUrl,
           createUserIfMissing,
           invitationCode,
           customRegisterData,

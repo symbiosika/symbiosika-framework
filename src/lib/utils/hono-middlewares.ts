@@ -318,6 +318,20 @@ export const authAndSetUsersInfo = async (c: Context, next: Function) => {
 };
 
 /**
+ * Login page URL that brings the user back to the requested page afterwards.
+ * Only path + query are passed: behind a reverse proxy `c.req.url` carries the
+ * internal host/scheme, and the login pages accept local targets only.
+ */
+const loginRedirectUrl = (c: Context): string => {
+  const { pathname, search } = new URL(c.req.url);
+  return (
+    _GLOBAL_SERVER_CONFIG.loginUrl +
+    "?redirectUrl=" +
+    encodeURIComponent(pathname + search)
+  );
+};
+
+/**
  * HONO Middleware to check the JWT token and redirect to login if not valid
  */
 export const authOrRedirectToLogin = async (c: Context, next: Function) => {
@@ -325,11 +339,7 @@ export const authOrRedirectToLogin = async (c: Context, next: Function) => {
     await checkToken(c);
     addScopesToContext(c, ["all"]);
   } catch (error) {
-    return c.redirect(
-      _GLOBAL_SERVER_CONFIG.loginUrl +
-        "?redirectUrl=" +
-        encodeURIComponent(c.req.url)
-    );
+    return c.redirect(loginRedirectUrl(c));
   }
   await next();
 };
@@ -351,11 +361,7 @@ export const authAndSetUsersInfoOrRedirectToLogin = async (
     c.set("actor", actor);
     addScopesToContext(c, scopes);
   } catch (error) {
-    return c.redirect(
-      _GLOBAL_SERVER_CONFIG.loginUrl +
-        "?redirectUrl=" +
-        encodeURIComponent(c.req.url)
-    );
+    return c.redirect(loginRedirectUrl(c));
   }
   await next();
 };
