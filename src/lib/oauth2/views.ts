@@ -48,10 +48,10 @@ const shell = (appName: string, logoUrl: string | undefined, body: string) => `<
     margin:0;background:var(--bg);color:var(--ink);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
-    display:flex;align-items:center;justify-content:center;min-height:100%;padding:24px;
+    display:flex;min-height:100%;padding:24px;
   }
   .card{
-    width:100%;max-width:380px;background:var(--bg);
+    width:100%;max-width:380px;margin:auto;background:var(--bg);
     border:1px solid var(--line);border-radius:14px;padding:40px 36px;
     box-shadow:0 1px 2px rgba(17,17,19,.04),0 12px 32px rgba(17,17,19,.05);
   }
@@ -83,7 +83,8 @@ const shell = (appName: string, logoUrl: string | undefined, body: string) => `<
   .muted a,a{color:var(--ink);text-decoration:underline;text-underline-offset:2px}
   .err{color:var(--err);font-size:13px;min-height:18px;margin-top:10px}
   .hidden{display:none}
-  .scopes{list-style:none;margin:0 0 20px;padding:14px 16px;border:1px solid var(--line);border-radius:10px}
+  .scopes{list-style:none;margin:0 0 20px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;
+    max-height:min(320px,45vh);overflow-y:auto;overscroll-behavior:contain}
   .scopes li{font-size:14px;color:var(--ink);padding:5px 0 5px 22px;position:relative}
   .scopes li::before{content:"";position:absolute;left:4px;top:11px;width:6px;height:6px;border-radius:50%;background:var(--ink)}
   .tenants{display:flex;flex-direction:column;gap:8px}
