@@ -133,6 +133,10 @@ export const users = pgBaseTable(
     lastTenantId: uuid("last_tenant_id").references(() => tenants.id, {
       onDelete: "set null",
     }),
+    // Time of the last interactive login (password, passkey, magic link,
+    // OAuth consent …). Set when a login session is created — impersonation
+    // sessions do not count. Null = never logged in since this was tracked.
+    lastLoginAt: timestamp("last_login_at", { mode: "string" }),
   },
   (users) => [
     index("users_email_idx").on(users.email),

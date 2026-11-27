@@ -17,7 +17,7 @@ import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import jwt from "jsonwebtoken";
 import { getDb } from "../db/db-connection";
-import { sessions } from "../db/db-schema";
+import { sessions, users } from "../db/db-schema";
 import {
   setSessionCache,
   getSessionCache,
@@ -44,6 +44,21 @@ export const createUserSession = async (
   await setSessionCache(sid, userId, ttlSeconds);
 
   return { sid, expiresAt };
+};
+
+/**
+ * Stamp `users.lastLoginAt` for an interactive login. Best-effort: a failed
+ * write must never block the login itself.
+ */
+export const recordUserLogin = async (userId: string): Promise<void> => {
+  try {
+    await getDb()
+      .update(users)
+      .set({ lastLoginAt: new Date().toISOString() })
+      .where(eq(users.id, userId));
+  } catch (err) {
+    console.error(`[auth] failed to record last login for ${userId}:`, err);
+  }
 };
 
 /**
