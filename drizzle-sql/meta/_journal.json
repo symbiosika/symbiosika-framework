@@ -316,6 +316,13 @@
       "when": 1791229250487,
       "tag": "0044_modern_thing",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1795788429440,
+      "tag": "0045_users_last_login_at",
+      "breakpoints": true
     }
   ]
 }

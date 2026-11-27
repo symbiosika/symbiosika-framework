@@ -8,6 +8,7 @@ import {
 import { getDb } from "../db/db-connection";
 import {
   createUserSession,
+  recordUserLogin,
   revokeSession,
   revokeAllSessionsForUser,
 } from "./sessions";
@@ -179,6 +180,10 @@ export const generateJwt = async (
  *
  * `additionalClaims` are embedded as-is (e.g. the `act` claim of an
  * impersonation session, see impersonation.ts).
+ *
+ * Every call counts as a login and updates `users.lastLoginAt` — except
+ * impersonation sessions (`act` claim) and calls with `recordLogin: false`
+ * (token refresh, which only rotates an existing login).
  */
 export const generateUserSessionJwt = async (
   user: {
@@ -188,9 +193,14 @@ export const generateUserSessionJwt = async (
     surname: string;
   },
   expiresIn: number = _GLOBAL_SERVER_CONFIG.jwtExpiresAfter,
-  additionalClaims?: Record<string, any>
+  additionalClaims?: Record<string, any>,
+  options: { recordLogin?: boolean } = {}
 ) => {
   const { sid, expiresAt } = await createUserSession(user.id, expiresIn);
+  // An impersonation session (`act` claim) is not a login of the user.
+  if (options.recordLogin !== false && !additionalClaims?.act) {
+    await recordUserLogin(user.id);
+  }
   // `sid` goes last so additional claims can never point the token at a
   // different session.
   const { token } = await generateJwt(user, expiresIn, {
@@ -515,7 +525,12 @@ export const LocalAuth = {
     }
     // Rotate the session: the refreshed token gets a new session and the old
     // one is revoked, so a refresh truly replaces the previous token.
-    const { token, expiresAt } = await generateUserSessionJwt(user[0]);
+    const { token, expiresAt } = await generateUserSessionJwt(
+      user[0],
+      undefined,
+      undefined,
+      { recordLogin: false }
+    );
     if (currentSid) {
       await revokeSession(currentSid);
     }
